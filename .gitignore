@@ -16,6 +16,10 @@ build/
 .next/
 .cache/
 
+# Rust / Cargo
+target/
+**/*.rs.bk
+
 # Python / Data Science / GIS
 __pycache__/
 *.py[cod]
