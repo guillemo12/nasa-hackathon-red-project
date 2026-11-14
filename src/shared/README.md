@@ -15,12 +15,17 @@ Todos los subsistemas (pipeline Python `GDAL`, motor en Rust `core-engine` nativ
 | **Aceleración Gravitatoria en Marte** | $g_M$ | `3.72076` ($0.3794\, g_E$) | $\text{m/s}^2$ | Estándar IAU / NASA Mars Fact Sheet |
 | **Radio Ecuatorial Marciano** | $R_{\text{eq}}$ | `3396.19` | $\text{km}$ | Elipsoide de Referencia **IAU Mars 2000** |
 | **Radio Polar Marciano** | $R_{\text{pol}}$ | `3376.20` | $\text{km}$ | Elipsoide de Referencia **IAU Mars 2000** |
-| **Radio Medio Volumétrico (Escalado `h3o`)** | $R_{\text{Mars}}$ | `3389.50` (factor $0.5320\times$ Tierra) | $\text{km}$ | Calibración métrica de celdas hexagonales H3 |
+| **Radio de Referencia (Escalado `h3o`)** | $R_{\text{Mars}}$ | `3396.19` (factor lineal $3396.19 / 6371.0088 = 0.5331\times$ Tierra; área $0.2842\times$) | $\text{km}$ | Esfera de referencia de los datos NASA (MOLA, `IAU_2015:49900`); `MARS_H3_REFERENCE_RADIUS_KM` |
 | **Datum Vertical de Referencia** | $z_0$ | Equipotencial MOLA ($0\text{ m}$) | $\text{m}$ | *MGS Mars Orbiter Laser Altimeter* |
-| **Presión Atmosférica Base (Melas Chasma)** | $P_{\text{atm}}$ | `8.8 – 10.5` (cota $\approx -4.2\text{ km}$) | $\text{mbar}$ | Extrapolación barométrica desde datum ($6.1\text{ mbar}$) |
+| **Presión Atmosférica Base (Melas Chasma)** | $P_{\text{atm}}$ | `7.08` ($708\text{ Pa}$ = $610\text{ Pa} \cdot e^{-z/11.1\text{ km}}$ a $-1.660\text{ m}$; columna de CO₂ $19.0\text{ g/cm}^2$) | $\text{mbar}$ | Bloque de emplazamiento `SURVIVAL_TRIANGLE_SITE` / `MELAS_BASE_PRESSURE_MBAR` (P1, DTM CTX 20 m) |
 | **Latencia de Comunicación Tierra-Marte** | $\Delta t_{\text{Earth}}$ | `182 – 1340` ($3.0\text{ – }22.3\text{ min}$) | $\text{s}$ | Distancia orbital mínima/máxima (justifica Edge Offline) |
-| **Masa Total Astronauta + Traje EVA** | $m_{\text{total}}$ | `130.0` ($75\text{ kg} + 55\text{ kg}$ traje) | $\text{kg}$ | Modelo biomecánico Pandolf adaptado (`D* Lite`) |
-| **Equivalente Energético del Oxígeno** | $k_{O_2}$ | `20920` | $\text{J / L}_{O_2}\text{ (STP)}$ | Conversión de tasa metabólica ($\text{W}$) a consumo $\dot{V}_{O_2}$ |
+| **Masa Total Astronauta + Traje EVA** | $m_{\text{total}}$ | `170.0` ($80\text{ kg} + 90\text{ kg}$ traje con mochila de soporte vital) | $\text{kg}$ | Modelo metabólico de referencia de P1 (`D* Lite`) |
+| **Equivalente Energético del Oxígeno** | $k_{O_2}$ | `20100` ($1\text{ L/min} = 335\text{ W}$) | $\text{J / L}_{O_2}\text{ (STPD)}$ | Conversión de tasa metabólica ($\text{W}$) a consumo $\dot{V}_{O_2}$ |
+| **Modelo Metabólico (P1)** | $\dot{M}$ | $120 + \eta \cdot 0.285 \cdot W v + W v \sin\theta / (0.25(1-s))$, $W = m_{\text{total}} g_M$; $\eta$ = 1,0 / 1,3 / 1,6 / 2,1 para TIU > 400 / 250–400 / 150–250 / < 150; sin crédito de pendiente en bajada | $\text{W}$ | Llano 1 m/s = 300 W; WP2 (22°, 0,55 m/s, $s = 0.30$) = 1.073 W = 3,2 L/min |
+| **Umbrales de Radio UHF** | $\text{RSSI}$ | Verde $> -85$; ámbar $-85$ a $-100$; rojo $< -100$ | $\text{dBm}$ | `eva_thresholds.json` (P1) |
+| **Radiación SPE** | $\dot{D}_{\text{SPE}}$ | Pico de la envolvente `8` a cielo abierto; ámbar `0.05 – 1.0`; rojo $> 1.0$; presupuesto `2` mSv por EVA ($\Rightarrow 15\text{ min}$ a cielo abierto) | $\text{mSv/h}$ | Entregable 1 / `eva_thresholds.json` (P1) |
+| **Pendiente / Inercia Térmica** | $\theta$, $I$ | Pendiente ámbar 10–20°, rojo $> 20°$; TIU ámbar 150–400, rojo $< 150$ | °, TIU | `eva_thresholds.json` (P1) |
+| **Polvo y Viento** | $\tau$, $u$ | $\tau$ ámbar 1,0–2,0, rojo $> 2.0$ (escenario 0,7 → 2,4); viento ámbar 10–20, rojo $> 20$ m/s | —, m/s | `eva_thresholds.json` (P1) |
 | **Margen de Seguridad *Walkback Limit*** | $\alpha_{\text{sec}}$ | `0.85` (15% reserva obligatoria) | adimensional | Regla determinista de *Dynamic Goal Switching* |
 
 ---
@@ -59,7 +64,7 @@ Todos los componentes visuales (Consola 3D de Base, HUD AR del Casco y Tablet de
 | Código de Estado | Condición de Activación | Color del Sendero AR (`Three.js`) | Comportamiento del Copiloto IA (`Candle` + `whisper-rs`) |
 | :--- | :--- | :--- | :--- |
 | `0x01_NOMINAL` | Todas las variables en rango Verde y $T_{\text{walkback, Base}} \le 0.70\, T_{\text{vital}}$. | Cian `#00F0FF` | Escucha pasiva por comando de voz para consultas geológicas/ISRU (`CRISM`/`THEMIS`). |
-| `0x02_CAUTION` | 1 variable en Ámbar (ej. $\theta \in [15^\circ, 20^\circ]$ o $I < 180\text{ TIU}$ o NLOS aislado). | Ámbar `#FFB000` | Aviso breve único; icono pasivo de modo autónomo si hay `H4_NLOS`. |
+| `0x02_CAUTION` | 1 variable en Ámbar (ej. $\theta \in [10^\circ, 20^\circ]$, $I \le 400\text{ TIU}$, $\tau \ge 1.0$, viento $\ge 10\text{ m/s}$, dosis $\ge 0.05\text{ mSv/h}$, RSSI $\le -85\text{ dBm}$ o NLOS aislado). | Ámbar `#FFB000` | Aviso breve único; icono pasivo de modo autónomo si hay `H4_NLOS`. |
 | `0x03_MULTI_HAZARD` | $\ge 2$ amenazas activas simultáneas, pero retorno a Base aún viable ($\le 0.85\, T_{\text{vital}}$). | Ámbar Pulsante | Activa **Triaje de Fusión de Alerta Única** priorizando la amenaza de mayor riesgo vital. |
 | `0x04_EVAC_SHELTER` | Se cumple condición de ***Dynamic Goal Switching*** ($G_{\text{target}} \to \text{WP3}$). | Rojo/Ámbar Pulsante `#FF2A2A` | Tacha Base en barra *Walkback Limit Dual* y emite orden única de voz ($\le 8\text{ s}$) hacia el escarpe WP3. |
 | `0x05_SHELTER_HOLD` | Astronauta dentro del radio de $15\text{ m}$ del Refugio WP3 ($\Psi_{\text{SVF}} \le 0.20$). | Verde Esmeralda `#00E676` | Confirma blindaje topográfico ($\ge 80\%$ atenuación SPE), reduce consumo CPU a modo espera y monitorea recuperación Zenoh. |

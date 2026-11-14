@@ -4,10 +4,11 @@
 //! and `src/shared/README.md`.
 //!
 //! Features:
-//! - Hexagonal axial coordinate system calibrated to the IAU Mars 2000 ellipsoid
-//!   (mean volumetric radius R_Mars = 3,389.50 km, scale factor 0.5320x linear, 0.2830x area).
+//! - Hexagonal axial coordinate system calibrated to the MOLA reference sphere (IAU_2015:49900,
+//!   R = 3,396.19 km, scale factor 0.5331x linear, 0.2842x area vs. Earth H3 at 6,371.0088 km).
 //! - Deterministic, reversible packing into 64-bit `h3_index` across Resolutions 7..=14.
-//! - Centered on Melas Chasma (-9.8°S, 283.6°E / Valles Marineris).
+//! - Centered on the Base node of `red_atlas_shared::SURVIVAL_TRIANGLE_SITE` (SW basin of Melas
+//!   Chasma, ~9.90°S, 283.39°E / Valles Marineris).
 //! - 6-neighbor topology, k-ring radial neighborhoods, and Martian geodesic distance calculations.
 //! - `H3MarsGrid` spatial index with Melas Chasma survival corridor generation (Base, WP1, WP2, WP3).
 //! - WebGPU/Three.js 3-sector Spyglass slice query (CRISM water, THEMIS trap, MOLA slope/SVF/RSSI).
@@ -18,18 +19,28 @@ use std::f64::consts::PI;
 pub use red_atlas_shared::{
     melas_chasma_survival_triangle, HexCellState64B, HAZARD_FLAG_ISRU_WATER, HAZARD_FLAG_NLOS,
     HAZARD_FLAG_REGOLITH_TRAP, HAZARD_FLAG_SHELTER, HAZARD_FLAG_SLOPE_CRITICAL,
-    H3_MARS_AREA_SCALE, H3_MARS_LINEAR_SCALE, MARS_MEAN_RADIUS_KM,
+    H3_MARS_AREA_SCALE, H3_MARS_LINEAR_SCALE, ISRU_WATER_MIN_PCT, LOW_TIU_TRAP_THRESHOLD,
+    MARS_H3_REFERENCE_RADIUS_KM, NLOS_RSSI_THRESHOLD_DBM, SHELTER_SVF_MAX, SITE_REFERENCE_LAT_DEG,
+    SITE_REFERENCE_LON_DEG, CRITICAL_SLOPE_DEG,
 };
+use red_atlas_shared::{uhf_link_rssi_dbm, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG};
+use crate::metabolic_dstar::pandolf_mars_metabolic_watts;
 use serde::{Deserialize, Serialize};
 
-/// Reference latitude for Melas Chasma center in degrees North (-9.8°S).
-pub const MELAS_CENTER_LAT_DEG: f64 = -9.8;
+/// Reference latitude for the local grid projection in degrees North (Base node, from shared).
+pub const MELAS_CENTER_LAT_DEG: f64 = SITE_REFERENCE_LAT_DEG;
 
-/// Reference Eastern longitude for Melas Chasma center in degrees (283.6°E).
-pub const MELAS_CENTER_LON_DEG: f64 = 283.6;
+/// Reference Eastern longitude for the local grid projection in degrees (Base node, from shared).
+pub const MELAS_CENTER_LON_DEG: f64 = SITE_REFERENCE_LON_DEG;
 
-/// Martian mean volumetric radius in meters (3,389,500 m).
-pub const MARS_RADIUS_M: f64 = MARS_MEAN_RADIUS_KM * 1000.0;
+/// Mars reference sphere radius in meters (3,396,190 m, MOLA / IAU_2015:49900).
+pub const MARS_RADIUS_M: f64 = MARS_H3_REFERENCE_RADIUS_KM * 1000.0;
+
+/// P1 scenario zone radii in m (`data/nasa-layers/SCHEMA_HEXGRID.md`, section 4).
+const BASE_WP1_TIU_ZONE_M: f64 = 100.0;
+const WP2_TIU_ZONE_M: f64 = 150.0;
+const WP3_ALCOVE_ZONE_M: f64 = 40.0;
+const WP1_WATER_ZONE_M: f64 = 100.0;
 
 // ============================================================================
 // 1. Mars Grid Resolution & Metrics
@@ -45,7 +56,9 @@ pub struct MarsGridResolution {
 
 /// Returns calibrated edge length and area for a given H3 resolution (7..=14) on Mars.
 ///
-/// Scaled from Earth H3 by `H3_MARS_LINEAR_SCALE` (0.5320) and `H3_MARS_AREA_SCALE` (0.2830).
+/// Nominal table inspired by the Earth H3 scaling (`H3_MARS_LINEAR_SCALE` ≈ 0.5331,
+/// `H3_MARS_AREA_SCALE` ≈ 0.2842). Note: the values are hard-coded (650 m * 7^(-k/2)) and are
+/// not recomputed from those factors.
 pub fn resolution_metrics(res: u8) -> MarsGridResolution {
     let (edge_len_m, area_m2) = match res {
         7 => (650.0, 1.46e6),
@@ -464,12 +477,17 @@ impl H3MarsGrid {
     /// Generates a realistic Melas Chasma survival exploration corridor.
     ///
     /// Covers the canonical "Survival Triangle":
-    /// - **Base Habitat**: -4215 m elevation, firm basalt (>400 TIU), active LOS (RSSI > -60 dBm).
-    /// - **WP1 (ISRU Water)**: Sulfate-rich layered deposits (>12% structural H2O, CRISM target).
-    /// - **WP2 (Fault Slope Trap)**: Landslide contact, 22° steep slope, soft regolith trap (110 TIU),
-    ///   and NLOS radio shadow (< -118 dBm).
-    /// - **WP3 (Cliff Shelter)**: Topographic alcove under 7 km canyon wall, Sky View Factor 0.15 (<= 0.20),
-    ///   85% SPE radiation attenuation, firm access.
+    /// - **Base Habitat**: per-node values from `red_atlas_shared::SURVIVAL_TRIANGLE_SITE`
+    ///   (320 TIU scenario, 2.8° DTM slope), LOS link to the Base antenna.
+    /// - **WP1 (ISRU Water)**: Sulfate-rich layered deposits (12% structural H2O, scenario).
+    /// - **WP2 (Fault Slope Trap)**: Landslide contact, 22° local ramp (scenario; 19.4° on the DTM),
+    ///   soft regolith trap (110 TIU) and NLOS radio shadow (no geometric LOS to the Base).
+    /// - **WP3 (Cliff Shelter)**: Alcove under an overhang on a 20.1° talus, Sky View Factor 0.15
+    ///   (scenario, <= 0.20; 0.76 on the DTM), 85% SPE radiation attenuation, NLOS.
+    ///
+    /// Scenario zone radii follow P1 (`data/nasa-layers/SCHEMA_HEXGRID.md`): TIU discs of 100 m
+    /// (Base, WP1), 150 m (WP2) and 40 m (WP3); water disc of 100 m (WP1); alcove disc of 40 m.
+    /// Cells outside every zone keep P3's synthetic background values.
     ///
     /// Every generated cell is sealed with `seal_crc()` to enable SEU bit-flip detection.
     pub fn generate_melas_chasma_corridor(res: u8) -> Self {
@@ -480,6 +498,7 @@ impl H3MarsGrid {
         let wp1_wp = &waypoints[1];
         let wp2_wp = &waypoints[2];
         let wp3_wp = &waypoints[3];
+        let [base_site, wp1_wp_site, wp2_site, wp3_site] = SURVIVAL_TRIANGLE_SITE;
 
         let base_coord = lat_lon_to_axial(base_wp.lat_deg, base_wp.lon_deg, res);
         let wp1_coord = lat_lon_to_axial(wp1_wp.lat_deg, wp1_wp.lon_deg, res);
@@ -558,68 +577,55 @@ impl H3MarsGrid {
                 + w_wp3 * (wp3_wp.elev_m as f64))
                 / sum_w) as f32;
 
-            // 2. CRISM Structural Water ISRU (% by mass)
-            let isru_h2o_pct = if coord == wp1_coord {
-                14.2
-            } else if d_wp1 < 160.0 {
-                let factor = (1.0 - (d_wp1 / 160.0)).max(0.0) as f32;
-                1.2 + 13.0 * factor
+            // 2. CRISM Structural Water ISRU (% by mass): P1 scenario disc of 100 m at WP1.
+            let isru_h2o_pct = if coord == wp1_coord || d_wp1 < WP1_WATER_ZONE_M {
+                wp1_wp_site.h2o_wt_pct
             } else {
                 1.2
             };
 
-            // 3. THEMIS Thermal Inertia Units (TIU)
-            let thermal_inertia_tiu = if coord == wp2_coord {
-                110.0
-            } else if d_wp2 < 120.0 {
-                let factor = (d_wp2 / 120.0) as f32;
-                110.0 + factor * 35.0
-            } else if coord == base_coord || d_base < 100.0 {
-                450.0
-            } else if coord == wp3_coord || d_wp3 < 80.0 {
-                430.0
+            // 3. Thermal Inertia Units (TIU): P1 scenario discs around the nodes.
+            let thermal_inertia_tiu = if coord == wp2_coord || d_wp2 < WP2_TIU_ZONE_M {
+                wp2_site.thermal_inertia_tiu
+            } else if coord == base_coord || d_base < BASE_WP1_TIU_ZONE_M {
+                base_site.thermal_inertia_tiu
+            } else if coord == wp1_coord || d_wp1 < BASE_WP1_TIU_ZONE_M {
+                wp1_wp_site.thermal_inertia_tiu
+            } else if coord == wp3_coord || d_wp3 < WP3_ALCOVE_ZONE_M {
+                wp3_site.thermal_inertia_tiu
             } else {
                 360.0
             };
 
-            // 4. MOLA/HiRISE Maximum Slope Angle (degrees)
+            // 4. Slope angle (degrees): DTM node slopes; WP2 carries the scenario ramp.
             let slope_deg = if coord == wp2_coord {
-                22.0
+                WP2_RAMP_SLOPE_DEG
             } else if d_wp2 < 120.0 {
                 let factor = (d_wp2 / 120.0) as f32;
-                22.0 - factor * 1.5
+                WP2_RAMP_SLOPE_DEG - factor * (WP2_RAMP_SLOPE_DEG - wp2_site.slope_dem_deg)
             } else if coord == base_coord || d_base < 100.0 {
-                2.2
+                base_site.slope_dem_deg
             } else if coord == wp1_coord || d_wp1 < 120.0 {
-                4.5
+                wp1_wp_site.slope_dem_deg
             } else if coord == wp3_coord || d_wp3 < 80.0 {
-                5.5
+                wp3_site.slope_dem_deg
             } else {
                 7.0
             };
 
-            // 5. UHF LOS Base Radio RSSI (dBm)
-            let los_base_rssi_dbm = if coord == wp2_coord {
-                -122.0
-            } else if d_wp2 < 150.0 {
-                -120.0
-            } else if coord == wp3_coord || d_wp3 < 80.0 {
-                -124.0
-            } else if coord == base_coord {
-                -45.0
-            } else {
-                let ratio = (d_base / 2500.0).min(1.0) as f32;
-                -50.0 - ratio * 45.0
-            };
+            // 5. UHF radio level to the Base (dBm): P1 link budget; WP2 / WP3 zones have no
+            //    geometric line of sight (DTM margins -24.7 m and -28.2 m).
+            let nlos_zone = (!wp2_site.radio_los_base && d_wp2 < 150.0)
+                || (!wp3_site.radio_los_base && d_wp3 < 80.0);
+            let los_base_rssi_dbm = uhf_link_rssi_dbm(d_base, !nlos_zone);
 
-            // 6. Sky View Factor (Psi_SVF in [0.05, 1.0])
-            let sky_view_factor = if coord == wp3_coord {
-                0.15
-            } else if d_wp3 < 80.0 {
-                let factor = (d_wp3 / 80.0) as f32;
-                0.15 + factor * 0.04
+            // 6. Sky View Factor (Psi_SVF): DTM node values; WP3 alcove scenario disc.
+            let sky_view_factor = if coord == wp3_coord || d_wp3 < WP3_ALCOVE_ZONE_M {
+                wp3_site.sky_view_factor
+            } else if d_wp2 < 150.0 {
+                wp2_site.sky_view_factor
             } else {
-                0.78
+                base_site.sky_view_factor
             };
 
             // 7. Slope Aspect
@@ -629,7 +635,10 @@ impl H3MarsGrid {
             let roughness_hi = if d_wp2 < 120.0 { 0.45 } else { 0.10 };
 
             // 9. Base Metabolic Cost
-            let base_metabolic_cost = if d_wp2 < 120.0 { 850.0 } else { 280.0 };
+            // P1 model at the nominal 1.0 m/s on level ground with the cell TIU, without slip
+            // (the planner recomputes the directed cost per edge).
+            let base_metabolic_cost =
+                pandolf_mars_metabolic_watts(0.0, thermal_inertia_tiu, 1.0, 0.0) as f32;
 
             // 10. Synthetic Horizon Hash ID for Canyon-TRN
             let horizon_hash_id =
@@ -637,19 +646,19 @@ impl H3MarsGrid {
 
             // 11. Hazard Bitmask Flags
             let mut hazard_bitmask: u16 = 0;
-            if slope_deg > 20.0 {
+            if slope_deg > CRITICAL_SLOPE_DEG {
                 hazard_bitmask |= HAZARD_FLAG_SLOPE_CRITICAL;
             }
-            if thermal_inertia_tiu < 150.0 {
+            if thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD {
                 hazard_bitmask |= HAZARD_FLAG_REGOLITH_TRAP;
             }
-            if sky_view_factor <= 0.20 {
+            if sky_view_factor <= SHELTER_SVF_MAX {
                 hazard_bitmask |= HAZARD_FLAG_SHELTER;
             }
-            if los_base_rssi_dbm < -115.0 {
+            if nlos_zone || los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM {
                 hazard_bitmask |= HAZARD_FLAG_NLOS;
             }
-            if isru_h2o_pct > 10.0 {
+            if isru_h2o_pct >= ISRU_WATER_MIN_PCT {
                 hazard_bitmask |= HAZARD_FLAG_ISRU_WATER;
             }
 
@@ -758,8 +767,8 @@ mod tests {
         assert!((r14.area_m2 - 1.773).abs() < 0.05);
 
         // Verify scaling constants match specifications
-        assert!((H3_MARS_LINEAR_SCALE - 0.5320).abs() < 1e-4);
-        assert!((H3_MARS_AREA_SCALE - 0.2830).abs() < 1e-4);
+        assert!((H3_MARS_LINEAR_SCALE - 0.5331).abs() < 1e-4);
+        assert!((H3_MARS_AREA_SCALE - 0.2842).abs() < 1e-4);
     }
 
     #[test]
@@ -783,8 +792,8 @@ mod tests {
     #[test]
     fn test_lat_lon_axial_roundtrip() {
         let res = 11;
-        let lat = -9.8150;
-        let lon = 283.6100;
+        let lat = red_atlas_shared::SURVIVAL_TRIANGLE_SITE[1].lat_deg;
+        let lon = red_atlas_shared::SURVIVAL_TRIANGLE_SITE[1].lon_deg;
 
         let coord = lat_lon_to_axial(lat, lon, res);
         let (recovered_lat, recovered_lon) = axial_to_lat_lon(coord);
@@ -800,7 +809,7 @@ mod tests {
 
     #[test]
     fn test_neighbors_and_k_ring_topology() {
-        let center = lat_lon_to_h3(-9.8, 283.6, 11);
+        let center = lat_lon_to_h3(SITE_REFERENCE_LAT_DEG, SITE_REFERENCE_LON_DEG, 11);
         let nbrs = neighbors(center);
         assert_eq!(nbrs.len(), 6);
 
@@ -862,8 +871,8 @@ mod tests {
             .expect("WP1 cell present");
 
         assert!(
-            cell.isru_h2o_pct > 10.0,
-            "WP1 must have > 10% structural water, found {}",
+            cell.isru_h2o_pct >= ISRU_WATER_MIN_PCT,
+            "WP1 must have >= 12% structural water, found {}",
             cell.isru_h2o_pct
         );
         assert!(
@@ -884,18 +893,18 @@ mod tests {
             .expect("WP2 cell present");
 
         assert!(
-            cell.thermal_inertia_tiu < 150.0,
+            cell.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD,
             "WP2 TIU must be < 150 (soft regolith trap), found {}",
             cell.thermal_inertia_tiu
         );
         assert!(
-            cell.slope_deg > 20.0,
+            cell.slope_deg > CRITICAL_SLOPE_DEG,
             "WP2 slope must be > 20 deg, found {}",
             cell.slope_deg
         );
         assert!(
-            cell.los_base_rssi_dbm < -115.0,
-            "WP2 RSSI must be NLOS (< -115 dBm), found {}",
+            cell.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM,
+            "WP2 RSSI must be NLOS (< -100 dBm), found {}",
             cell.los_base_rssi_dbm
         );
         assert!(
@@ -924,7 +933,7 @@ mod tests {
             .expect("WP3 cell present");
 
         assert!(
-            cell.sky_view_factor <= 0.20,
+            cell.sky_view_factor <= SHELTER_SVF_MAX,
             "WP3 SVF must be <= 0.20 (80%+ SPE shielding), found {}",
             cell.sky_view_factor
         );

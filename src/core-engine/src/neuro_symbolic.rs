@@ -21,8 +21,10 @@
 
 use red_atlas_shared::{
     ActiveHazards, PlssTelemetry, SafetyGuardrailState, SingleAlertFrame, TargetGoal,
-    WalkbackDualStatus, CRITICAL_SLOPE_DEG, LOW_TIU_TRAP_THRESHOLD, NLOS_RSSI_THRESHOLD_DBM,
-    SPE_CRITICAL_RATE_MSV_H, WALKBACK_SAFETY_FACTOR,
+    WalkbackDualStatus, CRITICAL_SLOPE_DEG, DUST_TAU_AMBER, DUST_TAU_RED, LOW_TIU_TRAP_THRESHOLD,
+    NLOS_RSSI_THRESHOLD_DBM, O2_RATE_AMBER_L_MIN, O2_RATE_RED_L_MIN, RSSI_AMBER_THRESHOLD_DBM,
+    SLOPE_AMBER_DEG, TIU_AMBER_THRESHOLD, SPE_AMBER_RATE_MSV_H, SPE_CRITICAL_RATE_MSV_H, WALKBACK_SAFETY_FACTOR,
+    WIND_AMBER_M_S, WIND_RED_M_S,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -146,8 +148,10 @@ impl GuardrailFsm {
     /// 2. Single-Alert Fusion Priority Matrix:
     ///    1. Radiation / O2 Depletion
     ///    2. Terrain Trap (critical slope > 20 deg, TIU < 150)
-    ///    3. Dust Storm / Wind (tau >= 1.5, wind >= 20 m/s)
-    ///    4. NLOS Radio Shadow (RSSI < -115 dBm)
+    ///    3. Dust Storm / Wind (tau > 2.0, wind > 20 m/s)
+    ///    4. NLOS Radio Shadow (RSSI <= -100 dBm)
+    ///    Red/amber thresholds come from P1's `data/mission-scenarios/eva_thresholds.json`
+    ///    via `red_atlas_shared`.
     ///    Suppressing redundant popups into a single tactical directive with validated voice slots.
     pub fn evaluate(
         &mut self,
@@ -164,13 +168,13 @@ impl GuardrailFsm {
 
         // Detect discrete hazard flags
         let h1_dust = hazards.h1_dust_storm
-            || hazards.dust_tau >= 1.5
-            || hazards.wind_speed_ms >= 20.0;
+            || hazards.dust_tau > DUST_TAU_RED
+            || hazards.wind_speed_ms > WIND_RED_M_S;
 
         let h2_rad_o2 = hazards.h2_spe_radiation
             || hazards.spe_dose_rate_msv_h >= SPE_CRITICAL_RATE_MSV_H
             || telemetry.o2_remaining_liters < 100.0
-            || telemetry.current_o2_rate_l_min > 2.5;
+            || telemetry.current_o2_rate_l_min > O2_RATE_RED_L_MIN;
 
         let h3_terrain = hazards.h3_regolith_slope
             || cell_slope_deg >= CRITICAL_SLOPE_DEG
@@ -182,10 +186,14 @@ impl GuardrailFsm {
         let active_hazard_count =
             (h1_dust as u8) + (h2_rad_o2 as u8) + (h3_terrain as u8) + (h4_nlos as u8);
 
-        let caution_present = cell_slope_deg >= 15.0
-            || cell_tiu <= 180.0
-            || hazards.dust_tau >= 1.0
-            || hazards.wind_speed_ms >= 15.0
+        // P1 TIU bands: green > 400, amber 150-400 (`TIU_AMBER_THRESHOLD`), red < 150.
+        let caution_present = cell_slope_deg >= SLOPE_AMBER_DEG
+            || cell_tiu <= TIU_AMBER_THRESHOLD
+            || hazards.dust_tau >= DUST_TAU_AMBER
+            || hazards.wind_speed_ms >= WIND_AMBER_M_S
+            || hazards.spe_dose_rate_msv_h >= SPE_AMBER_RATE_MSV_H
+            || hazards.rssi_dbm <= RSSI_AMBER_THRESHOLD_DBM
+            || telemetry.current_o2_rate_l_min >= O2_RATE_AMBER_L_MIN
             || (walkback.t_walkback_base_min > walkback.t_vital_min * 0.70);
 
         // Dynamic Goal Switching condition:
@@ -642,7 +650,7 @@ mod tests {
 
         // Conditions at T+105 min near WP2:
         // 1. Dust storm tau=2.4, wind=28 m/s
-        // 2. SPE radiation flux=85 mSv/h
+        // 2. SPE radiation flux=8 mSv/h (P1 envelope peak)
         // 3. Regolith slope=22 deg, TIU=110
         // 4. NLOS radio shadow, RSSI = -125 dBm
         let hazards = ActiveHazards {
@@ -650,9 +658,9 @@ mod tests {
             h2_spe_radiation: true,
             h3_regolith_slope: true,
             h4_nlos_offline: true,
-            dust_tau: 2.4,
+            dust_tau: red_atlas_shared::DUST_TAU_STORM,
             wind_speed_ms: 28.0,
-            spe_dose_rate_msv_h: 85.0,
+            spe_dose_rate_msv_h: red_atlas_shared::SPE_PEAK_ENVELOPE_MSV_H,
             rssi_dbm: -125.0,
         };
 
@@ -662,12 +670,12 @@ mod tests {
             lcvg_water_remaining_min: 150.0,
             battery_remaining_min: 180.0,
             current_o2_rate_l_min: 3.2,
-            cumulative_rad_msv: 14.5,
-            mission_rad_limit_msv: 50.0,
+            cumulative_rad_msv: 0.0,
+            mission_rad_limit_msv: red_atlas_shared::EVA_SPE_DOSE_BUDGET_MSV,
             heart_rate_bpm: 135,
         };
 
-        // Base is 48 min away, while WP3 Shelter is 8 min away (600 m, bearing 245)
+        // Base is 48 min away, while WP3 Shelter is 8 min away (leg L3: 600 m, bearing 344)
         let walkback = WalkbackDualStatus {
             t_vital_min: 75.0,
             t_walkback_base_min: 48.0,
@@ -684,8 +692,8 @@ mod tests {
             &hazards,
             &telemetry,
             &walkback,
-            245.0, // target_bearing_deg
-            600.0, // target_dist_m
+            red_atlas_shared::SURVIVAL_TRIANGLE_LEGS[red_atlas_shared::ESCAPE_LEG_WP2_WP3].bearing_deg,
+            red_atlas_shared::SURVIVAL_TRIANGLE_LEGS[red_atlas_shared::ESCAPE_LEG_WP2_WP3].distance_m as f32,
         );
 
         // Verification 1: State must be EvacShelter
@@ -725,7 +733,7 @@ mod tests {
         );
 
         // Ensure key numerical navigation guidance is present without hallucination
-        assert!(voice_alert.contains("245"));
+        assert!(voice_alert.contains("344"));
         assert!(voice_alert.contains("600"));
         assert!(voice_alert.contains("8"));
     }
@@ -742,7 +750,7 @@ mod tests {
             h4_nlos_offline: true,
             dust_tau: 2.1,
             wind_speed_ms: 22.0,
-            spe_dose_rate_msv_h: 65.0,
+            spe_dose_rate_msv_h: red_atlas_shared::SPE_PEAK_ENVELOPE_MSV_H,
             rssi_dbm: -128.0,
         };
 
@@ -852,10 +860,10 @@ mod tests {
         let telemetry_nominal = PlssTelemetry::default();
         let walkback_nominal = WalkbackDualStatus::default();
 
-        // Nominal evaluation
+        // Nominal evaluation (WP1 ground: 410 TIU is green, P1 amber starts at <= 400 TIU)
         let frame_nominal = fsm.evaluate(
             5.0,
-            350.0,
+            red_atlas_shared::SURVIVAL_TRIANGLE_SITE[1].thermal_inertia_tiu,
             false,
             &hazards_nominal,
             &telemetry_nominal,

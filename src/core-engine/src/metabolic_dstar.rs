@@ -7,17 +7,20 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
 use red_atlas_shared::{
-    ActiveHazards, ASTRO_MASS_KG, EARTH_GRAVITY, HexCellState64B, MARS_GRAVITY,
-    O2_ENERGY_JOULES_PER_LITER, PlssTelemetry, SPE_CRITICAL_RATE_MSV_H, SUIT_MASS_KG,
-    TOTAL_EVA_MASS_KG, TargetGoal, UNPASSABLE_SLOPE_DEG, WALKBACK_SAFETY_FACTOR,
-    WalkbackDualStatus,
+    ActiveHazards, HexCellState64B, MARS_GRAVITY, METABOLIC_CLIMB_EFFICIENCY,
+    METABOLIC_LEVEL_COEF, METABOLIC_REST_W, O2_ENERGY_JOULES_PER_LITER, PlssTelemetry,
+    SPE_CRITICAL_RATE_MSV_H, TERRAIN_ETA_BY_TIU_BAND, TIU_AMBER_THRESHOLD,
+    TIU_ETA_MID_THRESHOLD, TOTAL_EVA_MASS_KG, TargetGoal, UNPASSABLE_SLOPE_DEG,
+    WALKBACK_SAFETY_FACTOR, WalkbackDualStatus, CRITICAL_SLOPE_DEG, LOW_TIU_TRAP_THRESHOLD,
 };
 use serde::{Deserialize, Serialize};
 
 const NOMINAL_WALK_SPEED_MPS: f64 = 1.0;
 const WIND_DRAG_BETA: f64 = 0.05;
-const LOW_TIU_REGOLITH_THRESHOLD: f32 = 150.0;
-const CRITICAL_SLOPE_THRESHOLD_DEG: f64 = 20.0;
+const LOW_TIU_REGOLITH_THRESHOLD: f32 = LOW_TIU_TRAP_THRESHOLD;
+const CRITICAL_SLOPE_THRESHOLD_DEG: f64 = CRITICAL_SLOPE_DEG as f64;
+/// Upper bound for the slip fraction `s` (keeps `1 - s` away from zero).
+const MAX_SLIP_FRACTION: f64 = 0.95;
 const REGOLITH_TRAP_SPEED_FACTOR: f64 = 0.45;
 const RADIATION_SWITCH_RATIO: f64 = 0.35;
 const MIN_SVF: f64 = 0.05;
@@ -50,52 +53,47 @@ pub struct PathResult {
     pub estimated_rad_msv: f64,
 }
 
-/// THEMIS-derived soil sinkage factor:
-/// `\eta(I) = 1.0 + 1.8 * exp(-max(0.0, I - 60.0) / 90.0)`.
+/// THEMIS-derived terrain factor `\eta(I)` (P1 reference bands):
+/// 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150).
 pub fn soil_sinkage_eta(thermal_inertia_tiu: f32) -> f64 {
-    let tiu = thermal_inertia_tiu as f64;
-    let excess = (tiu - 60.0).max(0.0);
-    1.0 + 1.8 * (-excess / 90.0).exp()
-}
-
-/// Asymmetric slope factor `\Phi_slope(G)` in percent grade.
-/// Penalizes uphill climbs (`G > 0`) and eccentric braking on steep descents (`G < -12%`).
-fn asymmetric_slope_phi(grade_pct: f64, gravity_ratio: f64) -> f64 {
-    if grade_pct >= 0.0 {
-        0.5 * gravity_ratio * grade_pct
-    } else if grade_pct < -12.0 {
-        0.25 * gravity_ratio * (-grade_pct - 12.0)
+    let tiu = thermal_inertia_tiu;
+    if tiu > TIU_AMBER_THRESHOLD {
+        TERRAIN_ETA_BY_TIU_BAND[0]
+    } else if tiu >= TIU_ETA_MID_THRESHOLD {
+        TERRAIN_ETA_BY_TIU_BAND[1]
+    } else if tiu >= LOW_TIU_TRAP_THRESHOLD {
+        TERRAIN_ETA_BY_TIU_BAND[2]
     } else {
-        0.0
+        TERRAIN_ETA_BY_TIU_BAND[3]
     }
 }
 
-/// Adapted Mars Pandolf biomechanical metabolic power equation (Watts).
+/// Suited metabolic power on Mars (Watts), P1 reference model:
 ///
-/// Calibrated so flat firm basalt (`>= 400 TIU`, `0 deg`, `1.0 m/s`) is ~280 W (~0.80 L/min O2),
-/// and a `22 deg` slope on `110 TIU` loose regolith jumps >1000 W (~2.9-3.3 L/min O2).
+/// `M = 120 + eta * 0.285 * W * v + W * v * sin(theta) / (0.25 * (1 - s))`,
+/// with `W = TOTAL_EVA_MASS_KG * MARS_GRAVITY` and `s` the slip fraction.
+///
+/// Flat firm ground (`> 400 TIU`, `0 deg`, `1.0 m/s`, `s = 0`) gives ~300 W (~0.90 L/min O2);
+/// the WP2 ramp (`22 deg`, `110 TIU`, `0.55 m/s`, `s = 0.30`) gives ~1073 W (~3.2 L/min O2).
+/// Downhill the model credits no climbing work (P1: the climbing term is zero for negative
+/// grades; the eccentric cost of descending is not modelled), so costs stay non-negative.
 pub fn pandolf_mars_metabolic_watts(
     slope_deg: f64,
     thermal_inertia_tiu: f32,
     walk_speed_mps: f64,
+    slip_fraction: f64,
 ) -> f64 {
     let v = walk_speed_mps.max(0.0);
-    let m_astro = ASTRO_MASS_KG as f64;
-    let m_suit = SUIT_MASS_KG as f64;
-    let m_total = TOTAL_EVA_MASS_KG as f64;
-    let g_ratio = (MARS_GRAVITY as f64) / (EARTH_GRAVITY as f64);
-
-    let resting_term = 1.5 * m_total * g_ratio.powf(0.65);
-    let suit_load_term = 2.0 * m_total * (m_suit / m_astro).powi(2) * g_ratio;
+    let weight_n = TOTAL_EVA_MASS_KG * MARS_GRAVITY;
+    let slip = slip_fraction.clamp(0.0, MAX_SLIP_FRACTION);
 
     let eta = soil_sinkage_eta(thermal_inertia_tiu);
-    let grade_pct = 100.0 * slope_deg.to_radians().tan();
-    let phi_slope = asymmetric_slope_phi(grade_pct, g_ratio);
+    let level_term = eta * METABOLIC_LEVEL_COEF * weight_n * v;
+    let climb_term = (weight_n * v * slope_deg.to_radians().sin()
+        / (METABOLIC_CLIMB_EFFICIENCY * (1.0 - slip)))
+        .max(0.0);
 
-    let locomotion_term =
-        eta * m_total * (1.5 * g_ratio.sqrt() * v * v + 0.35 * v * phi_slope);
-
-    resting_term + suit_load_term + locomotion_term
+    METABOLIC_REST_W + level_term + climb_term
 }
 
 /// Converts metabolic power (Watts) into oxygen consumption rate (L/min STP).
@@ -137,10 +135,12 @@ pub fn edge_cost(
         cell_slope_deg
     };
 
+    // P3 has no slip model per cell: edge costs use s = 0.
     let watts = pandolf_mars_metabolic_watts(
         effective_slope_deg,
         v.thermal_inertia_tiu,
         NOMINAL_WALK_SPEED_MPS,
+        0.0,
     );
     let o2_rate_l_min = metabolic_o2_rate_l_min(watts);
 
@@ -648,45 +648,55 @@ mod tests {
 
     #[test]
     fn test_soil_sinkage_eta_values() {
-        let eta_basalt = soil_sinkage_eta(400.0);
-        assert!(
-            (eta_basalt - 1.041).abs() < 0.01,
-            "Expected basalt eta ~1.04, got {eta_basalt}"
-        );
-
+        // P1 bands: 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150).
+        assert!((soil_sinkage_eta(420.0) - 1.0).abs() < 1e-9);
+        assert!((soil_sinkage_eta(400.0) - 1.3).abs() < 1e-9);
+        assert!((soil_sinkage_eta(320.0) - 1.3).abs() < 1e-9);
+        assert!((soil_sinkage_eta(200.0) - 1.6).abs() < 1e-9);
         let eta_wp2_regolith = soil_sinkage_eta(110.0);
         assert!(
-            (eta_wp2_regolith - 2.033).abs() < 0.01,
-            "Expected 110 TIU regolith eta ~2.03, got {eta_wp2_regolith}"
+            (eta_wp2_regolith - 2.1).abs() < 1e-9,
+            "Expected 110 TIU regolith eta 2.1, got {eta_wp2_regolith}"
         );
-
-        let eta_ultra_soft = soil_sinkage_eta(40.0);
-        assert!((eta_ultra_soft - 2.8).abs() < 1e-6);
     }
 
     #[test]
     fn test_pandolf_flat_basalt_vs_wp2_regolith_trap() {
-        let flat_watts = pandolf_mars_metabolic_watts(0.0, 420.0, 1.0);
+        // P1 reference values: flat firm ground at 1.0 m/s = 300 W (0.90 L/min).
+        let flat_watts = pandolf_mars_metabolic_watts(0.0, 420.0, 1.0, 0.0);
         let flat_o2 = metabolic_o2_rate_l_min(flat_watts);
         assert!(
-            (260.0..=300.0).contains(&flat_watts),
-            "Flat basalt watts should be ~280 W, got {flat_watts}"
+            (flat_watts - 300.0).abs() < 1.0,
+            "Flat basalt watts should be ~300 W, got {flat_watts}"
         );
         assert!(
-            (0.75..=0.86).contains(&flat_o2),
-            "Flat basalt O2 rate should be ~0.80 L/min, got {flat_o2}"
+            (flat_o2 - 0.90).abs() < 0.01,
+            "Flat basalt O2 rate should be ~0.90 L/min, got {flat_o2}"
         );
 
-        let wp2_watts = pandolf_mars_metabolic_watts(22.0, 110.0, 1.0);
+        // P1 shared peak: WP2 22 deg, 110 TIU, 0.55 m/s, 30% slip = 1073 W = 3.2 L/min.
+        let wp2_watts = pandolf_mars_metabolic_watts(
+            22.0,
+            110.0,
+            red_atlas_shared::WP2_TRAVERSE_SPEED_MPS,
+            red_atlas_shared::WP2_SLIP_FRACTION,
+        );
         let wp2_o2 = metabolic_o2_rate_l_min(wp2_watts);
         assert!(
-            wp2_watts > 1000.0,
-            "WP2 22 deg / 110 TIU watts should jump >1000 W, got {wp2_watts}"
+            (wp2_watts - 1073.0).abs() < 1.0,
+            "WP2 22 deg / 110 TIU watts should be ~1073 W, got {wp2_watts}"
         );
         assert!(
-            (2.9..=3.3).contains(&wp2_o2),
-            "WP2 O2 rate should be 2.9-3.3 L/min, got {wp2_o2}"
+            (wp2_o2 - 3.2).abs() < 0.01,
+            "WP2 O2 rate should be 3.2 L/min, got {wp2_o2}"
         );
+
+        // Downhill earns no climbing credit: a descent costs the same as level walking.
+        let descent = pandolf_mars_metabolic_watts(-25.0, 420.0, 1.0, 0.0);
+        assert!((descent - flat_watts).abs() < 1e-9);
+        // P1 escape to WP3 at 1.25 m/s downhill: 593.2 W on the 110 TIU bank, 412.9 W after.
+        assert!((pandolf_mars_metabolic_watts(-5.26, 110.0, 1.25, 0.0) - 593.2).abs() < 0.1);
+        assert!((pandolf_mars_metabolic_watts(-5.26, 365.0, 1.25, 0.0) - 412.9).abs() < 0.1);
     }
 
     #[test]
@@ -694,7 +704,7 @@ mod tests {
         let weights = CostWeights::default();
         let mut hazards = nominal_hazards();
         hazards.h2_spe_radiation = true;
-        hazards.spe_dose_rate_msv_h = 85.0;
+        hazards.spe_dose_rate_msv_h = red_atlas_shared::SPE_PEAK_ENVELOPE_MSV_H;
 
         let u = make_cell(1, 0.0, 2.0, 400.0, 0.85);
         let v_cliff = make_cell(2, 65.0, 33.0, 400.0, 0.5);
@@ -714,7 +724,9 @@ mod tests {
         let rad_wp3 = (cost_wp3 - weights.w_metabolic * o2_wp3) / weights.w_radiation;
         // Both have identical dust cost, so difference isolates the 85% SVF radiation reduction.
         let dust_diff = rad_open - rad_wp3;
-        let expected_rad_diff = 85.0 * (1.0 - 0.15) * (dt_open / 60.0);
+        let expected_rad_diff = (red_atlas_shared::SPE_PEAK_ENVELOPE_MSV_H as f64)
+            * (1.0 - 0.15)
+            * (dt_open / 60.0);
         assert!(
             (dust_diff - expected_rad_diff).abs() < 1e-6,
             "WP3 SVF=0.15 must attenuate SPE radiation by 85%"
@@ -787,8 +799,8 @@ mod tests {
             lcvg_water_remaining_min: 180.0,
             battery_remaining_min: 200.0,
             current_o2_rate_l_min: 1.0,
-            cumulative_rad_msv: 1.0,
-            mission_rad_limit_msv: 50.0,
+            cumulative_rad_msv: 0.0,
+            mission_rad_limit_msv: red_atlas_shared::EVA_SPE_DOSE_BUDGET_MSV,
             heart_rate_bpm: 110,
         };
         let (status_nom, path_nom) = planner.evaluate_walkback_and_switch(
@@ -804,15 +816,16 @@ mod tests {
         assert_eq!(path_nom.expect("base path").path_h3.last().copied(), Some(10));
 
         // T+105 min 4-hazard scenario:
-        // H1 dust tau=2.4 + wind 28 m/s, H2 SPE 85 mSv/h, H3 110 TIU/22 deg, H4 NLOS -125 dBm.
+        // H1 dust tau=2.4 + wind 28 m/s, H2 SPE 8 mSv/h (P1 envelope peak), H3 110 TIU/22 deg,
+        // H4 NLOS -125 dBm.
         let t105_hazards = ActiveHazards {
             h1_dust_storm: true,
             h2_spe_radiation: true,
             h3_regolith_slope: true,
             h4_nlos_offline: true,
-            dust_tau: 2.4,
+            dust_tau: red_atlas_shared::DUST_TAU_STORM,
             wind_speed_ms: 28.0,
-            spe_dose_rate_msv_h: 85.0,
+            spe_dose_rate_msv_h: red_atlas_shared::SPE_PEAK_ENVELOPE_MSV_H,
             rssi_dbm: -125.0,
         };
         let t105_telemetry = PlssTelemetry {
@@ -821,8 +834,9 @@ mod tests {
             lcvg_water_remaining_min: 75.0,
             battery_remaining_min: 90.0,
             current_o2_rate_l_min: 3.2,
-            cumulative_rad_msv: 34.0,
-            mission_rad_limit_msv: 50.0, // 16 mSv remaining -> ~15 min at SVF=0.75, 85 mSv/h
+            cumulative_rad_msv: 0.0,
+            // Full 2 mSv SPE budget remaining -> 20 min at SVF=0.75 under 8 mSv/h.
+            mission_rad_limit_msv: red_atlas_shared::EVA_SPE_DOSE_BUDGET_MSV,
             heart_rate_bpm: 158,
         };
 
