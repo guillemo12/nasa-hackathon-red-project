@@ -1,0 +1,36 @@
+# OS Generated Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node / Web / Frontend
+node_modules/
+dist/
+build/
+.next/
+.cache/
+
+# Python / Data Science / GIS
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Large Raw Geospatial Rasters (keep metadata/samples in repo)
+*.IMG
+*.LBL
+*.cub
+*.tif
+*.tiff
+
+# Environment & Secrets
+.env
+.env.local
+*.pem
