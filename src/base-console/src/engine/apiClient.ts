@@ -85,29 +85,48 @@ export interface MarsRawImage {
 
 export async function fetchMars2020RawImages(limit = 8): Promise<MarsRawImage[]> {
   try {
-    const res = await fetch(
-      `/nasa-rss?feed=raw_images&category=mars2020&feedtype=json&ver=1.2&num=${limit}&page=0&search=MCZ_RIGHT`
-    );
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      images?: Array<{
-        imageid: string;
-        sol: number;
-        title?: string;
-        date_taken_mars?: string;
-        date_taken_utc?: string;
-        site?: number;
-        drive?: number;
-        credit?: string;
-        link?: string;
-        extended?: { mastAz?: string; mastEl?: string };
-        camera?: { instrument?: string };
-        image_files?: { medium?: string; large?: string };
-      }>;
+    const [mczRes, hazRes] = await Promise.all([
+      fetch(`/nasa-rss?feed=raw_images&category=mars2020&feedtype=json&ver=1.2&num=12&page=0&search=MCZ_RIGHT`),
+      fetch(`/nasa-rss?feed=raw_images&category=mars2020&feedtype=json&ver=1.2&num=6&page=0&search=FRONT_HAZCAM_LEFT_A`),
+    ]);
+    type RawItem = {
+      imageid: string;
+      sol: number;
+      title?: string;
+      date_taken_mars?: string;
+      date_taken_utc?: string;
+      site?: number;
+      drive?: number;
+      credit?: string;
+      link?: string;
+      sample_type?: string;
+      extended?: { mastAz?: string; mastEl?: string };
+      camera?: { instrument?: string; filter_name?: string };
+      image_files?: { medium?: string; large?: string };
     };
-    return (data.images ?? [])
+    type RawFeed = { images?: RawItem[] };
+    const mczData = mczRes.ok ? ((await mczRes.json()) as RawFeed) : { images: [] };
+    const hazData = hazRes.ok ? ((await hazRes.json()) as RawFeed) : { images: [] };
+    const combined = [...(mczData.images ?? []), ...(hazData.images ?? [])];
+
+    const seen = new Set<string>();
+    const deduped = combined.filter((img) => {
+      if (!img.imageid || seen.has(img.imageid)) return false;
+      seen.add(img.imageid);
+      return true;
+    });
+
+    const surfaceOnly = deduped.filter((img) => {
+      const el = Number(img.extended?.mastEl ?? 0);
+      const filter = img.camera?.filter_name ?? '';
+      return filter !== 'UNK' && (!Number.isFinite(el) || el <= 10);
+    });
+
+    const chosen = (surfaceOnly.length >= 2 ? surfaceOnly : deduped).slice(0, limit);
+
+    return chosen
       .map((img) => {
-        const orig = img.image_files?.medium || img.image_files?.large || '';
+        const orig = img.image_files?.large || img.image_files?.medium || '';
         const proxyUrl = orig.replace('https://mars.nasa.gov/mars2020-raw-images', '/nasa-raw-img');
         return {
           imageid: img.imageid,
