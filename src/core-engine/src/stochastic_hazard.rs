@@ -13,7 +13,11 @@
 //!   to the WP3 Cliff Shelter ($\Psi_{\text{SVF}} \approx 0.15$) rescues EVA survival
 //!   compared to Base-only return.
 
-use red_atlas_shared::{ActiveHazards, HexCellState64B, NLOS_RSSI_THRESHOLD_DBM};
+use red_atlas_shared::{
+    ActiveHazards, HexCellState64B, DUST_TAU_NOMINAL, DUST_TAU_STORM, EVA_SPE_DOSE_BUDGET_MSV,
+    GCR_SURFACE_RATE_MSV_H, LOW_TIU_TRAP_THRESHOLD, NLOS_RSSI_THRESHOLD_DBM,
+    SPE_PEAK_ENVELOPE_MSV_H,
+};
 use serde::{Deserialize, Serialize};
 
 /// Martian solar day (sol) duration in hours.
@@ -141,9 +145,9 @@ impl MarkovHazardModel {
     pub fn new() -> Self {
         Self {
             current_mask: 0,
-            current_tau: 0.65,
+            current_tau: DUST_TAU_NOMINAL,
             current_wind_ms: 6.5,
-            current_spe_dose_rate_msv_h: 0.0175,
+            current_spe_dose_rate_msv_h: GCR_SURFACE_RATE_MSV_H,
         }
     }
 
@@ -154,9 +158,9 @@ impl MarkovHazardModel {
         let h2 = (clamped_mask & MASK_H2_SPE) != 0;
         Self {
             current_mask: clamped_mask,
-            current_tau: if h1 { 2.4 } else { 0.65 },
+            current_tau: if h1 { DUST_TAU_STORM } else { DUST_TAU_NOMINAL },
             current_wind_ms: if h1 { 28.0 } else { 6.5 },
-            current_spe_dose_rate_msv_h: if h2 { 85.0 } else { 0.0175 },
+            current_spe_dose_rate_msv_h: if h2 { SPE_PEAK_ENVELOPE_MSV_H } else { GCR_SURFACE_RATE_MSV_H },
         }
     }
 
@@ -305,9 +309,9 @@ impl MarkovHazardModel {
 
             // Keep tau updated instantaneously so intra-step H1 transitions modulate H4.
             self.current_tau = if (self.current_mask & MASK_H1_DUST) != 0 {
-                2.4
+                DUST_TAU_STORM
             } else {
-                0.65
+                DUST_TAU_NOMINAL
             };
         }
 
@@ -321,9 +325,9 @@ impl MarkovHazardModel {
         let h3 = (self.current_mask & MASK_H3_REGOLITH) != 0;
         let h4 = (self.current_mask & MASK_H4_NLOS) != 0;
 
-        self.current_tau = if h1 { 2.4 } else { 0.65 };
+        self.current_tau = if h1 { DUST_TAU_STORM } else { DUST_TAU_NOMINAL };
         self.current_wind_ms = if h1 { 28.0 } else { 6.5 };
-        self.current_spe_dose_rate_msv_h = if h2 { 85.0 } else { 0.0175 };
+        self.current_spe_dose_rate_msv_h = if h2 { SPE_PEAK_ENVELOPE_MSV_H } else { GCR_SURFACE_RATE_MSV_H };
 
         let dust_atten_db = if h1 { 6.5 } else { 0.0 };
         let rssi_dbm = if h4 {
@@ -403,7 +407,7 @@ pub fn run_chaos_mode_monte_carlo(
 
     // PLSS mission limits at start of critical EVA window (O2 reserve + acute SPE dose cap).
     const INITIAL_O2_LITERS: f64 = 210.0;
-    const MISSION_RAD_LIMIT_MSV: f64 = 30.0;
+    const MISSION_RAD_LIMIT_MSV: f64 = EVA_SPE_DOSE_BUDGET_MSV as f64;
 
     let mut survived_with_wp3_shelter = 0usize;
     let mut survived_base_only = 0usize;
@@ -446,7 +450,7 @@ pub fn run_chaos_mode_monte_carlo(
             // Instantaneous metabolic O2 demand (L/min) from slope, regolith TIU, and H1/H3 stress.
             let base_o2_l_min = 0.80
                 + 0.045 * (cell.slope_deg as f64).max(0.0)
-                + if cell.thermal_inertia_tiu < 150.0 {
+                + if cell.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD {
                     0.65
                 } else {
                     0.0
@@ -542,7 +546,7 @@ mod tests {
     ) -> HexCellState64B {
         let mut cell = HexCellState64B {
             h3_index: 0x8d28_3082_8000_0000,
-            elev_m: -4215.0,
+            elev_m: red_atlas_shared::SITE_BASE_ELEV_M,
             slope_deg,
             aspect_deg: 90.0,
             thermal_inertia_tiu: tiu,

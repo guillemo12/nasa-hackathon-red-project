@@ -23,47 +23,115 @@ pub const MARS_EQ_RADIUS_KM: f64 = 3396.19;
 /// Martian polar radius in km (IAU Mars 2000 ellipsoid).
 pub const MARS_POLAR_RADIUS_KM: f64 = 3376.20;
 
-/// Martian mean volumetric radius in km (used for H3 indexing scaling).
-pub const MARS_MEAN_RADIUS_KM: f64 = 3389.50;
+/// Reference sphere radius of the NASA datasets (MOLA, CRS IAU_2015:49900) in km.
+/// This is the radius used to scale the H3 grid (defined by P1).
+pub const MARS_H3_REFERENCE_RADIUS_KM: f64 = MARS_EQ_RADIUS_KM;
 
-/// Linear scale factor of Mars vs. Earth for H3 grid resolution calibration.
-pub const H3_MARS_LINEAR_SCALE: f64 = 0.5320;
+/// Earth authalic radius used by the original H3 grid, in km.
+pub const EARTH_H3_AUTHALIC_RADIUS_KM: f64 = 6371.0088;
 
-/// Surface area scale factor of Mars vs. Earth for H3 hexagonal cells.
-pub const H3_MARS_AREA_SCALE: f64 = 0.2830;
+/// Linear scale factor of Mars vs. Earth for H3 grid resolution calibration
+/// (3396.19 / 6371.0088 ≈ 0.5331).
+pub const H3_MARS_LINEAR_SCALE: f64 = MARS_H3_REFERENCE_RADIUS_KM / EARTH_H3_AUTHALIC_RADIUS_KM;
 
-/// Base atmospheric pressure in Melas Chasma canyon floor (~ -4.2 km elevation) in mbar.
-pub const MELAS_BASE_PRESSURE_MBAR: f64 = 9.6;
+/// Surface area scale factor of Mars vs. Earth for H3 hexagonal cells (0.5331² ≈ 0.2842).
+pub const H3_MARS_AREA_SCALE: f64 = H3_MARS_LINEAR_SCALE * H3_MARS_LINEAR_SCALE;
 
-/// Mass of the astronaut in kg.
-pub const ASTRO_MASS_KG: f64 = 75.0;
+/// Mass of the astronaut in kg (P1).
+pub const ASTRO_MASS_KG: f64 = 80.0;
 
-/// Mass of the pressurized EVA spacesuit and PLSS backpack in kg.
-pub const SUIT_MASS_KG: f64 = 55.0;
+/// Mass of the pressurized EVA spacesuit and PLSS backpack in kg (P1: ~90 kg including the PLSS backpack).
+pub const SUIT_MASS_KG: f64 = 90.0;
 
-/// Total mass of astronaut plus suit (130 kg total).
-pub const TOTAL_EVA_MASS_KG: f64 = 130.0;
+/// Total mass of astronaut plus suit (170 kg total).
+pub const TOTAL_EVA_MASS_KG: f64 = ASTRO_MASS_KG + SUIT_MASS_KG;
 
-/// Energy equivalent of metabolic oxygen consumption in Joules per Liter (STP).
-pub const O2_ENERGY_JOULES_PER_LITER: f64 = 20920.0;
+/// Energy equivalent of metabolic oxygen consumption in Joules per Liter (STPD).
+/// 20 100 J/L ⇒ 1 L/min of O2 = 335 W (P1).
+pub const O2_ENERGY_JOULES_PER_LITER: f64 = 20100.0;
 
 /// Safety margin factor for Walkback Limit (0.85 = 15% mandatory reserve).
 pub const WALKBACK_SAFETY_FACTOR: f32 = 0.85;
 
-/// Communication radio shadow (NLOS) threshold in dBm.
-pub const NLOS_RSSI_THRESHOLD_DBM: f32 = -115.0;
+/// Communication radio shadow (NLOS) threshold in dBm: red below -100 dBm (P1).
+pub const NLOS_RSSI_THRESHOLD_DBM: f32 = -100.0;
 
-/// Critical slope angle threshold in degrees where mobility is severely impaired.
+/// Radio amber threshold in dBm: amber between -85 and -100 dBm (P1).
+pub const RSSI_AMBER_THRESHOLD_DBM: f32 = -85.0;
+
+/// Critical slope angle threshold in degrees where mobility is severely impaired (P1: red > 20 deg).
 pub const CRITICAL_SLOPE_DEG: f32 = 20.0;
+
+/// Slope amber threshold in degrees (P1: amber 10-20 deg).
+pub const SLOPE_AMBER_DEG: f32 = 10.0;
 
 /// Unpassable slope threshold in degrees for pressurized spacesuit walking.
 pub const UNPASSABLE_SLOPE_DEG: f32 = 30.0;
 
-/// Low Thermal Inertia Unit (TIU) threshold indicating treacherous soft regolith trap.
+/// Low Thermal Inertia Unit (TIU) threshold indicating treacherous soft regolith trap (P1: red < 150 TIU).
 pub const LOW_TIU_TRAP_THRESHOLD: f32 = 150.0;
 
-/// Solar Particle Event (SPE) critical radiation dose rate threshold in mSv/h.
-pub const SPE_CRITICAL_RATE_MSV_H: f32 = 25.0;
+/// Thermal inertia amber threshold (P1: green > 400 TIU, amber 150-400 TIU).
+pub const TIU_AMBER_THRESHOLD: f32 = 400.0;
+
+/// Solar Particle Event (SPE) critical (red) dose rate threshold in mSv/h (P1: red > 1.0 mSv/h).
+pub const SPE_CRITICAL_RATE_MSV_H: f32 = 1.0;
+
+/// Dose rate amber threshold in mSv/h (P1: amber 0.05-1.0 mSv/h).
+pub const SPE_AMBER_RATE_MSV_H: f32 = 0.05;
+
+/// Open-sky peak of the design SPE envelope in mSv/h (P1, scenario value).
+pub const SPE_PEAK_ENVELOPE_MSV_H: f32 = 8.0;
+
+/// Maximum SPE dose budget per EVA in mSv (P1 flight rule: 2 mSv => 15 min under open sky).
+pub const EVA_SPE_DOSE_BUDGET_MSV: f32 = 2.0;
+
+/// Surface GCR background measured by RAD at Gale, in mSv/h (P1: ~0.64 mSv/day).
+pub const GCR_SURFACE_RATE_MSV_H: f32 = 0.027;
+
+/// Dust optical depth tau (880 nm) amber threshold (P1: amber 1.0-2.0).
+pub const DUST_TAU_AMBER: f32 = 1.0;
+
+/// Dust optical depth tau (880 nm) red threshold (P1: red > 2.0).
+pub const DUST_TAU_RED: f32 = 2.0;
+
+/// Wind speed amber threshold in m/s (P1: amber 10-20 m/s).
+pub const WIND_AMBER_M_S: f32 = 10.0;
+
+/// Wind speed red threshold in m/s (P1: red > 20 m/s).
+pub const WIND_RED_M_S: f32 = 20.0;
+
+/// O2 consumption amber threshold in L/min STPD (P1: amber 1.35-1.75).
+pub const O2_RATE_AMBER_L_MIN: f32 = 1.35;
+
+/// O2 consumption red threshold in L/min STPD (P1: red > 1.75 sustained; peak 3.2).
+pub const O2_RATE_RED_L_MIN: f32 = 1.75;
+
+/// Minimum structural water content to flag a cell as ISRU resource (P1: > 12% H2O).
+pub const ISRU_WATER_MIN_PCT: f32 = 12.0;
+
+/// Maximum Sky View Factor for a cell to count as topographic shelter.
+pub const SHELTER_SVF_MAX: f32 = 0.20;
+
+// ----------------------------------------------------------------------------
+// 1b. P1 reference metabolic model
+//     M = 120 + eta*0.285*W*v + W*v*sin(theta) / (0.25*(1 - s))   [W],  W = mass*g_Mars
+// ----------------------------------------------------------------------------
+
+/// Suited resting metabolic term in W.
+pub const METABOLIC_REST_W: f64 = 120.0;
+
+/// Level-walking coefficient (dimensionless), multiplied by eta*W*v.
+pub const METABOLIC_LEVEL_COEF: f64 = 0.285;
+
+/// Muscular efficiency of the climbing work term.
+pub const METABOLIC_CLIMB_EFFICIENCY: f64 = 0.25;
+
+/// Lower TIU bound of the eta = 1.3 band (P1: eta = 1.3 between 250 and 400 TIU).
+pub const TIU_ETA_MID_THRESHOLD: f32 = 250.0;
+
+/// P1 terrain factors eta: [> 400 TIU, 250-400, 150-250, < 150].
+pub const TERRAIN_ETA_BY_TIU_BAND: [f64; 4] = [1.0, 1.3, 1.6, 2.1];
 
 // ============================================================================
 // 2. Hazard Bitmask Flags (u16)
@@ -75,13 +143,13 @@ pub const HAZARD_FLAG_SLOPE_CRITICAL: u16 = 1 << 0; // 0x0001
 /// Thermal inertia indicates fine dust / soft regolith sinkage trap (< 150 TIU).
 pub const HAZARD_FLAG_REGOLITH_TRAP: u16  = 1 << 1; // 0x0002
 
-/// Cell is within topographic cliff alcove shelter (Sky View Factor <= 0.20).
+/// Cell is within topographic cliff alcove shelter (Sky View Factor <= 0.20, `SHELTER_SVF_MAX`).
 pub const HAZARD_FLAG_SHELTER: u16        = 1 << 2; // 0x0004
 
-/// Cell is in non-line-of-sight UHF radio shadow (< -115 dBm).
+/// Cell is in non-line-of-sight UHF radio shadow (< -100 dBm, `NLOS_RSSI_THRESHOLD_DBM`).
 pub const HAZARD_FLAG_NLOS: u16           = 1 << 3; // 0x0008
 
-/// Cell contains significant polyhydrated sulfates for water ISRU (> 10% H2O).
+/// Cell contains significant hydrated sulfates for water ISRU (>= 12% H2O, `ISRU_WATER_MIN_PCT`).
 pub const HAZARD_FLAG_ISRU_WATER: u16     = 1 << 4; // 0x0010
 
 // ============================================================================
@@ -102,6 +170,19 @@ fn crc16_ccitt(data: &[u8]) -> u16 {
         }
     }
     crc
+}
+
+/// "No data" sentinel for the `f32` fields of `HexCellState64B` (P1 Parquet `NULL`s, e.g. TIU
+/// outside the scenario zones). NaN never satisfies a threshold comparison, so a missing value
+/// never raises a hazard flag. `serde_json` writes NaN as `null`; `f32_or_no_data` reads it back.
+pub const CELL_NO_DATA: f32 = f32::NAN;
+
+/// Deserializes an `f32` that may be `null` (no data) into `CELL_NO_DATA`.
+fn f32_or_no_data<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<f32>::deserialize(deserializer).map(|v| v.unwrap_or(CELL_NO_DATA))
 }
 
 /// A 64-byte, cache-line aligned spatial tensor state record for a single H3
@@ -125,14 +206,23 @@ fn crc16_ccitt(data: &[u8]) -> u16 {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct HexCellState64B {
     pub h3_index: u64,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub elev_m: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub slope_deg: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub aspect_deg: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub thermal_inertia_tiu: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub roughness_hi: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub isru_h2o_pct: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub sky_view_factor: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub los_base_rssi_dbm: f32,
+    #[serde(deserialize_with = "f32_or_no_data")]
     pub base_metabolic_cost: f32,
     pub horizon_hash_id: u32,
     pub hazard_bitmask: u16,
@@ -244,42 +334,328 @@ pub struct MissionWaypoint {
     pub description: String,
 }
 
+/// Static site record of a Survival Triangle node (single source of truth for site data).
+///
+/// Provenance (P1, `data/mission-scenarios/triangulo_supervivencia.geojson`): coordinates and
+/// slopes derived from the CTX 20 m DTM, elevations measured on it; TIU, water and the WP3
+/// alcove SVF are design-scenario values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WaypointSite {
+    pub id: &'static str,
+    pub kind: MissionWaypointKind,
+    pub lat_deg: f64,
+    pub lon_deg: f64,
+    pub elev_m: f32,
+    /// Local slope of the node on the CTX 20 m DTM, degrees (derived).
+    pub slope_dem_deg: f32,
+    /// Design-scenario thermal inertia, TIU (J m^-2 K^-1 s^-1/2).
+    pub thermal_inertia_tiu: f32,
+    /// Effective Sky View Factor used by the engine (WP3: 0.15 alcove under overhang, scenario).
+    pub sky_view_factor: f32,
+    /// Sky View Factor derived from the DTM (a 2.5D DEM cannot represent the WP3 overhang).
+    pub sky_view_factor_dem: f32,
+    /// Structural water content in wt% (scenario; `CELL_NO_DATA` where P1 gives no value).
+    pub h2o_wt_pct: f32,
+    /// Geometric radio line of sight to the Base antenna (derived from the DTM).
+    pub radio_los_base: bool,
+    pub description: &'static str,
+}
+
+/// A planned or contingency leg between two Survival Triangle nodes (indices into
+/// `SURVIVAL_TRIANGLE_SITE`). Distances, elevation deltas and bearings from the P1 GeoJSON.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SurvivalLeg {
+    pub id: &'static str,
+    pub from: usize,
+    pub to: usize,
+    pub distance_m: f64,
+    pub delta_elev_m: f64,
+    pub bearing_deg: f32,
+}
+
+// ============================================================================
+// 4b. Site data (SINGLE place for waypoint coordinates, elevations and pressure)
+// ----------------------------------------------------------------------------
+// Relocated P1 site (2026-11-14): SW basin of Melas Chasma, at the foot of the SW wall,
+// 13.6 km SW of the original 9.8S 283.6E placement. CRS IAU_2015:49900, lon East 0-360,
+// elevations on the MOLA areoid.
+// ============================================================================
+
+/// The 4 canonical nodes of the Melas Chasma Survival Triangle (lon East 0-360, MOLA datum).
+pub const SURVIVAL_TRIANGLE_SITE: [WaypointSite; 4] = [
+    WaypointSite {
+        id: "BASE_HABITAT",
+        kind: MissionWaypointKind::BaseHabitat,
+        lat_deg: -9.89646,
+        lon_deg: 283.38920,
+        elev_m: -1660.0,
+        slope_dem_deg: 2.8,
+        thermal_inertia_tiu: 320.0,
+        sky_view_factor: 0.85,
+        sky_view_factor_dem: 0.85,
+        h2o_wt_pct: CELL_NO_DATA,
+        radio_los_base: true,
+        description: "Melas Chasma Base Habitat on a distal alluvial-fan terrace of the SW basin floor",
+    },
+    WaypointSite {
+        id: "WP1_ISRU_WATER",
+        kind: MissionWaypointKind::Wp1IsruWater,
+        lat_deg: -9.918797,
+        lon_deg: 283.401259,
+        elev_m: -1582.0,
+        slope_dem_deg: 6.7,
+        thermal_inertia_tiu: 410.0,
+        sky_view_factor: 0.85,
+        sky_view_factor_dem: 0.85,
+        h2o_wt_pct: 12.0,
+        radio_los_base: true,
+        description: "Light-toned layered deposit with polyhydrated and monohydrated sulfates (>= 12% H2O resource target)",
+    },
+    WaypointSite {
+        id: "WP2_FAULT_SLOPE",
+        kind: MissionWaypointKind::Wp2FaultSlope,
+        lat_deg: -9.932611,
+        lon_deg: 283.386234,
+        elev_m: -1464.0,
+        slope_dem_deg: 19.4,
+        thermal_inertia_tiu: 110.0,
+        sky_view_factor: 0.84,
+        sky_view_factor_dem: 0.84,
+        h2o_wt_pct: CELL_NO_DATA,
+        radio_los_base: false,
+        description: "Landslide lobe / normal fault contact with fine dust banks: 22 deg local ramp (scenario), soft regolith trap (<150 TIU) and NLOS radio shadow",
+    },
+    WaypointSite {
+        id: "WP3_CLIFF_SHELTER",
+        kind: MissionWaypointKind::Wp3CliffShelter,
+        lat_deg: -9.922858,
+        lon_deg: 283.383486,
+        elev_m: -1520.0,
+        slope_dem_deg: 20.1,
+        thermal_inertia_tiu: 620.0,
+        sky_view_factor: 0.15,
+        sky_view_factor_dem: 0.76,
+        h2o_wt_pct: CELL_NO_DATA,
+        radio_los_base: false,
+        description: "Alcove under an overhang at the base of a layered-basalt scarp: 85% SPE shielding (scenario SVF 0.15; DTM SVF 0.76), below WP2",
+    },
+];
+
+/// Legs of the Survival Triangle (P1 GeoJSON): L1 Base->WP1, L2 WP1->WP2, L3 WP2->WP3 (escape),
+/// L4 WP3->Base and R1 WP2->Base (straight-line contingency return).
+pub const SURVIVAL_TRIANGLE_LEGS: [SurvivalLeg; 5] = [
+    SurvivalLeg { id: "L1", from: 0, to: 1, distance_m: 1500.0, delta_elev_m: 78.0, bearing_deg: 152.0 },
+    SurvivalLeg { id: "L2", from: 1, to: 2, distance_m: 1200.0, delta_elev_m: 118.0, bearing_deg: 227.0 },
+    SurvivalLeg { id: "L3", from: 2, to: 3, distance_m: 600.0, delta_elev_m: -56.0, bearing_deg: 344.0 },
+    SurvivalLeg { id: "L4", from: 3, to: 0, distance_m: 1600.0, delta_elev_m: -140.0, bearing_deg: 12.0 },
+    SurvivalLeg { id: "R1", from: 2, to: 0, distance_m: 2150.0, delta_elev_m: -196.0, bearing_deg: 5.0 },
+];
+
+/// Index of the WP2 -> WP3 escape leg (L3) in `SURVIVAL_TRIANGLE_LEGS`.
+pub const ESCAPE_LEG_WP2_WP3: usize = 2;
+
+/// WP2 -> Base return along the safe D* Lite route avoiding < 150 TIU banks, in m (P1: detour 1.16).
+pub const WP2_BASE_SAFE_ROUTE_M: f64 = 2500.0;
+
+/// Reference latitude of the local grid projection (Base Habitat node), degrees North.
+pub const SITE_REFERENCE_LAT_DEG: f64 = SURVIVAL_TRIANGLE_SITE[0].lat_deg;
+
+/// Reference East longitude of the local grid projection (Base Habitat node), degrees.
+pub const SITE_REFERENCE_LON_DEG: f64 = SURVIVAL_TRIANGLE_SITE[0].lon_deg;
+
+/// Base Habitat elevation (MOLA datum) in m.
+pub const SITE_BASE_ELEV_M: f32 = SURVIVAL_TRIANGLE_SITE[0].elev_m;
+
+/// Base atmospheric pressure in mbar (P1: P = 610 Pa * exp(-z / 11.1 km) = 708 Pa at -1,660 m;
+/// CO2 column 19.0 g/cm^2). Still above the water triple point (611 Pa).
+pub const MELAS_BASE_PRESSURE_MBAR: f64 = 7.08;
+
+/// EVA-07 scenario: dust optical depth before the storm front (P1: tau 0.7 -> 2.4).
+pub const DUST_TAU_NOMINAL: f32 = 0.7;
+
+/// EVA-07 scenario: dust optical depth during the storm front (P1: tau 0.7 -> 2.4).
+pub const DUST_TAU_STORM: f32 = 2.4;
+
+/// EVA-07 scenario: local ramp slope at WP2 in degrees (P1 shared figure, scenario value;
+/// the real DTM slope of the node is `SURVIVAL_TRIANGLE_SITE[2].slope_dem_deg` = 19.4 deg).
+pub const WP2_RAMP_SLOPE_DEG: f32 = 22.0;
+
+/// EVA-07 scenario: walking speed on the WP2 ramp in m/s (P1).
+pub const WP2_TRAVERSE_SPEED_MPS: f64 = 0.55;
+
+/// EVA-07 scenario: slip fraction on the WP2 ramp (P1: 30%).
+pub const WP2_SLIP_FRACTION: f64 = 0.30;
+
+// ----------------------------------------------------------------------------
+// 4c. UHF radio link budget (P1: 435 MHz, 1 W, 0 dBi, 40 dB diffraction loss in NLOS)
+// ----------------------------------------------------------------------------
+
+/// UHF carrier frequency in MHz.
+pub const RADIO_UHF_FREQ_MHZ: f64 = 435.0;
+
+/// Transmitter power in dBm (1 W).
+pub const RADIO_TX_POWER_DBM: f64 = 30.0;
+
+/// Diffraction loss applied without geometric line of sight, in dB (P1: "30+" dB, series uses 40).
+pub const RADIO_NLOS_DIFFRACTION_DB: f64 = 40.0;
+
+/// Minimum distance used in the free-space loss, in m (avoids log(0) at the Base antenna).
+pub const RADIO_MIN_DISTANCE_M: f64 = 10.0;
+
+/// Received level in dBm: free-space loss at `distance_m` plus diffraction loss without LOS.
+pub fn uhf_link_rssi_dbm(distance_m: f64, line_of_sight: bool) -> f32 {
+    let d_km = distance_m.max(RADIO_MIN_DISTANCE_M) / 1000.0;
+    let fspl_db = 20.0 * d_km.log10() + 20.0 * RADIO_UHF_FREQ_MHZ.log10() + 32.44;
+    let diffraction = if line_of_sight { 0.0 } else { RADIO_NLOS_DIFFRACTION_DB };
+    (RADIO_TX_POWER_DBM - fspl_db - diffraction) as f32
+}
+
+// ----------------------------------------------------------------------------
+// 4d. EVA-07 reference timeline (P1 `eva07_events.json`; minutes after departure, 14:45 LMST)
+// ----------------------------------------------------------------------------
+
+/// Usable primary O2 mass carried by the suit at departure, in g (P1, scenario).
+pub const SUIT_O2_PRIMARY_USABLE_G: f64 = 800.0;
+
+/// O2 density at STPD in g/L.
+pub const O2_DENSITY_G_PER_L: f64 = 1.429;
+
+/// Sustained red limit of metabolic power in W (P1 `eva_thresholds.json`: > 585 W sustained).
+pub const METABOLIC_RED_SUSTAINED_W: f64 = 585.0;
+
+/// Light ISRU sampling work at WP1 in W (P1, scenario).
+pub const ISRU_WORK_POWER_W: f64 = 250.0;
+
+/// Pressurized rest inside the WP3 shelter in W (P1, scenario).
+pub const SHELTER_REST_POWER_W: f64 = 130.0;
+
+/// Speed entering under the WP3 overhang along the real 20.1 deg talus, in m/s (P1, scenario).
+pub const WP3_ENTRY_SPEED_MPS: f64 = 0.5;
+
+/// Metabolic effort of an EVA-07 phase.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Eva07Effort {
+    /// Astronaut at the Base console: no primary O2 consumption.
+    None,
+    /// Scenario power in W (no walking model).
+    Scenario(f64),
+    /// P1 metabolic model. `slope_deg = None` uses the leg grade atan(dz / d) of `leg`
+    /// (downhill grades earn no credit in the model).
+    Walk {
+        leg: usize,
+        speed_mps: f64,
+        tiu: f32,
+        slip: f64,
+        slope_deg: Option<f32>,
+    },
+}
+
+/// One phase `[t0_min, t1_min)` of the EVA-07 reference timeline.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Eva07Phase {
+    pub id: &'static str,
+    pub t0_min: f64,
+    pub t1_min: f64,
+    pub effort: Eva07Effort,
+    /// Exposure factor applied to the open-sky SPE rate: 1.0 while walking (P1 "open sky"
+    /// convention), the WP3 alcove SVF once under the overhang.
+    pub dose_factor: f64,
+}
+
+const fn mean_tiu(a: usize, b: usize) -> f32 {
+    (SURVIVAL_TRIANGLE_SITE[a].thermal_inertia_tiu + SURVIVAL_TRIANGLE_SITE[b].thermal_inertia_tiu) / 2.0
+}
+
+/// EVA-07 phases (P1 `SCHEMA_EVA07.md` section 4). Walking speeds are the means imposed by
+/// the fixed milestones (L1 1,500 m in 28 min, L2 1,200 m in 23 min, L3 600 m in 8 min) and
+/// eta comes from the mean TIU of the two leg nodes; the 110 TIU bank (eta 2.1) only applies
+/// while the regolith trap is active (T+98-106).
+pub const EVA07_PHASES: [Eva07Phase; 14] = [
+    Eva07Phase { id: "A1_consola", t0_min: -45.0, t1_min: 0.0, effort: Eva07Effort::None, dose_factor: 1.0 },
+    Eva07Phase {
+        id: "A2_marcha_L1", t0_min: 0.0, t1_min: 28.0,
+        effort: Eva07Effort::Walk { leg: 0, speed_mps: 1500.0 / (28.0 * 60.0), tiu: mean_tiu(0, 1), slip: 0.0, slope_deg: None },
+        dose_factor: 1.0,
+    },
+    Eva07Phase { id: "A2_isru_wp1", t0_min: 28.0, t1_min: 75.0, effort: Eva07Effort::Scenario(ISRU_WORK_POWER_W), dose_factor: 1.0 },
+    Eva07Phase {
+        id: "A3_marcha_L2", t0_min: 75.0, t1_min: 92.0,
+        effort: Eva07Effort::Walk { leg: 1, speed_mps: 1200.0 / (23.0 * 60.0), tiu: mean_tiu(1, 2), slip: 0.0, slope_deg: None },
+        dose_factor: 1.0,
+    },
+    Eva07Phase {
+        id: "A3_marcha_L2_nlos", t0_min: 92.0, t1_min: 98.0,
+        effort: Eva07Effort::Walk { leg: 1, speed_mps: 1200.0 / (23.0 * 60.0), tiu: mean_tiu(1, 2), slip: 0.0, slope_deg: None },
+        dose_factor: 1.0,
+    },
+    Eva07Phase {
+        id: "A3_rampa_pico", t0_min: 98.0, t1_min: 101.0,
+        effort: Eva07Effort::Walk {
+            leg: 1, speed_mps: WP2_TRAVERSE_SPEED_MPS, tiu: SURVIVAL_TRIANGLE_SITE[2].thermal_inertia_tiu,
+            slip: WP2_SLIP_FRACTION, slope_deg: Some(WP2_RAMP_SLOPE_DEG),
+        },
+        dose_factor: 1.0,
+    },
+    // Pace regulated so that the power stays at the sustained red limit (P1: 0.268 m/s).
+    Eva07Phase { id: "A3_rampa_lenta", t0_min: 101.0, t1_min: 105.0, effort: Eva07Effort::Scenario(METABOLIC_RED_SUSTAINED_W), dose_factor: 1.0 },
+    Eva07Phase {
+        id: "A4_dgs_salida", t0_min: 105.0, t1_min: 106.0,
+        effort: Eva07Effort::Walk { leg: 2, speed_mps: 600.0 / (8.0 * 60.0), tiu: SURVIVAL_TRIANGLE_SITE[2].thermal_inertia_tiu, slip: 0.0, slope_deg: None },
+        dose_factor: 1.0,
+    },
+    Eva07Phase {
+        id: "A4_escape_L3", t0_min: 106.0, t1_min: 113.0,
+        effort: Eva07Effort::Walk { leg: 2, speed_mps: 600.0 / (8.0 * 60.0), tiu: mean_tiu(2, 3), slip: 0.0, slope_deg: None },
+        dose_factor: 1.0,
+    },
+    Eva07Phase {
+        id: "A4_entrada_cornisa", t0_min: 113.0, t1_min: 114.0,
+        effort: Eva07Effort::Walk {
+            leg: 2, speed_mps: WP3_ENTRY_SPEED_MPS, tiu: SURVIVAL_TRIANGLE_SITE[3].thermal_inertia_tiu,
+            slip: 0.0, slope_deg: Some(SURVIVAL_TRIANGLE_SITE[3].slope_dem_deg),
+        },
+        dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64,
+    },
+    Eva07Phase { id: "A4_refugio", t0_min: 114.0, t1_min: 125.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
+    Eva07Phase { id: "A4_refugio_pico", t0_min: 125.0, t1_min: 140.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
+    Eva07Phase { id: "A5_permanencia", t0_min: 140.0, t1_min: 158.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
+    Eva07Phase { id: "A5_zenoh", t0_min: 158.0, t1_min: 165.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
+];
+
+/// Nominal open-sky SPE rate profile ("rampa calibrada"), piecewise linear knots
+/// `(T min, mSv/h)`; zero before the first knot and constant after the last one.
+/// The (108, 5) knot is a free parameter fitted by P1 to the ~0.6 mSv dose on arrival at WP3.
+pub const EVA07_SPE_CALIBRATED_KNOTS: [(f64, f64); 5] =
+    [(105.0, 0.0), (108.0, 5.0), (125.0, 8.0), (140.0, 8.0), (165.0, 2.0)];
+
+/// Open-sky SPE rate of the nominal profile at time `t_min`, in mSv/h.
+pub fn eva07_spe_open_sky_rate_msv_h(t_min: f64) -> f64 {
+    let knots = &EVA07_SPE_CALIBRATED_KNOTS;
+    if t_min < knots[0].0 {
+        return 0.0;
+    }
+    for pair in knots.windows(2) {
+        let ((t0, r0), (t1, r1)) = (pair[0], pair[1]);
+        if t_min <= t1 {
+            return r0 + (r1 - r0) * (t_min - t0) / (t1 - t0);
+        }
+    }
+    knots[knots.len() - 1].1
+}
+
 /// Returns the 4 canonical nodes defining the Melas Chasma Survival Triangle.
 pub fn melas_chasma_survival_triangle() -> Vec<MissionWaypoint> {
-    vec![
-        MissionWaypoint {
-            id: "BASE_HABITAT".to_string(),
-            kind: MissionWaypointKind::BaseHabitat,
-            lat_deg: -9.8000,
-            lon_deg: 283.6000,
-            elev_m: -4215.0,
-            description: "Melas Chasma Base Habitat on stable alluvial terrace with firm basalt (>400 TIU) and active LOS link".to_string(),
-        },
-        MissionWaypoint {
-            id: "WP1_ISRU_WATER".to_string(),
-            kind: MissionWaypointKind::Wp1IsruWater,
-            lat_deg: -9.8120,
-            lon_deg: 283.6150,
-            elev_m: -4230.0,
-            description: "Interior Layered Deposit rich in polyhydrated sulfates (>12% H2O structural resource target)".to_string(),
-        },
-        MissionWaypoint {
-            id: "WP2_FAULT_SLOPE".to_string(),
-            kind: MissionWaypointKind::Wp2FaultSlope,
-            lat_deg: -9.8250,
-            lon_deg: 283.6280,
-            elev_m: -4180.0,
-            description: "Tectonic fault contact and landslide lobe with steep slope (>20 deg), soft regolith trap (<150 TIU), and NLOS radio shadow".to_string(),
-        },
-        MissionWaypoint {
-            id: "WP3_CLIFF_SHELTER".to_string(),
-            kind: MissionWaypointKind::Wp3CliffShelter,
-            lat_deg: -9.8210,
-            lon_deg: 283.6220,
-            elev_m: -4150.0,
-            description: "Topographic cliff shelter alcove offering 85% SPE radiation shielding (Sky View Factor <= 0.20) and dust storm protection".to_string(),
-        },
-    ]
+    SURVIVAL_TRIANGLE_SITE
+        .iter()
+        .map(|site| MissionWaypoint {
+            id: site.id.to_string(),
+            kind: site.kind,
+            lat_deg: site.lat_deg,
+            lon_deg: site.lon_deg,
+            elev_m: site.elev_m,
+            description: site.description.to_string(),
+        })
+        .collect()
 }
 
 /// State of active environmental hazards in the operational zone.
@@ -304,7 +680,7 @@ impl Default for ActiveHazards {
             h4_nlos_offline: false,
             dust_tau: 0.5,
             wind_speed_ms: 5.0,
-            spe_dose_rate_msv_h: 0.05,
+            spe_dose_rate_msv_h: GCR_SURFACE_RATE_MSV_H,
             rssi_dbm: -75.0,
         }
     }
@@ -332,7 +708,7 @@ impl Default for PlssTelemetry {
             battery_remaining_min: 300.0,
             current_o2_rate_l_min: 0.8,
             cumulative_rad_msv: 0.1,
-            mission_rad_limit_msv: 50.0,
+            mission_rad_limit_msv: EVA_SPE_DOSE_BUDGET_MSV,
             heart_rate_bpm: 75,
         }
     }
@@ -422,7 +798,7 @@ mod tests {
     fn test_hex_cell_crc_seal_and_verify() {
         let mut cell = HexCellState64B::new(
             0x8848a39a09fffff,
-            -4215.4,
+            SITE_BASE_ELEV_M,
             12.5,
             180.0,
             380.0,
@@ -450,7 +826,7 @@ mod tests {
     fn test_hex_cell_seu_bit_flip_detection() {
         let mut cell = HexCellState64B::new(
             0x8848a39a09fffff,
-            -4215.4,
+            SITE_BASE_ELEV_M,
             12.5,
             180.0,
             380.0,
@@ -521,24 +897,67 @@ mod tests {
         assert_eq!(waypoints[2].kind, MissionWaypointKind::Wp2FaultSlope);
         assert_eq!(waypoints[3].kind, MissionWaypointKind::Wp3CliffShelter);
 
-        // Check realistic Melas Chasma coordinates (~ -9.8 S, 283.6 E)
+        // Relocated P1 site: SW basin of Melas Chasma (~9.9 S, 283.39 E), basin floor ~ -1.5 km.
         for wp in &waypoints {
             assert!(
-                wp.lat_deg < -9.7 && wp.lat_deg > -9.9,
-                "Latitude should be within Melas Chasma region: {}",
+                wp.lat_deg < -9.85 && wp.lat_deg > -9.95,
+                "Latitude should be within the SW Melas basin: {}",
                 wp.lat_deg
             );
             assert!(
-                wp.lon_deg > 283.5 && wp.lon_deg < 283.7,
-                "Longitude should be within Melas Chasma region: {}",
+                wp.lon_deg > 283.36 && wp.lon_deg < 283.42,
+                "Longitude should be within the SW Melas basin: {}",
                 wp.lon_deg
             );
             assert!(
-                wp.elev_m < -4000.0,
-                "Elevation should be in deep canyon floor (< -4000m): {}",
+                wp.elev_m < -1400.0 && wp.elev_m > -1800.0,
+                "Elevation should be on the SW basin floor (-1,800..-1,400 m): {}",
                 wp.elev_m
             );
         }
+        // The shelter lies downhill from WP2 (escape is downhill).
+        assert!(waypoints[3].elev_m < waypoints[2].elev_m);
+        // Legs close the perimeter (4,900 m) and their elevation deltas match the node elevations.
+        let perimeter: f64 = SURVIVAL_TRIANGLE_LEGS[..4].iter().map(|l| l.distance_m).sum();
+        assert!((perimeter - 4900.0).abs() < 1e-9);
+        for leg in &SURVIVAL_TRIANGLE_LEGS {
+            let dz = (SURVIVAL_TRIANGLE_SITE[leg.to].elev_m - SURVIVAL_TRIANGLE_SITE[leg.from].elev_m) as f64;
+            assert!((dz - leg.delta_elev_m).abs() < 1e-9, "leg {} dz", leg.id);
+        }
+    }
+
+    #[test]
+    fn test_uhf_link_budget_and_spe_profile() {
+        // P1 reference figures: -63.2 dBm at 2.5 km with LOS, -99.3 dBm at 1.6 km without LOS.
+        assert!((uhf_link_rssi_dbm(2500.0, true) - (-63.2)).abs() < 0.05);
+        assert!((uhf_link_rssi_dbm(1600.0, false) - (-99.29)).abs() < 0.05);
+        // Calibrated SPE ramp: 0 before T+105, 5 mSv/h at T+108, 8 mSv/h plateau, 2 at T+165.
+        assert_eq!(eva07_spe_open_sky_rate_msv_h(100.0), 0.0);
+        assert!((eva07_spe_open_sky_rate_msv_h(108.0) - 5.0).abs() < 1e-12);
+        assert!((eva07_spe_open_sky_rate_msv_h(130.0) - 8.0).abs() < 1e-12);
+        assert!((eva07_spe_open_sky_rate_msv_h(165.0) - 2.0).abs() < 1e-12);
+        // Phases are contiguous from T-45 to T+165.
+        for pair in EVA07_PHASES.windows(2) {
+            assert_eq!(pair[0].t1_min, pair[1].t0_min);
+        }
+        assert_eq!(EVA07_PHASES[0].t0_min, -45.0);
+        assert_eq!(EVA07_PHASES[EVA07_PHASES.len() - 1].t1_min, 165.0);
+    }
+
+    #[test]
+    fn test_no_data_sentinel_roundtrip() {
+        let cell = HexCellState64B::new(
+            1, SITE_BASE_ELEV_M, 2.8, 0.0, CELL_NO_DATA, CELL_NO_DATA, CELL_NO_DATA, 0.85,
+            CELL_NO_DATA, CELL_NO_DATA, 0, 0,
+        );
+        let json = serde_json::to_string(&cell).expect("Serialization failed");
+        assert!(json.contains("\"thermal_inertia_tiu\":null"));
+        let back: HexCellState64B = serde_json::from_str(&json).expect("null must read back as no data");
+        assert!(back.thermal_inertia_tiu.is_nan() && back.isru_h2o_pct.is_nan());
+        assert!(back.verify_crc());
+        // A missing value never satisfies a hazard threshold.
+        assert!(!(back.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD));
+        assert!(!(back.isru_h2o_pct >= ISRU_WATER_MIN_PCT));
     }
 
     #[test]
@@ -565,20 +984,29 @@ mod tests {
     #[test]
     fn test_physical_constants() {
         assert!((MARS_GRAVITY - 3.72076).abs() < 1e-5);
-        assert!((TOTAL_EVA_MASS_KG - 130.0).abs() < 1e-5);
+        assert!((TOTAL_EVA_MASS_KG - 170.0).abs() < 1e-5);
+        assert!((O2_ENERGY_JOULES_PER_LITER / 60.0 - 335.0).abs() < 1e-9);
+        assert!((H3_MARS_LINEAR_SCALE - 0.5331).abs() < 1e-4);
+        assert!((H3_MARS_AREA_SCALE - 0.2842).abs() < 1e-4);
         assert!((WALKBACK_SAFETY_FACTOR - 0.85).abs() < 1e-5);
-        assert!((NLOS_RSSI_THRESHOLD_DBM - (-115.0)).abs() < 1e-5);
+        assert!((NLOS_RSSI_THRESHOLD_DBM - (-100.0)).abs() < 1e-5);
+        assert!((RSSI_AMBER_THRESHOLD_DBM - (-85.0)).abs() < 1e-5);
         assert!((CRITICAL_SLOPE_DEG - 20.0).abs() < 1e-5);
         assert!((UNPASSABLE_SLOPE_DEG - 30.0).abs() < 1e-5);
         assert!((LOW_TIU_TRAP_THRESHOLD - 150.0).abs() < 1e-5);
-        assert!((SPE_CRITICAL_RATE_MSV_H - 25.0).abs() < 1e-5);
+        assert!((SPE_CRITICAL_RATE_MSV_H - 1.0).abs() < 1e-5);
+        assert!((SPE_AMBER_RATE_MSV_H - 0.05).abs() < 1e-5);
+        assert!((SPE_PEAK_ENVELOPE_MSV_H - 8.0).abs() < 1e-5);
+        assert!((EVA_SPE_DOSE_BUDGET_MSV - 2.0).abs() < 1e-5);
+        // Open-sky radiation window: 2 mSv / 8 mSv/h = 15 min.
+        assert!((EVA_SPE_DOSE_BUDGET_MSV / SPE_PEAK_ENVELOPE_MSV_H * 60.0 - 15.0).abs() < 1e-4);
     }
 
     #[test]
     fn test_serde_json_roundtrip() {
         let cell = HexCellState64B::new(
             0x8848a39a09fffff,
-            -4215.4,
+            SITE_BASE_ELEV_M,
             12.5,
             180.0,
             380.0,
@@ -602,8 +1030,8 @@ mod tests {
             state: SafetyGuardrailState::EvacShelter,
             ar_path_color_hex: "#FF2A2A".to_string(),
             primary_cause: "SPE_AND_DUST_STORM".to_string(),
-            target_bearing_deg: 245.0,
-            target_distance_m: 600.0,
+            target_bearing_deg: SURVIVAL_TRIANGLE_LEGS[ESCAPE_LEG_WP2_WP3].bearing_deg,
+            target_distance_m: SURVIVAL_TRIANGLE_LEGS[ESCAPE_LEG_WP2_WP3].distance_m as f32,
             target_eta_min: 8.0,
             nlos_autonomous: true,
             voice_summary_slots: vec![

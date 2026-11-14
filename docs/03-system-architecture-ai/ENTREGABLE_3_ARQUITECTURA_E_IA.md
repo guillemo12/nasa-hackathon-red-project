@@ -2,7 +2,7 @@
 **Proyecto:** **R.E.D. ATLAS** (*Reconnaissance, EVA & Dynamic-survival Atlas*)  
 **Equipo:** Red Project — NASA Space Apps Challenge 2026  
 **Responsable:** Persona 3 (Arquitectura Técnica, Motores Geoespaciales e IA)  
-**Escenario Operativo:** Valles Marineris — Melas Chasma (`~9.8°S, 283.6°E`) | Ruta *"Triángulo de Supervivencia"*  
+**Escenario Operativo:** Valles Marineris — Melas Chasma (`~9.90°S, 283.39°E`, cuenca suroeste) | Ruta *"Triángulo de Supervivencia"*  
 **Modalidad:** Especificación Integral de Ingeniería Aeroespacial (0% código fuente / 100% diseño arquitectónico, esquemas de datos y formulación matemática)
 
 ---
@@ -95,7 +95,7 @@ El enlace entre la Consola de Base y el Traje EVA sigue una **arquitectura *Offl
    * Mientras las antenas del traje ven la torre de comunicaciones de la Base, **Eclipse Zenoh** (protocolo *pub/sub* escrito en Rust con sobrecarga de cabecera de apenas unos bytes) mantiene un canal diferencial de bajo ancho de banda ($\le 12\text{ kbps}$).
    * El traje envía exclusivamente *deltas* de telemetría (posición `Canyon-TRN`, tasa metabólica, reservas de $O_2$/batería, dosis acumulada) a **1 Hz**, y la Base envía actualizaciones ambientales de gran escala (imágenes MCS/frentes de polvo).
 3. **Fase 3 — Conmutación Automática a Modo 100% Autónomo Offline (NLOS):**
-   * Cuando el astronauta rodea un espolón basáltico de Melas Chasma (ej. acercándose al **Waypoint 2**), la potencia de señal cae por debajo de **$-115\text{ dBm}$**.
+   * Cuando el astronauta rodea un espolón basáltico de Melas Chasma (ej. acercándose al **Waypoint 2**), la potencia de señal cae por debajo de **$-100\text{ dBm}$**.
    * El *watchdog* de **Eclipse Zenoh** detecta la pérdida de **3 *heartbeats* consecutivos ($\approx 150\text{ ms}$)** y dispara la transición de estado interno en **$< 5\text{ ms}$** hacia el modo `AUTONOMOUS_NLOS`.
    * **Cero degradación táctica:** Todos los motores (`Canyon-TRN`, `D* Lite Metabólico`, `Guardrail` y `Candle`/`whisper-rs`) ya residen en la memoria ECC del traje. Las muestras científicas y la traza de telemetría se registran en un *ring-buffer* persistente estructurado como **CRDT (*Conflict-free Replicated Data Type*)**, ejecutando un *State Replay* automático si se restablece el enlace con la Base o con un rover repetidor.
 
@@ -174,13 +174,13 @@ flowchart LR
 | **3. Inercia Térmica y Suelo** | `Mars Odyssey THEMIS` (IR Día/Noche) | `THEMIS BTR / Derived TI` | `100 m/px` (interpolado con textura HiRISE) | `COG` + `Parquet` | Inercia Térmica en **TIU** ($\text{J m}^{-2}\text{ K}^{-1}\text{ s}^{-1/2}$): identifica trampas de polvo blando ($<150\text{ TIU}$) frente a roca firme ($>400\text{ TIU}$). |
 | **4. Mineralogía e ISRU** | `MRO CRISM` + `MRO SHARAD` | `CRISM MTRDR` / `SHARAD RGRAM` | `18 m/px` (CRISM) / `15 m` vert. (SHARAD) | `COG` + `Parquet` | Índice espectral de **sulfatos polihidratados** ($\%\text{ H}_2\text{O}$ estructural en WP1) y anomalías dieléctricas del subsuelo. |
 | **5. Clima y Polvo del Cañón** | `MRO MCS` + `TGO NOMAD` + Modelo `MEDA` | `MCS DDR` + Perfiles Mesoescalares | Grilla mesoescalar (`~500 m`) | `Parquet` (Series temporales) | Opacidad atmosférica de polvo ($\tau$ a 880 nm), perfiles térmicos y campo vectorial de **vientos catabáticos** por hora solar. |
-| **6. Radiación y Blindaje** | `MSL RAD` (extrapolado a $-4.2\text{ km}$) + DEM | `RAD RDR` + Trazado de rayos 3D | Celda táctil (`~2 m` a `13 m`) | `Parquet` + `GeoJSON` | Flujo base GCR ($\approx 0.42\text{ mSv/día}$ en el fondo de Melas Chasma) y factor geométrico de atenuación ante picos **SPE**. |
+| **6. Radiación y Blindaje** | `MSL RAD` (extrapolado a $-1.66\text{ km}$) + DEM | `RAD RDR` + Trazado de rayos 3D | Celda táctil (`~2 m` a `13 m`) | `Parquet` + `GeoJSON` | Flujo base GCR ($\approx 0.64\text{ mSv/día}$, medido por RAD en Gale) y factor geométrico de atenuación ante picos **SPE**. |
 
 ---
 
 ### 2.2 Indexación Espacial Jerárquica en Rust (`h3o` sobre Elipsoide Marciano)
 
-El sistema utiliza el *crate* **`h3o`** (implementación segura en Rust puro de la teselación hexagonal icosaédrica H3) parametrizada métricamente para el radio medio de Marte ($R_{\text{Mars}} = 3389.5\text{ km} \approx 0.532\, R_{\text{Earth}}$). Las métricas hexagonales en el elipsoide **IAU Mars 2000** quedan calibradas con un factor de escala superficial de $\approx 0.283\times$ respecto a la Tierra:
+El sistema utiliza el *crate* **`h3o`** (implementación segura en Rust puro de la teselación hexagonal icosaédrica H3) parametrizada métricamente para el radio de referencia MOLA de Marte ($R_{\text{Mars}} = 3396.19\text{ km} \approx 0.5331\, R_{\text{Earth}}$). Las métricas hexagonales en el elipsoide **IAU Mars 2000** quedan calibradas con un factor de escala superficial de $\approx 0.2842\times$ respecto a la Tierra:
 
 | Resolución `h3o` | Longitud Media del Lado (Marte) | Área del Hexágono (Marte) | Dominio de Uso en **R.E.D. ATLAS** |
 | :--- | :--- | :--- | :--- |
@@ -201,14 +201,14 @@ Cada celda hexagonal activa en el corredor de Melas Chasma se representa en **Ap
 | Campo del Registro | Tipo en Esquema (Rust / Parquet) | Bytes | Unidad / Rango | Descripción Técnica y Conexión con UX (`Spyglass` / `HUD`) |
 | :--- | :--- | :--- | :--- | :--- |
 | `h3_index` | `u64` / `UINT64` | 8 | Identificador H3 | Clave primaria espacial de la celda en la malla `h3o` (IAU Mars 2000). |
-| `elev_m` | `f32` / `FLOAT32` | 4 | $\text{m}$ (datum MOLA) | Cota topográfica fusionada (`HRSC` + `HiRISE DTM`, ej. `-4215.4 m`). |
+| `elev_m` | `f32` / `FLOAT32` | 4 | $\text{m}$ (datum MOLA) | Cota topográfica (`DTM CTX 20 m`, ej. `-1660 m` en la Base). |
 | `slope_deg` | `f32` / `FLOAT32` | 4 | Grados ($0^\circ\text{–}90^\circ$) | Gradiente máximo local hacia celdas vecinas (alimenta Sector Izquierdo de `Spyglass`). |
 | `aspect_deg` | `f32` / `FLOAT32` | 4 | Grados ($0^\circ\text{–}360^\circ$) | Orientación de la pendiente (para calcular componente de viento catabático y sol). |
 | `thermal_inertia_tiu` | `f32` / `FLOAT32` | 4 | $\text{TIU}$ ($20\text{–}1200$) | Inercia térmica `THEMIS` ($<150\text{ TIU}$ dispara alerta en Sector Derecho de `Spyglass`). |
 | `roughness_hi` | `f32` / `FLOAT32` | 4 | Índice adim. ($0\text{–}1$) | Densidad de rocas/obstáculos extraída de varianza local `HiRISE 0.25 m/px`. |
 | `isru_h2o_pct` | `f32` / `FLOAT32` | 4 | $\% \text{ masa}$ ($0\text{–}25\%$) | Fracción de agua estructural en sulfatos `CRISM` (alimenta Sector Norte de `Spyglass`). |
 | `sky_view_factor` | `f32` / `FLOAT32` | 4 | $\Psi_{\text{SVF}} \in [0.05, 1.0]$ | Fracción de hemisferio celeste no obstruido por los muros de Melas Chasma (blindaje SPE). |
-| `los_base_rssi_dbm` | `f32` / `FLOAT32` | 4 | $\text{dBm}$ ($-140\text{ a }-40$) | Intensidad de señal UHF estimada con la Base (identifica zonas `NLOS` $< -115\text{ dBm}$). |
+| `los_base_rssi_dbm` | `f32` / `FLOAT32` | 4 | $\text{dBm}$ ($-140\text{ a }-40$) | Intensidad de señal UHF estimada con la Base (identifica zonas `NLOS` $< -100\text{ dBm}$). |
 | `base_metabolic_cost` | `f32` / `FLOAT32` | 4 | $\text{W}$ (Watts base) | Gasto metabólico estacionario al cruzar la celda a velocidad nominal ($1.0\text{ m/s}$). |
 | `horizon_hash_id` | `u32` / `UINT32` | 4 | Índice de tabla | Puntero al perfil angular precalculado $\phi_{\text{DEM}}(\alpha)$ para `Canyon-TRN`. |
 | `hazard_bitmask` | `u16` / `UINT16` | 2 | Flags binarios | Máscara de riesgos estáticos (ej. `IS_SLOPE_CRITICAL`, `IS_SHELTER`, `IS_NLOS`). |
@@ -230,10 +230,10 @@ Para dotar tanto al simulador **"Chaos Mode"** (Consola 3D vía Rust WASM) como 
 
 $$\mathbf{H}(t) = \big( H_1(t),\, H_2(t),\, H_3(t),\, H_4(t) \big) \in \{0, 1\}^4$$
 
-* $H_1$: **Tormenta de polvo / vientos catabáticos** ($\tau > 2.0$, $v_{\text{wind}} > 25\text{ m/s}$).
-* $H_2$: **Evento de Partículas Solares — SPE** (radiación aguda en cielo abierto $\dot{D}_{\text{SPE}} > 50\text{ mSv/h}$).
+* $H_1$: **Tormenta de polvo / vientos catabáticos** ($\tau > 2.0$, $v_{\text{wind}} > 20\text{ m/s}$).
+* $H_2$: **Evento de Partículas Solares — SPE** (radiación aguda en cielo abierto $\dot{D}_{\text{SPE}} > 1.0\text{ mSv/h}$).
 * $H_3$: **Trampa geomorfológica activa** (regolito inestable con $I_{\text{THEMIS}} < 150\text{ TIU}$ y pendiente $\theta > 20^\circ$).
-* $H_4$: **Sombra de comunicaciones NLOS** (corte de sesión Zenoh con Base, $\text{RSSI} < -115\text{ dBm}$).
+* $H_4$: **Sombra de comunicaciones NLOS** (corte de sesión Zenoh con Base, $\text{RSSI} < -100\text{ dBm}$ o NLOS $> 60\text{ s}$).
 
 #### Tasas de Disparo Espacial-Temporales (Proceso de Poisson No Homogéneo)
 Cada amenaza $k$ posee una tasa instantánea de aparición $\lambda_k(\mathbf{x}, t_{\text{sol}})$ condicionada por la celda hexagonal $\mathbf{x}$ y la hora solar marciana $t_{\text{sol}} \in [0, 24.66\text{ h}]$:
@@ -273,17 +273,17 @@ El conjunto de las $2^4 = 16$ combinaciones posibles de amenazas conforma un esp
 El coste de transitar desde el centro del hexágono $u$ al hexágono adyacente $v$ (separados por la distancia geodésica $d_{uv}$ y con diferencia de cota $\Delta z_{uv} = z_v - z_u$) en el instante $t$ integra biomecánica marciana, dosimetría y climatología:
 
 #### 1. Ecuación Biomecánica de Gasto Metabólico en Gravedad Marciana ($g_M = 3.72076\text{ m/s}^2$)
-Adaptando el modelo fisiológico clásico de **Pandolf** para marcha humana con carga presurizada en gravedad reducida ($g_M / g_E \approx 0.3794$), siendo $m_{\text{astro}}$ la masa corporal, $m_{\text{suit}}$ la masa del traje EVA ($m_{\text{total}} = m_{\text{astro}} + m_{\text{suit}} \approx 130\text{ kg}$), $v_{\text{walk}}$ la velocidad de marcha ($\text{m/s}$), $\theta_{uv} = \arctan(\Delta z_{uv} / d_{uv})$ la pendiente en grados y $G_{uv} = 100 \tan\theta_{uv}$ el porcentaje de pendiente:
+Con el modelo metabólico de referencia de P1 para marcha humana con carga presurizada en gravedad reducida ($g_M / g_E \approx 0.3794$), siendo $m_{\text{astro}}$ la masa corporal, $m_{\text{suit}}$ la masa del traje EVA ($m_{\text{total}} = m_{\text{astro}} + m_{\text{suit}} = 80 + 90 = 170\text{ kg}$), $v_{\text{walk}}$ la velocidad de marcha ($\text{m/s}$), $\theta_{uv} = \arctan(\Delta z_{uv} / d_{uv})$ la pendiente en grados y $G_{uv} = 100 \tan\theta_{uv}$ el porcentaje de pendiente:
 
-$$\dot{M}_{uv} = 1.5\, m_{\text{total}} \left(\frac{g_M}{g_E}\right)^{0.65} + 2.0\, m_{\text{total}} \left(\frac{m_{\text{suit}}}{m_{\text{astro}}}\right)^2 \left(\frac{g_M}{g_E}\right) + \eta(I_v)\, m_{\text{total}} \left[ 1.5\, v_{\text{walk}}^2 + 0.35\, v_{\text{walk}}\, \Phi_{\text{slope}}(G_{uv}) \right]$$
+$$\dot{M}_{uv} = 120 + \eta(I_v)\, 0.285\, W v_{\text{walk}} + \frac{W v_{\text{walk}} \max(0, \sin\theta_{uv})}{0.25\,(1 - s)}, \qquad W = m_{\text{total}}\, g_M$$
 
 * **Factor de Hundimiento del Suelo $\eta(I_v)$ (Derivado de `THEMIS`):**
-  $$\eta(I_v) = 1.0 + 1.8 \cdot \exp\!\left(-\frac{\max(0,\, I_v - 60)}{90}\right)$$
-  Sobre basalto consolidado ($I_v \ge 400\text{ TIU}$), $\eta \approx 1.04$; sobre regolito suelto peligroso ($I_v = 110\text{ TIU}$ como en las cercanías del WP2), $\eta \approx 2.03$, duplicando el esfuerzo físico.
-* **Factor de Pendiente Asimétrica $\Phi_{\text{slope}}(G_{uv})$:** Penaliza los ascensos fuertes ($G_{uv} > 0$) y añade penalización por frenado excéntrico en descensos abruptos ($G_{uv} < -12\%$).
+  $$\eta(I_v) = 1.0\ (I_v > 400),\quad 1.3\ (250\text{–}400),\quad 1.6\ (150\text{–}250),\quad 2.1\ (< 150\text{ TIU})$$
+  Sobre basalto consolidado ($I_v > 400\text{ TIU}$), $\eta = 1.0$; sobre regolito suelto peligroso ($I_v = 110\text{ TIU}$ como en las cercanías del WP2), $\eta = 2.1$, duplicando el esfuerzo físico.
+* **Pendiente y deslizamiento ($\theta_{uv}$, $s$):** Penaliza los ascensos fuertes; en descenso no se acredita trabajo ni se modela el frenado excéntrico. $s$ es la fracción de deslizamiento (30 % en la rampa del WP2).
 * **Conversión a Consumo de Oxígeno ($\text{L/min}$ STP) y Agua LCVG:**
-  $$\dot{V}_{O_2}(u,v) = \frac{\dot{M}_{uv} \cdot 60}{20\,920\text{ J/L}_{O_2}}, \qquad E_{O_2}(u,v) = \dot{V}_{O_2}(u,v) \cdot \frac{\Delta t_{uv}}{60}, \qquad \Delta t_{uv} = \frac{d_{uv}}{v_{\text{walk}} \cdot \delta_{\text{vis}}(\tau)}$$
-  *(A modo de ejemplo físico calibrado: en terreno plano firme a $1.0\text{ m/s}$, $\dot{M} \approx 280\text{ W} \implies \dot{V}_{O_2} \approx 0.80\text{ L/min}$; en el talud del WP2 con $I = 110\text{ TIU}$ y pendiente $\theta = 22^\circ$, $\dot{M}$ salta por encima de $1100\text{ W} \implies \dot{V}_{O_2} \approx 3.2\text{ L/min}$).*
+  $$\dot{V}_{O_2}(u,v) = \frac{\dot{M}_{uv} \cdot 60}{20\,100\text{ J/L}_{O_2}}, \qquad E_{O_2}(u,v) = \dot{V}_{O_2}(u,v) \cdot \frac{\Delta t_{uv}}{60}, \qquad \Delta t_{uv} = \frac{d_{uv}}{v_{\text{walk}} \cdot \delta_{\text{vis}}(\tau)}$$
+  *(A modo de ejemplo físico calibrado: en terreno plano firme a $1.0\text{ m/s}$, $\dot{M} \approx 300\text{ W} \implies \dot{V}_{O_2} \approx 0.90\text{ L/min}$; en el talud del WP2 con $I = 110\text{ TIU}$ y pendiente $\theta = 22^\circ$ a $0.55\text{ m/s}$ con $s = 0.30$, $\dot{M}$ salta a $1073\text{ W} \implies \dot{V}_{O_2} \approx 3.2\text{ L/min}$).*
 
 #### 2. Función de Coste Multicriterio Total $C(u, v, t)$
 $$C(u, v, t) = w_M \cdot E_{O_2}(u,v) + w_{\text{rad}}(t) \cdot \dot{D}_{\text{SPE}}(t) \cdot \Psi_{\text{SVF}}(v) \cdot \Delta t_{uv} + w_{\text{dust}} \cdot \Big( \tau(t) + \beta_w \max(0,\, \mathbf{v}_{\text{wind}}(t)\cdot \hat{\mathbf{u}}_{uv}) \Big) \cdot \Delta t_{uv} + \mathcal{B}_{\text{safety}}(u,v)$$
@@ -376,7 +376,7 @@ Durante una emergencia combinada, presentar 4 ventanas emergentes y 4 alarmas so
 1. **$t = 0\text{ ms}$ (Detección Multi-Vector en ROS 2 `rclrs`):**
    * `zenoh_watchdog`: Pérdida de 3 *heartbeats* tras el espolón rocoso $\to$ Flag `H4_NLOS_OFFLINE`.
    * `canyon_trn` + `h3o`: Celda actual en $I = 110\text{ TIU}$ y pendiente $\theta = 22^\circ$; biometría reporta salto de $\dot{V}_{O_2}$ a **$3.2\text{ L/min}$** $\to$ Flag `H3_REGOLITH_SLOPE`.
-   * `rad_dosimeter`: Flujo SPE sube a **$85\text{ mSv/h}$** (ventana de dosis segura restante $T_{\text{rad\_limit}} = 15\text{ min}$) $\to$ Flag `H2_SPE_CRITICAL`.
+   * `rad_dosimeter`: Flujo SPE sube a **$8\text{ mSv/h}$** (ventana de dosis segura restante $T_{\text{rad\_limit}} = 15\text{ min}$) $\to$ Flag `H2_SPE_CRITICAL`.
    * `baro_nephelo`: Opacidad de polvo salta de $\tau = 0.7$ a **$\tau = 2.4$** con ráfagas frontales de $28\text{ m/s}$ $\to$ Flag `H1_DUST_STORM`.
 2. **$t = 1\text{–}5\text{ ms}$ (Replanificación `D* Lite` + *Dynamic Goal Switching*):**
    * `D* Lite Metabólico` recalcula ambos retornos en **$3.8\text{ ms}$**: $T_{\text{walkback, Base}} = 48\text{ min} > T_{\text{rad\_limit}} = 15\text{ min}$, mientras que $T_{\text{walkback, WP3}} = 8\text{ min}$ ($600\text{ m}$ con $\Psi_{\text{SVF}} = 0.15$).
@@ -384,9 +384,9 @@ Durante una emergencia combinada, presentar 4 ventanas emergentes y 4 alarmas so
 3. **$t = 6\text{ ms}$ (Triaje de Supresión y Renderizado AR Instantáneo):**
    * La matriz de prioridad suprime 3 ventanas de aviso individuales (pasa `H4_NLOS` a un icono pasivo en esquina superior, absorbe `H1` y `H3` en los pesos del trazado) y emite **una sola directiva visual**: la barra *Walkback Limit Dual* tacha la marca de Base y resalta el marcador de escape a **WP3 (8 min)**, mientras el shader AR en el suelo muta instantáneamente de cian a **chevrones rojo/ámbar pulsantes** indicando los pasos laterales hacia el escarpe.
 4. **$t = 7\text{–}280\text{ ms}$ (Síntesis de Voz Única vía `Candle`/`ort` INT4):**
-   * El Guardrail entrega un *Context Frame* cerrado al SLM local cuantizado (sin búsqueda libre): `{evento: "SPE_Y_TORMENTA", terreno: "SALIR_ARENA_IZQUIERDA", destino: "REFUGIO_WP3", rumbo: "245_GRADOS", distancia_m: 600, tiempo_min: 8, radio: "OFFLINE_AUTONOMO"}`.
+   * El Guardrail entrega un *Context Frame* cerrado al SLM local cuantizado (sin búsqueda libre): `{evento: "SPE_Y_TORMENTA", terreno: "SALIR_ARENA_IZQUIERDA", destino: "REFUGIO_WP3", rumbo: "344_GRADOS", distancia_m: 600, tiempo_min: 8, radio: "OFFLINE_AUTONOMO"}`.
    * La NPU genera la locución táctica única (duración **$< 8\text{ segundos}$**):
-     > *"Alerta solar y viento en cañón. Enlace autónomo activo. Abandone el talud diez metros a su izquierda hacia roca firme y siga el sendero ámbar rumbo dos-cuatro-cinco hasta el refugio del escarpe a seiscientos metros, ocho minutos."*
+     > *"Alerta solar y viento en cañón. Enlace autónomo activo. Abandone el talud diez metros a su izquierda hacia roca firme y siga el sendero ámbar rumbo tres-cuatro-cuatro hasta el refugio del escarpe a seiscientos metros, ocho minutos."*
 
 ---
 
