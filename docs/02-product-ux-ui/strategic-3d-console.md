@@ -2,6 +2,8 @@
 ## Consola Estratégica 3D de Base de Hábitat (Melas Base Alpha)
 **Challenge:** Interplanetary Survival Guide: Martian Map (NASA Space Apps)  
 **Sistema:** Consola Táctica de Hábitat y Gemelo Digital 3D (Aris Thorne - SAGAT 3)  
+**Stack Tecnológico:** TypeScript + React + CesiumJS (3D Tiles / DEM) + Three.js (WebGL/WebGPU Custom Shaders) + TailwindCSS + Rust (WebAssembly / WASM)  
+**Datos y Comunicaciones:** Cloud-Optimized GeoTIFF (COG), GeoJSON, Apache Parquet / JSON, Malla Hexagonal `h3o`, Eclipse Zenoh (hacia nodo `rclrs` del traje)  
 **Normativa Aplicada:** NASA-STD-3001 (Human Integration Design) & ISO 9241-210
 
 ---
@@ -16,7 +18,7 @@
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
 | [A] PANEL GIS ORBITAL (IZQ.)  | [B] VIEWPORT GEMELO DIGITAL 3D PRINCIPAL (CENTRAL EXPANSIVO)                                   | [C] MONITOR TELEMETRÍA PRE-EVA |
 | +---------------------------+ | +--------------------------------------------------------------------------------------------+ | +----------------------------+ |
-| | CAPAS RASTER MULTIESPECTRAL| | |  AZM: 148.2°  ELEV: 34.1°  SUN CCT: 5200K  SCALE: 1:25,000 [H3 RES-12]  RMS: 0.04m          | | | ESTADO XEMU-04 (ELENA)     | |
+| | CAPAS RASTER (COG / H3O)   | | |  AZM: 148.2°  ELEV: 34.1°  SUN CCT: 5200K  SCALE: 1:25,000 [H3O RES-12] RMS: 0.04m          | | | ESTADO XEMU-04 (ELENA)     | |
 | | [x] HiRISE DEM 1m (Active)| | |                                                                                            | | | • Primario O2: 6.8h (94%)  | |
 | | [x] CRISM Polihidratados  | | |                   [Pared Norte Melas Chasma: -3.420m a +3.580m]                            | | | • Sublimador H2O: 88% (4.2L| |
 | | [x] THEMIS Inercia Térm.  | | |                                                                                            | | | • PLSS Li-Ion: 82% (1.4kWh)| |
@@ -28,13 +30,13 @@
 | | • Opacidad Tau: 0.42      | | |                   |   [Overburden >5.2m // Prot. 99.4%]      |                             | | | [=======>        ] 1.8h Mgn| |
 | | • Próx. Pase MRO: 44 min  | | |                   +------------------------------------------+                             | | | Retorno PNR: 02:44 MET     | |
 | | • NLOS Canyon: BLOQUEADO  | | |                                        /                                                   | | +----------------------------+ |
-| +---------------------------+ | |                                       / (Vector Escape 680m)                               | | [E] SINCRONIZACIÓN SUIT      | |
+| +---------------------------+ | |                                       / (Vector Escape 680m)                               | | [E] SYNC ECLIPSE ZENOH     | |
 | | SELECTOR MODO LUPA        | | |                       +------------(  WP2  )-------------+                                 | | +----------------------------+ |
-| | ( ) Modo X-Ray 1 Capa     | | |                       | Escarpe Falla Peligrosa          |                                 | | | Paquete SQLite / FlatBuff  | |
-| | (*) Lupa Tri-Sector 120°  | | |                       | Talud 23.4° // Peligro Slip >20° |                                 | | | Checksum: 0x9F4A [LOCK]    | |
-| |   - Radio Lupa: [ 180 px ]| | |                       +----------------------------------+                                 | | | [ PUSH A AIRLOCK DOCK ]    | |
+| | ( ) Modo X-Ray 1 Capa     | | |                       | Escarpe Falla Peligrosa          |                                 | | | GeoJSON + Parquet / h3o    | |
+| | (*) Lupa Tri-Sector 120°  | | |                       | Talud 23.4° // Peligro Slip >20° |                                 | | | Checksum: 0x9F4A [ZENOH]   | |
+| |   - Radio Lupa: [ 180 px ]| | |                       +----------------------------------+                                 | | | [ SYNC A NODO RCLRS EVA ]  | |
 | |   - Opacidad:   [  85 %  ]| | |                                       /                                                    | | +----------------------------+ |
-| |                           | | |                                      /                                                     | | [F] PANEL CHAOS ENGINE       | |
+| |                           | | |                                      /                                                     | | [F] CHAOS ENGINE (RUST WASM)| |
 | +---------------------------+ | |                  [ === LUPA SPYGLASS TRI-SECTOR 120° === ]                                 | | +----------------------------+ |
 |                               | |                 /             Sector Norte:              \                                 | | | TEST ESTOCÁSTICO POISSON   | |
 |                               | |                |            CRISM H2O Sulfatos            |                                | | | 100 Corridas Monte Carlo   | |
@@ -43,7 +45,7 @@
 |                               | |              / Sector Izquierdo:     |  Sector Derecho:     \                              | | | Comms Loss: NLOS 100%      | |
 |                               | |             |  HiRISE Slope >20°     |   THEMIS Dust Trap    |                             | | |                            | |
 |                               | |             |  Shadow & SVF Blindaje |   <150 TIU Regolito   |                             | | | [ EJECUTAR CHAOS MODE ]    | |
-|                               | |              \     [#FF1744]         |       [#FF9100]      /                              | | +----------------------------+ |
+|                               | |              \  [#00FFA3 / Hazard]  |  [#FF9100 / #FF1744]  /                              | | +----------------------------+ |
 |                               | |               \--------------------------------------------/                               |                                  |
 |                               | |                                      \                                                     |                                  |
 |                               | |                      +------------(  WP1  )-------------+                                  |                                  |
@@ -63,9 +65,9 @@
 
 ---
 
-### 1.2 Diseño Detallado de la Herramienta Insignia: Lupa Espacial "Spyglass" Tri-Sectorial
+### 1.2 Diseño Detallado de la Herramienta Insignia: Lupa Espacial "Spyglass" Tri-Sectorial (`Three.js / WebGPU` sobre `CesiumJS`)
 
-La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartografía planetaria: la sobrecarga cognitiva provocada por conmutar manualmente decenas de capas GIS superpuestas (overplotting). Al posar el cursor o apuntador háptico sobre el terreno 3D, el operador despliega un viewport analítico circular de 360° dividido en **tres cuñas angulares de 120°** que fusionan datos multiespectrales en tiempo real mediante *hardware-accelerated multi-pass shaders*.
+La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartografía planetaria: la sobrecarga cognitiva provocada por conmutar manualmente decenas de capas GIS superpuestas (overplotting). Al posar el cursor o apuntador háptico sobre el terreno 3D de **CesiumJS** (3D Tiles y DEM de Melas Chasma en **Cloud-Optimized GeoTIFF (COG)** + celdas hexagonales **`h3o`** cargadas desde **Apache Parquet / JSON**), el operador despliega un viewport analítico circular de 360° dividido en **tres cuñas angulares de 120°**. El recorte y fusión multiespectral se renderiza en tiempo real mediante un **Custom Post-Processing Shader en Three.js (WebGL / WebGPU)** superpuesto al canvas de CesiumJS.
 
 ```
                       SECTOR NORTE (0° a 120°)
@@ -114,13 +116,13 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 
 ---
 
-## 2. PANTALLA 2: PLANIFICADOR METABÓLICO DE RUTA Y SIMULADOR "CHAOS MODE"
+## 2. PANTALLA 2: PLANIFICADOR METABÓLICO DE RUTA (GEOJSON) Y SIMULADOR "CHAOS MODE" (RUST WASM)
 
 ### 2.1 Wireframe del Panel Longitudinal y Planificador Metabólico (Sección Inferior de la Consola)
 
 ```text
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
-| TRAYECTORIA: BASE ALPHA -> WP1 (2.4 km) -> WP2 (1.8 km) -> WP3 (0.68 km) | LONGITUD TOTAL: 4.88 km | TIEMPO ESTIMADO: 3h 14m | RETORNO CRÍTICO: 02h 44m   |
+| TRAYECTORIA (GEOJSON): BASE ALPHA -> WP1 (2.4 km) -> WP2 (1.8 km) -> WP3 (0.68 km) | TOTAL: 4.88 km | TIEMPO: 3h 14m | RETORNO CRÍTICO: 02h 44m           |
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
 | (A) PERFIL DE ELEVACIÓN Y TALUD [EJE Y: COTA -3.420m A -3.210m // EJE X: DISTANCIA 0 a 5.0 km]                                                           |
 | Elev.                                                                                                                                                     |
@@ -144,16 +146,16 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 |   0% +---------------------------------------------------------------------------------+---------------------------------------------+--------------------+
 | Tasa VO2:  0.34 L/min (Reposo)                1.25 L/min (Marcha)      1.82 L/min (Pico Talud)    1.10 L/min (Marcha)          MET: 03h 14m               |
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
-| (C) COBERTURA DE ENLACE DE RADIO BASE // SOMBRA NLOS (7 KM PARED DE CAÑÓN)                                                                               |
-| RF LOS: [#################### 100% LOS #####################] [############# 72% LOS ############] [    0% CORTE TOTAL NLOS (PARED CAÑÓN)  ]            |
-| Estado: BASE LINK ESTABLE                                     DIFRACCIÓN DE BORDE                  OFFLINE TRN ACTIVO (EDGE CANYON-TRN EN TRAJE)          |
+| (C) COBERTURA DE ENLACE DE RADIO ECLIPSE ZENOH // SOMBRA NLOS (7 KM PARED DE CAÑÓN)                                                                         |
+| RF ZENOH: [################### 100% LOS ####################] [############# 72% LOS ############] [    0% CORTE TOTAL NLOS (PARED CAÑÓN)  ]             |
+| Estado: SESIÓN ZENOH ESTABLE                                  DIFRACCIÓN DE BORDE                  OFFLINE TRN ACTIVO (NODO RCLRS CANYON-TRN EN TRAJE)    |
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
-| (D) MONITOR DE CERTIFICACIÓN ESTOCÁSTICA: "CHAOS MODE" (POISSON / MONTE CARLO N=100 SCENARIOS)                                                           |
+| (D) MONITOR DE CERTIFICACIÓN ESTOCÁSTICA: "CHAOS MODE" (RUST WASM // POISSON & MONTE CARLO N=100 SCENARIOS)                                               |
 |                                                                                                                                                           |
-| [ !!! INICIAR STRESS-TEST CHAOS MODE !!! ]  ==> ESTADO: CERTIFICACIÓN COMPLETADA (100/100 SEMILLAS)                                                      |
+| [ !!! INICIAR STRESS-TEST CHAOS MODE !!! ]  ==> ESTADO: CERTIFICACIÓN COMPLETADA (100/100 SEMILLAS EN RUST WASM)                                          |
 |                                                                                                                                                           |
 | • P(Supervivencia por Retorno a Base):  0.6 % [FALLO CATASTRÓFICO POR DOSIS SPE EXCESIVA EN CAMINO ASCENDENTE (64 MINUTOS A CIELO ABIERTO)]             |
-| • P(Supervivencia por Egress a Refugio WP3): 99.4 % [CERTIFICADO NASA STD-3001 // TIEMPO MARCHA FORZADA: 11 MINUTOS // DOSIS RESIDUAL < 0.08 mSv]        |
+| • P(Supervivencia por Egress a Refugio WP3): 99.4 % [CERTIFICADO NASA STD-3001 // TIEMPO MARCHA FORZADA: 8 MINUTOS // DOSIS RESIDUAL < 0.08 mSv]         |
 |                                                                                                                                                           |
 | DISTRIBUCIÓN DE PROBABILIDAD DE SUPERVIVENCIA EN REFUGIO WP3:                                                                                             |
 |                                                   +----+                                                                                                  |
@@ -170,9 +172,9 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 
 ---
 
-### 2.2 Arquitectura del Simulador Estocástico "Chaos Mode"
+### 2.2 Arquitectura del Simulador Estocástico "Chaos Mode" (`Rust WASM`)
 
-El botón **"Chaos Mode"** ejecuta un motor de simulación estocástica basado en Procesos de Poisson no homogéneos y Cadenas de Markov de 100 iteraciones concurrentes. Modela los tres riesgos fatales combinados de Melas Chasma:
+El botón **"Chaos Mode"** ejecuta a velocidad nativa en el navegador un motor en **Rust compilado a WebAssembly (WASM)** basado en Procesos de Poisson no homogéneos y Cadenas de Markov de 100 iteraciones concurrentes. Modela los tres riesgos fatales combinados de Melas Chasma:
 
 1. **Inyección de Tormenta de Polvo Catabática:** Caída de visibilidad a $< 3.8\text{ m}$ y aumento del coeficiente de fricción por regolito aerotransportado.
 2. **Evento de Partículas Solares (SPE Spike):** Dosis ionizante masiva a $1.420\text{ protones/cm}^2/\text{s}$ con techo letal de $100\text{ mSv}$ alcanzable en $26\text{ minutos}$ a cielo abierto.
@@ -198,7 +200,7 @@ flowchart TD
     
     subgraph EVALUACION_VECTORES ["Evaluación Comparativa de Vectores de Egress"]
         V_Base[Vector Retorno a Base: 4.2 km asc.<br/>Tiempo: 64 min<br/>Dosis Recibida: 240 mSv<br/><b>P(Sobrevivir) = 0.6% [LETAL]</b>]
-        V_WP3[Vector Egress a Refugio WP3: 680 m<br/>Tiempo: 11 min marcha forzada<br/>Blindaje Basalto: > 5 m<br/><b>P(Sobrevivir) = 99.4% [SEGURO]</b>]
+        V_WP3[Vector Egress a Refugio WP3: 680 m<br/>Tiempo: 8 min marcha forzada<br/>Blindaje Basalto: > 5 m<br/><b>P(Sobrevivir) = 99.4% [SEGURO]</b>]
     end
     
     SimEngine --> V_Base
@@ -223,7 +225,38 @@ flowchart TD
 ```
 
 #### Respuesta de Interfaz tras pulsar "Chaos Mode":
-1. **Feedback Visual Inmediato:** El gemelo 3D proyecta una simulación cinemática acelerada en color ámbar durante 1.2 segundos mostrando 100 trazas dispersas de partículas de escape.
+1. **Feedback Visual Inmediato:** El gemelo 3D proyecta una simulación cinemática acelerada en color ámbar durante 1.2 segundos mostrando 100 trazas dispersas de partículas de escape calculadas en **Rust WASM**.
 2. **Visualización de la Bifurcación:** El vector de retorno a Base Alpha se pinta instantáneamente en **Rojo Carmesí (`#FF1744`) con etiqueta parpadeante `ABORTED // LETHAL DOSE TIME: 26 MIN`**, demostrando empíricamente que intentar regresar al hábitat durante un SPE mataría a la astronauta por exposición a radiación ionizante antes de llegar a la esclusa.
 3. **Validación Triunfal de WP3:** El vector de desvío hacia la cavidad basáltica WP3 brilla en **Verde Bio-Seguro (`#00FFA3`)** con la certificación `SURVIVAL: 99.4% [PROTECTED] // SPE DOSE AT CAVITY < 0.08 mSv`.
-4. **Desbloqueo Criptográfico:** Se genera el hash SHA-256 del plan de contingencia offline y el botón interactivo principal pasa de ámbar a **Cian Brillante (`#00F5D4`)**: `[ PUSH A TRAJE EVA // LISTO PARA DESCONEXIÓN DE UMBILICAL ]`.
+4. **Desbloqueo y Sincronización Eclipse Zenoh:** Se exporta el plan en **GeoJSON** + malla **`h3o`** en **Apache Parquet**, se genera el hash SHA-256 y el botón interactivo principal pasa de ámbar a **Cian Brillante (`#00F5D4`)**: `[ SYNC VÍA ECLIPSE ZENOH A NODO RCLRS DEL TRAJE ]`.
+
+---
+
+### 2.3 Jerarquía de Componentes Frontend (`React + TypeScript + CesiumJS + Three.js + Rust WASM`)
+
+```mermaid
+flowchart TD
+    App["&lt;BaseConsoleApp /&gt;<br/>(React + TypeScript + TailwindCSS)"] --> Header["&lt;MissionHeaderBar /&gt;<br/>(SOL / MET / Estado Zenoh)"]
+    App --> LeftPanel["&lt;OrbitalLayersSidebar /&gt;<br/>(Toggles COG: HiRISE, CRISM, THEMIS, MOLA, h3o)"]
+    App --> Viewport["&lt;CesiumMelasGlobe /&gt;<br/>(CesiumJS 3D Tiles + DEM COG)"]
+    App --> RightPanel["&lt;TelemetryAndSyncPanel /&gt;"]
+    App --> BottomPanel["&lt;MetabolicPlannerPanel /&gt;<br/>(Perfil Elevación + Curvas O2/Agua/Batería + GeoJSON)"]
+
+    Viewport --> Spyglass["&lt;ThreeSpyglassShader /&gt;<br/>(Three.js WebGL/WebGPU Custom Post-Processing Shader)"]
+    Spyglass --> SectorN["&lt;SectorCRISM /&gt; 0°-120°"]
+    Spyglass --> SectorR["&lt;SectorTHEMIS /&gt; 120°-240°"]
+    Spyglass --> SectorL["&lt;SectorMolaSVF /&gt; 240°-360°"]
+
+    RightPanel --> SuitMonitor["&lt;SuitTelemetryCard /&gt;"]
+    RightPanel --> ChaosSim["&lt;ChaosModeSimulatorWasm /&gt;<br/>(Bridge Rust WASM: 100 Escenarios Poisson/Markov)"]
+    RightPanel --> ZenohSync["&lt;ZenohSuitSync /&gt;<br/>(Publicación Eclipse Zenoh -> ROS 2 rclrs)"]
+
+    BottomPanel --> DStarWasm["&lt;DStarMetabolicWasm /&gt;<br/>(Cálculo Walkback Limit Dual en Rust WASM)"]
+
+    style App fill:#0B0E14,stroke:#00F5D4,stroke-width:2px,color:#fff
+    style Viewport fill:#10131a,stroke:#00F5D4,stroke-width:2px,color:#00F5D4
+    style Spyglass fill:#191c22,stroke:#00FFA3,stroke-width:2px,color:#00FFA3
+    style ChaosSim fill:#191c22,stroke:#FF9100,stroke-width:2px,color:#FF9100
+    style ZenohSync fill:#002B28,stroke:#00F5D4,stroke-width:2px,color:#00F5D4
+    style DStarWasm fill:#191c22,stroke:#00FFA3,stroke-width:1px,color:#00FFA3
+```

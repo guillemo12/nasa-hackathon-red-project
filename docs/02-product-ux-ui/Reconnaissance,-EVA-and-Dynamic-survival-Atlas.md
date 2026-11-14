@@ -2,7 +2,8 @@
 ## Product & UX/UI Specification — NASA Human Systems Integration Division (HSID)
 **Challenge:** Interplanetary Survival Guide: Martian Map (NASA Space Apps)  
 **Mission Domain:** Valles Marineris — Melas Chasma Floor Expedition  
-**System Architecture:** Hybrid Dual-Tier (Base Server Hex-H3/3D Digital Twin + EVA Edge Node Canyon-TRN)
+**System Architecture:** Hybrid Dual-Tier — Consola Base (`TypeScript + React + CesiumJS + Three.js + TailwindCSS + Rust WASM`) & Nodo EVA (`ROS 2 rclrs + Eclipse Zenoh + Canyon-TRN + Candle/ort + whisper-rs`)  
+**Data & Mesh Standards:** Cloud-Optimized GeoTIFF (COG), GeoJSON, Apache Parquet / JSON, Malla Hexagonal `h3o`
 
 ---
 
@@ -51,8 +52,8 @@
 
 | Restricción Física / Factor Melas Chasma | Impacto Fisiológico y Operativo | Solución de Diseño UX en R.E.D. ATLAS | Mapeo de Componente UI |
 | :--- | :--- | :--- | :--- |
-| **Guantes EVA presurizados (pérdida del 85% de motricidad fina)** | Imposibilidad de pulsar botones táctiles pequeños (< 25 mm), pellizcar (pinch-to-zoom) o realizar swipes de precisión. | **Cero dependencia de interfaces táctiles directas en el traje.** Interacción por comandos de voz fonéticamente robustos (vocabulario controlado NATO/NASA) + dial rotatorio mecánico de 3 posiciones en antebrazo ("HUD Mode", "Waypoints", "SOS Egress") + confirmación por micro-gestos en barbilla/mandíbula dentro del casco. | *Rotary-Snap Controller (Wrist-Mount) & Helmet Sub-vocal Sensor.* |
-| **Paredes de 7 km de Melas Chasma (Corte total de radio NLOS)** | Caída completa de enlace con Base y constelación orbital; pérdida de señal satelital GNSS/PNT. | **Edge Computing Offline 100% autónomo.** Algoritmo "Canyon-TRN" (Terrain Relative Navigation) que compara el horizonte visual captado por las cámaras del casco con el modelo de elevación digital local (Skyline Matching) sin requerir satélites. | *Local Edge TRN Engine + Skyline Alignment Overlay en HUD.* |
+| **Guantes EVA presurizados (pérdida del 85% de motricidad fina)** | Imposibilidad de pulsar botones táctiles pequeños (< 25 mm), pellizcar (pinch-to-zoom) o realizar swipes de precisión. | **Cero dependencia de gestos táctiles finos en el traje.** Interacción por comandos de voz manos libres procesados offline con `whisper-rs` (vocabulario controlado NATO/NASA) + Tablet de Muñeca (*Cuff Unit*) con botones sobredimensionados (> 30 mm) y dial rotatorio mecánico de 3 posiciones ("HUD Mode", "Waypoints", "SOS Egress"). | *Cuff Unit (Oversized Buttons + Rotary-Snap Controller) & `whisper-rs` Helmet Mic.* |
+| **Paredes de 7 km de Melas Chasma (Corte total de radio NLOS)** | Caída completa de enlace con Base y constelación orbital; pérdida de señal satelital GNSS/PNT. | **Edge Computing Offline 100% autónomo.** Nodo ROS 2 en Rust (`rclrs`) con protocolo **Eclipse Zenoh** tolerante a desconexiones y algoritmo **"Canyon-TRN"** (Terrain Relative Navigation) que compara el horizonte visual con el DEM local (Skyline Matching) sin requerir satélites. | *Local Edge `rclrs` + Canyon-TRN Engine + Skyline Alignment Overlay en HUD.* |
 | **Fondo de cañón rojizo/ocre + Tormentas de polvo en suspensión** | Ceguera cromática situacional; los tonos rojos, naranjas y amarillos convencionales se camuflan con el regolito. | **Inversión Espectral en HUD Waveguide.** Eliminación total del rojo/amarillo para navegación nominal. Uso exclusivo de Verde Láser / Cian Eléctrico (#00F5D4 / #00FFA3) que poseen contraste óptico superior a 15:1 frente al albedo del regolito oxidado (Fe₂O₃). | *High-Contrast AR Waypoint Pillars & Polylines.* |
 | **Pendientes y taludes peligrosos > 20° (Riesgo de deslizamiento/vuelco)** | Aumento exponencial del gasto metabólico ($VO_2$), rotura de articulaciones mecánicas del traje y avalanchas de detritos. | **Capa Isócrona de Micro-Relieve Hexagonal H3.** Delineación visual en HUD de "No-Go Zones" con sombreado de micro-rejilla punteada y cálculo dinámico de costo energético en tiempo real con algoritmo D* Lite Metabólico. | *D* Lite Dynamic Path Corridors con gradiente de pendiente.* |
 | **Fatiga mental extrema y sobrecarga sensorial en emergencias** | Parálisis por análisis ante cascadas de alarmas (Audio Alarm Flood). | **Single Critical Alert Triad (Triaje de Alerta Única).** Supresión absoluta de advertencias secundarias. Presentación de una sola instrucción imperativa en el tercio inferior del campo visual con vector direccional 3D y pulso háptico unívoco. | *Emergency Egress HUD Vector & Spatial Audio Tone.* |
@@ -63,23 +64,23 @@
 
 Diseñado bajo la norma NASA STD-3001 (Space Flight Human-System Standard) e ISO 9241-210, optimizado para displays reflectivos transparentes (Waveguide Optical HUDs) y pantallas AMOLED rugerizadas de Base.
 
-### 2.1 Paleta Cromática de Alto Contraste (Optimizada para HUD Waveguide & Melas Subsurface)
+### 2.1 Paleta Cromática de Alto Contraste (Design System TailwindCSS + Waveguide AR)
 
 ```
-[ #00F5D4 Electric Cyan ]  -->  Primario Nominal (Ruta y Horizonte TRN)
+[ #00F5D4 Electric Cyan ]  -->  Primario Nominal (Ruta AR Three.js y Horizonte TRN)
 [ #00FFA3 Bio-Green ]      -->  Métricas de Soporte Vital y Safe Haven (WP3)
 [ #FFE600 Solar Amber ]    -->  Precaución / Límite Walkback 80%
 [ #FF1744 Hyper Magenta ]  -->  Emergencia Crítica / Radiación SPE / No-Go
 [ #0B0E14 Deep Space Navy]-->  Fondo de Contraste Absoluto (Consola Base)
 ```
 
-| Token de Color | HEX | Longitud de Onda ($\lambda$) | Ratio de Contraste vs Regolito Marciano | Justificación Óptica y Misión |
+| Token TailwindCSS / CSS | HEX | Longitud de Onda ($\lambda$) | Ratio de Contraste vs Regolito Marciano | Justificación Óptica y Misión |
 | :--- | :--- | :--- | :--- | :--- |
-| **`--color-hud-cyan`** | `#00F5D4` | 495 nm | **16.8:1** (Máximo en espectro visible) | Color de guiado primario. El ojo humano en adaptación fotópica/mesópica presenta alta sensibilidad en la banda cian-verde. Se proyecta nítido sobre el polvo ocre sin consumir energía excesiva en el proyector micro-LED. |
-| **`--color-hud-green`** | `#00FFA3` | 525 nm | **15.2:1** | Indicador de estado nominal de PLSS (oxígeno, agua sublimador, presión de batería) y marcado del refugio de evacuación (WP3). |
-| **`--color-alert-amber`** | `#FFE600` | 580 nm | **9.4:1** | Advertencia de cota de seguridad (ej. talud > 18°, divergencia de ruta estimada, 75% de walkback consumido). Alta luminancia diurna. |
-| **`--color-hazard-crimson`**| `#FF1744` | 640 nm (Desplazado a Magenta) | **11.1:1** (Filtro anti-ocre) | No es rojo puro marciano; se utiliza un magenta hiper-saturado (`#FF1744`) con tinte azulado frío para no mimetizarse con el suelo ferruginoso. Reservado exclusivamente para SPE Solar Event, fallo de presurización o talud > 20°. |
-| **`--color-bg-base-dark`** | `#0B0E14` | N/A | **21:1** vs HUD Cyan | Fondo estricto para monitores de la Base de Hábitat. Minimiza reflejos parásitos en las cúpulas y reduce fatiga ocular del operador en turnos prolongados. |
+| **`hud-cyan`** (`--color-hud-cyan`) | `#00F5D4` | 495 nm | **16.8:1** (Máximo en espectro visible) | Color de guiado primario en el sendero AR (`Three.js`). El ojo humano en adaptación fotópica/mesópica presenta alta sensibilidad en la banda cian-verde. Se proyecta nítido sobre el polvo ocre sin consumir energía excesiva en el proyector micro-LED. |
+| **`hud-green`** (`--color-hud-green`) | `#00FFA3` | 525 nm | **15.2:1** | Indicador de estado nominal de PLSS (oxígeno, agua sublimador, presión de batería) y marcado del refugio de evacuación (WP3). |
+| **`alert-amber`** (`--color-alert-amber`) | `#FFE600` | 580 nm | **9.4:1** | Advertencia de cota de seguridad (ej. talud > 18°, divergencia de ruta estimada, 75% de walkback consumido). Alta luminancia diurna. |
+| **`hazard-crimson`** (`--color-hazard-crimson`)| `#FF1744` | 640 nm (Desplazado a Magenta) | **11.1:1** (Filtro anti-ocre) | No es rojo puro marciano; se utiliza un magenta hiper-saturado (`#FF1744`) con tinte azulado frío para no mimetizarse con el suelo ferruginoso. Reservado exclusivamente para SPE Solar Event, fallo de presurización o talud > 20°. |
+| **`base-dark`** (`--color-bg-base-dark`) | `#0B0E14` | N/A | **21:1** vs HUD Cyan | Fondo estricto (`bg-base-dark`) para monitores de la Consola Base en React + TailwindCSS. Minimiza reflejos parásitos en las cúpulas y reduce fatiga ocular del operador en turnos prolongados. |
 
 ### 2.2 Jerarquía Tipográfica de Misión Crítica (Anti-Vibración & Visor Optics)
 * **Familia Tipográfica:** *NASA JetBrains Mono Extended* o *Chivo Space Mono* (monoespaciada proporcional para evitar "jittering" de números cambiantes durante la marcha).
@@ -97,9 +98,9 @@ Diseñado bajo la norma NASA STD-3001 (Space Flight Human-System Standard) e ISO
 ### 2.3 Sistema Multimodal Tri-Modal (Voz Manos Libres + Audio 3D + Háptica)
 Para garantizar una tasa de error cero ($P_{error} < 10^{-6}$), ninguna información crítica depende de un solo canal sensorial:
 
-1. **Voz Manos Libres (Voice Input & Synthesis):**
-   * *Entrada:* Micrófono de gradiente de presión dentro de la cavidad oral del casco con cancelación de ruido del soplador de $O_2$. Gramática finita BNF (Backus-Naur Form): `[SISTEMA] + [COMANDO] + [PARÁMETRO]`. Ej: *"ATLAS, RUTA ALTERNATIVA REFUGIO"*.
-   * *Salida:* Confirmación por audio-feedback de baja latencia (< 80 ms) con voz sintética neutralizada en frecuencias medias (1.2 kHz - 3.5 kHz).
+1. **Voz Manos Libres (`whisper-rs` + Copiloto IA `Candle` / `ort`):**
+   * *Entrada:* Micrófono de gradiente de presión dentro de la cavidad oral del casco con cancelación de ruido del soplador de $O_2$, transcrito localmente en el nodo Rust mediante **`whisper-rs`** con gramática finita BNF (`[SISTEMA] + [COMANDO] + [PARÁMETRO]`, ej: *"ATLAS, RUTA ALTERNATIVA REFUGIO"*).
+   * *Salida:* Confirmación por audio-feedback de baja latencia (< 80 ms) y síntesis del Copiloto IA Neuro-Simbólico Offline (**`Candle` / ONNX Runtime `ort`**) en frecuencias medias (1.2 kHz - 3.5 kHz).
 2. **Audio Espacial 3D (Binaural Bone-Conduction Earsets):**
    * Dos transductores de conducción ósea integrados en la cofia del astronauta ("Snoopy cap").
    * *Vector de Navegación:* Un pulso de audio sonoro ("sonar ping" a 800 Hz) que se percibe espacialmente situado en el ángulo azimutal exacto del siguiente waypoint (si el waypoint está a 30° a estribor, el sonido se percibe físicamente viniendo de 30° a la derecha).
@@ -123,19 +124,19 @@ El flujo operativo cubre las tres fases de misión del Triángulo de Supervivenc
 ```mermaid
 graph TD
     %% Subgraphs por fases
-    subgraph FASE_1_PRE_EVA ["FASE 1: PRE-EVA (CONSOLA BASE HÁBITAT)"]
-        A1[Inicio: Consola 3D Gemelo Digital Melas Chasma] --> A2[Exploración con Lupa 'Spyglass':<br/>Capas CRISM Sulfatos + HiRISE DEM 1m]
-        A2 --> A3[Trazado del 'Triángulo de Supervivencia':<br/>Base Alpha -> WP1 ISRU -> WP2 Talud -> WP3 Refugio]
-        A3 --> A4[Cálculo de Costo Metabólico D* Lite:<br/>Walkback Limit Dual: Oxígeno vs Tasa VO2]
-        A4 --> A5{Test de Resiliencia<br/>'Chaos Mode'?}
+    subgraph FASE_1_PRE_EVA ["FASE 1: PRE-EVA (CONSOLA BASE: REACT + CESIUMJS + THREE.JS)"]
+        A1[Inicio: Consola 3D CesiumJS + Malla h3o] --> A2[Exploración Lupa 'Spyglass' Three.js:<br/>Capas COG CRISM + THEMIS + HiRISE DEM]
+        A2 --> A3[Trazado GeoJSON 'Triángulo de Supervivencia':<br/>Base Alpha -> WP1 ISRU -> WP2 Talud -> WP3 Refugio]
+        A3 --> A4[Cálculo D* Lite Metabólico en Rust WASM:<br/>Walkback Limit Dual: Oxígeno vs Tasa VO2]
+        A4 --> A5{Test 'Chaos Mode'<br/>en Rust WASM?}
         A5 -- Fallo: Ruta Insegura --> A3
-        A5 -- Validación Exitosa --> A6[Generación de Paquete de Misión Criptográfico Offline]
-        A6 --> A7[Sincronización Cable umbilical / RF Corta al Nodo Edge Traje EVA]
+        A5 -- Validación 99.4% --> A6[Exportación GeoJSON / Apache Parquet Offline]
+        A6 --> A7[Sincronización vía Eclipse Zenoh al Nodo ROS 2 rclrs del Traje]
     end
 
-    subgraph FASE_2_IN_EVA_NOMINAL ["FASE 2: OPERACIÓN IN-EVA NOMINAL (EDGE TRAJE)"]
-        B1[Egreso de Airlock Melas Base] --> B2[Canyon-TRN Activado:<br/>Skyline Matching en Visor HUD]
-        B2 --> B3[Guiado AR en Cian Eléctrico #00F5D4:<br/>Polilínea sobre terreno + Audio 3D a WP1]
+    subgraph FASE_2_IN_EVA_NOMINAL ["FASE 2: OPERACIÓN IN-EVA NOMINAL (EDGE TRAJE RUST rclrs)"]
+        B1[Egreso de Airlock Melas Base] --> B2[Canyon-TRN Rust Activado:<br/>Skyline Matching 0.04m en Visor HUD]
+        B2 --> B3[Guiado AR Three.js Cian #00F5D4:<br/>Polilínea sobre terreno + Audio 3D a WP1]
         B3 --> B4[Arribo a WP1: Depósitos Sulfatos Hidratados ISRU]
         B4 --> B5[Muestreo Geológico & Telemetría en Rango]
         B5 --> B6[Navegación hacia WP2: Falla / Talud Peligroso]
@@ -148,7 +149,7 @@ graph TD
         C2 --> C3[DYNAMIC GOAL SWITCHING:<br/>Cancelación automática de WP2 y retorno a Base]
         C3 --> C4[Algoritmo D* Lite Edge evalúa vectores:<br/>Distancia Base = 4.2 km / Refugio WP3 = 680 m]
         C4 --> C5[Selección Autónoma: VECTOR REFUGIO WP3 (Oquedad en Pared de Cañón)]
-        C5 --> C6[HUD Modificado a Modo Evacuación:<br/>Magenta Hiper-saturado #FF1744 + Vector Guiado WP3]
+        C5 --> C6[HUD Modificado a Modo Evacuación:<br/>Chevrones Ámbar/Magenta #FF1744 + Copiloto Candle/whisper-rs]
         C6 --> C7[Audio Espacial 3D: Baliza Sonora Pulsada continua 1.2 kHz]
         C7 --> C8[Háptica en Muñeca: Pulsos Direccionales de Egress]
         C8 --> C9[Navegación ciega guiada por Skyline Canyon-TRN]
@@ -177,20 +178,20 @@ graph TD
 ### 3.2 Explicación Paso a Paso del Flujo de Interacción y Toma de Decisiones
 
 #### FASE 1: Pre-EVA en Consola de Base de Hábitat (Planificación & Simulación)
-1. **Acceso al Gemelo Digital 3D:** El Especialista GIS (Persona A) inicia la consola en Base Alpha. El sistema renderiza la malla hexagonal Uber H3 (resolución 12, ~3 metros por celda) del sector central de Melas Chasma.
-2. **Exploración con Lupa "Spyglass":** Mediante un viewport flotante circular (Spyglass Tool), el operador hace sweep sobre el terreno desértico. La herramienta cruza en tiempo real el modelo de elevación HiRISE con firmas espectrales CRISM, detectando y resaltando depósitos de sulfatos polihidratados (recurso crítico para extracción de agua ISRU) en las coordenadas de WP1.
-3. **Trazo del Triángulo de Supervivencia:**
+1. **Acceso al Gemelo Digital 3D (`TypeScript + React + CesiumJS + TailwindCSS`):** El Especialista GIS (Persona A) inicia la consola en Base Alpha. El sistema renderiza el terreno 3D de Melas Chasma (capas Cloud-Optimized GeoTIFF **COG**) junto a la malla hexagonal **`h3o`** (resolución 12, ~3 metros por celda) almacenada en **Apache Parquet / JSON**.
+2. **Exploración con Lupa "Spyglass" (`Three.js` Custom Shader):** Mediante un viewport circular sobre CesiumJS, el operador hace sweep sobre el terreno. Un shader WebGL/WebGPU en Three.js cruza en tiempo real el modelo de elevación HiRISE con firmas espectrales CRISM y THEMIS, resaltando los depósitos de sulfatos polihidratados (recurso hídrico ISRU) en WP1.
+3. **Trazo del Triángulo de Supervivencia (`GeoJSON`):**
    * **Base Alpha -> WP1 (Sulfatos ISRU):** Punto de extracción mineral (distancia: 2.4 km).
-   * **WP1 -> WP2 (Talud Peligroso):** Escarpe estructural con pendiente media de 23° (estudio geológico de estratigrafía).
+   * **WP1 -> WP2 (Talud Peligroso):** Escarpe estructural con pendiente > 20° (23.4°, estudio geológico de estratigrafía).
    * **WP3 (Oquedad de Refugio en pared norte):** Cavidad natural identificada con > 5 metros de roca basáltica superior, capaz de neutralizar protones de alta energía derivados de tormentas solares.
-4. **Cálculo de Costo Metabólico y Walkback Limit Dual:** El motor D* Lite evalúa el esfuerzo biológico estimando el consumo de $O_2$, agua de sublimación de PLSS y fatiga física del astronauta. Define la isócrona de "No Retorno", estableciendo que el punto crítico de decisión debe ocurrir antes de superar el 60% del consumible de soporte vital más restrictivo.
-5. **Inyección de "Chaos Mode" (Prueba de Estrés):** El Comandante activa la simulación estocástica. El sistema inyecta perturbaciones: viento catabático repentino de 35 m/s, caída de repetidor orbital y degradación del 15% de eficiencia en la celda de combustible del traje. Si el tiempo de evacuación proyectado a refugio supera los límites de supervivencia, el sistema bloquea la aprobación de la ruta hasta optimizarla.
-6. **Compilación de Paquete Offline y Sincronización:** Aprobada la ruta, se genera una base de datos local embebida SQLite/FlatBuffers que contiene el DEM local, las polilíneas de ruta y las tablas hash del perfil de crestas (Skyline). Se transfiere al traje mediante acoplamiento físico en el airlock.
+4. **Cálculo de Costo Metabólico y Walkback Limit Dual (`Rust WASM`):** El motor D* Lite compilado a WebAssembly evalúa el esfuerzo biológico estimando el consumo de $O_2$, agua de sublimación de PLSS y fatiga física del astronauta. Define la isócrona de "No Retorno", estableciendo el punto crítico de decisión.
+5. **Inyección de "Chaos Mode" (Prueba de Estrés en `Rust WASM`):** El Comandante activa la simulación estocástica (100 escenarios Poisson/Markov a velocidad nativa en WASM). El sistema inyecta viento catabático de 35 m/s, caída de enlace radio y pico de radiación SPE, certificando en verde que el Refugio WP3 garantiza un **99.4%** de supervivencia.
+6. **Compilación de Paquete Offline y Sincronización (`Eclipse Zenoh`):** Aprobada la ruta en **GeoJSON** y los atributos de malla en **Apache Parquet**, se sincroniza con el nodo **ROS 2 (`rclrs`)** del traje EVA mediante el protocolo **Eclipse Zenoh** (tolerante a desconexiones), dejando cacheados en local el DEM y las tablas de crestas (Skyline).
 
-#### FASE 2: In-EVA Nominal (Ejecución Edge en Traje Presurizado)
-1. **Egreso y Enganche de Canyon-TRN:** La astronauta (Persona B) despresuriza el airlock y desciende al terreno. Al no existir satélites visibles en el cañón, las cámaras perimétricas del casco capturan el perfil de las crestas rocosas de 7 km de altura y lo comparan con la base de datos local (Skyline Matching), logrando un anclaje posicional métrico con error < 0.8 m.
-2. **Guiado AR en Cian Eléctrico:** En el visor HUD transparente se proyecta la polilínea en cian brillante (`#00F5D4`), anclada conformalmente sobre el suelo marciano a 5 metros frente al astronauta. Paralelamente, el audio binaural emite pulsos direccionales suaves en el auricular correspondiente a la dirección del sendero.
-3. **Muestreo en WP1 (ISRU):** Arribo a la zona de sulfatos. El HUD muestra la ventana de muestreo con temporizador regresivo de consumibles. El astronauta confirma por comando de voz (*"ATLAS, REGISTRAR MUESTRA 01"*) sin emplear las manos.
+#### FASE 2: In-EVA Nominal (Ejecución Edge en Traje Presurizado `rclrs`)
+1. **Egreso y Enganche de Canyon-TRN:** La astronauta (Persona B) despresuriza el airlock y desciende al terreno. Al no existir satélites visibles en el cañón, las cámaras perimétricas del casco capturan el perfil de las crestas rocosas de 7 km de altura y lo comparan con la base de datos local (Skyline Matching en Rust), logrando un anclaje posicional métrico con precisión de **0.04 m**.
+2. **Guiado AR en Cian Eléctrico (`Three.js / WebGL`):** En el visor HUD transparente se proyecta la polilínea en cian brillante (`#00F5D4`), anclada conformalmente sobre el suelo marciano a 5 metros frente al astronauta. Paralelamente, el audio binaural emite pulsos direccionales suaves en el auricular correspondiente a la dirección del sendero.
+3. **Muestreo en WP1 (ISRU):** Arribo a la zona de sulfatos. El HUD muestra la ventana de muestreo con temporizador regresivo de consumibles. El astronauta confirma por comando de voz procesado con **`whisper-rs`** (*"ATLAS, REGISTRAR MUESTRA 01"*) sin emplear las manos.
 4. **Acercamiento a WP2 y Detección de Talud Crítico:** En camino hacia WP2, el sensor LiDAR de barrido continuo del traje detecta un aumento súbito de inclinación (> 20°) debido a un colapso reciente de regolito. Inmediatamente, el HUD tiñe las celdas hexagonales del suelo de color Ámbar (`#FFE600`) y emite una alerta háptica en muñeca para inducir un desvío de 45° a la izquierda, bordeando el talud sin comprometer la estabilidad mecánica.
 
 #### FASE 3: Multiemergencia Simultánea & Contingencia Extrema
@@ -198,10 +199,10 @@ graph TD
    * **Evento A:** Las paredes del cañón ocluyen completamente la señal con la Base (Corte total de radio NLOS).
    * **Evento B:** El sensor dosimétrico del traje detecta una lluvia masiva de protones relativistas: Alerta Solar Particle Event (SPE). Dosis letal proyectada en < 28 minutos a cielo abierto.
    * **Evento C:** Se levanta una tormenta repentina de polvo fino que reduce la visibilidad visual física a menos de 4 metros.
-2. **Triaje de Alerta Única (Zero Cognitive Overload):** El sistema R.E.D. ATLAS entra en modo supervivencia. Silencia cualquier telemetría secundaria de recolección de muestras. En el HUD se descartan todos los menús y métricas de confort. Aparece una sola señal prioritaria en Magenta Hiper-saturado (`#FF1744`): **"SPE ALERT // EVACUATE TO SHELTER"**.
-3. **Dynamic Goal Switching (D* Lite Autónomo Offline):**
+2. **Triaje de Alerta Única (Zero Cognitive Overload):** El sistema R.E.D. ATLAS entra en modo supervivencia. Silencia cualquier telemetría secundaria de recolección de muestras. En el HUD se descartan todos los menús y métricas de confort. Aparece una sola señal prioritaria en Magenta Hiper-saturado (`#FF1744`) y Ámbar (`#FFE600`): **"ALERTA FUSIONADA: EVACUAR A REFUGIO WP3"**, acompañada de un único mensaje de voz de 8 segundos del Copiloto IA (`Candle` + `whisper-rs`).
+3. **Dynamic Goal Switching (D* Lite Autónomo Offline en Rust):**
    * El procesador Edge del traje descarta instantáneamente la continuación de la misión a WP2.
-   * Evalúa los dos puntos de escape posibles: Retorno a Melas Base Alpha (distancia de regreso: 4.2 km por terreno ascendente, tiempo estimado: 64 minutos -> **INVIABLE / DOSIS LETAL**) versus Oquedad de Refugio WP3 (distancia: 680 m, tiempo estimado a marcha forzada: 11 minutos -> **VIABLE / SOBREVIVENCIA 99.4%**).
+   * Evalúa los dos puntos de escape posibles: Retorno a Melas Base Alpha (distancia de regreso: 4.2 km por terreno ascendente, tiempo estimado: 64 minutos -> **INVIABLE / DOSIS LETAL**) versus Oquedad de Refugio WP3 (distancia: 680 m, tiempo estimado a marcha forzada: **8 minutos** -> **VIABLE / SOBREVIVENCIA 99.4%**).
    * Conmuta de forma automática y autónoma el objetivo global hacia WP3.
 4. **Navegación Ciegan Guiada por Sensores:** Con visibilidad exterior casi nula por la tormenta de polvo, el astronauta sigue el túnel virtual AR proyectado en el HUD sobre su retina. El Audio 3D emite una baliza sonora continua a 1.2 kHz centrada en el eje de la cabeza, mientras los actuadores hápticos marcan el ritmo de zancada segura.
 5. **Entrada a Cavidad y Neutralización de Amenaza:** El astronauta penetra en la oquedad basáltica de WP3. Los sensores de radiación registran una caída del 98% en el flujo de protones al quedar protegida por 5 metros de techo rocoso. El HUD transmuta a Verde Bio (`#00FFA3`): **"SAFE ENVIRONMENT CONFIRMED"**. El nodo Edge inicia la emisión de pulsos baliza VLF (Very Low Frequency) que atraviesan la roca para notificar a la Base su estado y posición de resguardo.

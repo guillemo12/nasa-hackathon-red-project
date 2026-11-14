@@ -2,6 +2,7 @@
 ## Modo Táctico EVA: Visor AR de Casco (Waveguide) & Display de Muñeca (Cuff Unit)
 **Challenge:** Interplanetary Survival Guide: Martian Map (NASA Space Apps)  
 **Usuario Objetivo:** Dra. Elena Rostova (Especialista EVA-1 / Geóloga Planetaria)  
+**Stack de Traje EVA:** Nodo ROS 2 en Rust (`rclrs`) + Protocolo Eclipse Zenoh (radio intermitente) + Canyon-TRN + D* Lite Metabólico (Rust) + Sendero AR (`Three.js / WebGL`) + Copiloto IA (`Candle` / ONNX Runtime `ort` + `whisper-rs`)  
 **Normativa de Factores Humanos:** NASA-STD-3001 (Vol. 2) & ISO 9241-210 (Human-Centered Design)  
 **Estilo de Diseño:** Aero Precision Control — Minimalista, funcional, alto contraste sin saturación visual.
 
@@ -39,14 +40,16 @@
 +-----------------------------------------------------------------------------------------------------------------------------------+
 ```
 
-### 1.2 Anatomía de la Barra Superior "Walkback Limit Dual"
-La **Barra de Walkback Dual** resuelve la fragmentación de indicadores críticos mediante una única escala horizontal normalizada:
+### 1.2 Anatomía de la Barra Superior "Walkback Limit Dual" (`D* Lite Metabólico en Rust`)
+La **Barra de Walkback Dual** resuelve la fragmentación de indicadores críticos mediante una única escala horizontal normalizada, alimentada en tiempo real por el nodo **ROS 2 (`rclrs`)** ejecutando el algoritmo **D* Lite Metabólico en Rust**:
 1. **Segmento A (Consumibles Totales):** Barra de progreso continua que representa el valor limitante de la tríada vital ($O_2$, agua sublimador y batería Li-Ion). En estado nominal muestra un 94% con degradación asintótica.
 2. **Marca 1 — Límite de Retorno a Hábitat (Base Alpha):** Línea vertical que indica el Punto de No Retorno (PNR). Se recalcula en tiempo real según el perfil topográfico ascendente de vuelta ($4.2\text{ km}$, $+202\text{ m}$ de desnivel). En estado nominal marca $02\text{h }44\text{m}$.
 3. **Marca 2 — Límite de Escape a Refugio WP3 (Oquedad Basáltica):** Zona de margen extendido garantizada por la proximidad del refugio natural ($680\text{ m}$, talud descendente), otorgando $+1.8\text{h}$ de holgura operativa segura.
 
-### 1.3 Wireframe de la Unidad de Muñeca (Cuff Display Unit - 7 pulgadas táctil/mecánica)
-Diseñada para operarse con guantes rígidos presurizados RMG (pérdida del 85% de motricidad fina):
+* **Proyección del Sendero AR (`Three.js / WebGL`):** Sobre el terreno marciano se proyecta el sendero luminoso conformal en color **Cian Eléctrico (`#00F5D4`)**, anclado mediante **Canyon-TRN** (Skyline Matching con precisión de `0.04 m`).
+
+### 1.3 Wireframe de la Unidad de Muñeca (Cuff Display Unit - 7 pulgadas con botones sobredimensionados)
+Diseñada para operarse con guantes rígidos presurizados RMG (pérdida del 85% de motricidad fina), relegando las acciones secundarias fuera del visor principal y evitando gestos táctiles finos (sin *pinch-to-zoom* ni *swipes*):
 ```text
 +-----------------------------------------------------------------------+
 |  CUFF UNIT // XEMU-04             [ ENLACE BASE: NOMINAL ]  MET 04:38 |
@@ -97,20 +100,59 @@ Diseñada para operarse con guantes rígidos presurizados RMG (pérdida del 85% 
 ```
 
 ### 2.2 Protocolo de Triaje "Fusión de Alerta Única" (Anti-Pánico)
-* **Justificación de Factores Humanos (NASA-STD-3001):** En situaciones de peligro extremo en superficie marciana (visibilidad $<4\text{ m}$, radio cortada, talud inestable y radiación ionizante), presentar 4 notificaciones separadas desencadena parálisis cognitiva y visión de túnel.
+* **Justificación de Factores Humanos (NASA-STD-3001):** En situaciones de peligro extremo en superficie marciana (visibilidad $<4\text{ m}$, radio **Eclipse Zenoh** cortada en sombra NLOS, talud inestable de $22^\circ$ y radiación ionizante SPE), presentar 4 pop-ups o notificaciones separadas desencadena parálisis cognitiva y visión de túnel.
 * **Mecanismo de Fusión:**
-  1. El sistema sintetiza los 4 disparadores en una única directriz táctica unívoca.
-  2. La barra Walkback bloquea y tacha el retorno al Hábitat (tiempo requerido $64\text{ min} > 26\text{ min}$ de dosis letal).
-  3. El sendero AR sobre el regolito muta de línea continua cian a chevrones pulsantes en contraste ámbar/naranja hacia el rumbo $285^\circ$ (vector más corto y firme).
-  4. **Mensaje de Voz Manos Libres Sintetizado (8 segundos):**  
+  1. El nodo **ROS 2 (`rclrs`)** sintetiza los 4 disparadores en una única directriz táctica unívoca mediante **Dynamic Goal Switching** en **D* Lite Metabólico (Rust)**.
+  2. La barra Walkback bloquea y tacha en gris/rojo el retorno al Hábitat (tiempo requerido $64\text{ min} > 26\text{ min}$ de dosis letal) y activa automáticamente el tramo hacia el **Refugio WP3 ($680\text{ m}$ / $8\text{ min}$)**.
+  3. El sendero AR renderizado con **Three.js / WebGL** sobre el regolito muta de línea continua cian a **chevrones ámbar/rojo pulsantes** hacia el rumbo $285^\circ$ (vector más corto y firme fuera de la trampa de arena).
+  4. **Mensaje de Voz Manos Libres del Copiloto IA Neuro-Simbólico (`Candle` + `whisper-rs`, 8 segundos):**  
      *"Alerta combinada. Retorno a Base inviable por radiación solar. Siga chevrones rumbo dos-ocho-cinco hacia refugio basáltico. Ocho minutos a paso firme."*
 
 ### 2.3 Matriz Comparativa de Comportamiento UI según Nivel de Alerta
 
 | Componente UI | Modo Nominal (Pantalla 3) | Modo Precaución (1 Anomalía) | Modo Supervivencia Crítica (Pantalla 4) |
 | :--- | :--- | :--- | :--- |
-| **Barra Walkback Dual** | Verde/Cian estático; balance Base vs Refugio visible. | Ámbar en sector afectado; recálculo de margen. | Retorno a Base tachado en carmesí; foco 100% en Refugio WP3. |
-| **Sendero Conformal AR** | Línea fina continua cian (`#00F5D4`), anclaje estático. | Borde punteado amarillo sobre áreas con talud $>18^\circ$. | Chevrones gruesos dinámicos ámbar/rojo indicando cadencia de escape. |
-| **Iconografía Superior** | `LOS LINK: 100%` / `TRN: NOMINAL`. | `ENLACE DIFRACCIÓN: 72%` (Advertencia). | `AUTÓNOMO EDGE // CORTE NLOS` (Modo soberano sin satélites). |
+| **Barra Walkback Dual** | Verde/Cian estático; balance Base vs Refugio visible. | Ámbar en sector afectado; recálculo de margen. | Retorno a Base tachado en gris/carmesí; foco 100% en Refugio WP3 (8 min). |
+| **Sendero Conformal AR (`Three.js`)** | Línea fina continua cian (`#00F5D4`), anclaje estático. | Borde punteado amarillo sobre áreas con talud $>18^\circ$. | Chevrones gruesos dinámicos ámbar/rojo indicando cadencia de escape. |
+| **Iconografía Superior** | `ZENOH LOS: 100%` / `CANYON-TRN: LOCK (0.04m)`. | `ENLACE ZENOH DIFRACCIÓN: 72%` (Advertencia). | `AUTÓNOMO EDGE // CORTE NLOS` (`Canyon-TRN Rust Offline`). |
 | **Métricas Traje/Soporte** | Desglose completo (FC, $VO_2$, kPa, autonomía). | Resaltado del parámetro degradado. | Supresión total; únicamente tiempo restante a refugio y rumbo. |
-| **Audio y Háptica** | Pings suaves azimutales a 800 Hz cada 10 s. | Alerta por tono doble en proximidad a talud. | Baliza binaural continua a 1.2 kHz y pulso direccional rítmico en muñeca. |
+| **Audio y Háptica (`Candle` / `whisper-rs`)** | Pings suaves azimutales a 800 Hz cada 10 s. | Alerta por tono doble en proximidad a talud. | Mensaje único de 8 s + baliza binaural continua a 1.2 kHz y pulso direccional en muñeca. |
+
+---
+
+### 2.4 Diagrama de Estados UI del Casco EVA (`stateDiagram-v2`)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Modo_Nominal: Desconexión Airlock / Canyon-TRN Lock (0.04m)
+
+    state Modo_Nominal {
+        [*] --> Navegacion_Cian
+        Navegacion_Cian: Sendero AR Three.js Cian (#00F5D4)
+        Navegacion_Cian: Barra Walkback Dual (Base + WP3)
+        Navegacion_Cian: Enlace Eclipse Zenoh Activo
+    }
+
+    Modo_Nominal --> Modo_Precaucion: 1 Anomalía (Talud >18° o Difracción Zenoh)
+    Modo_Precaucion --> Modo_Nominal: Anomalía despejada / Retorno a corredor seguro
+
+    state Modo_Precaucion {
+        [*] --> Alerta_Contextual
+        Alerta_Contextual: Sendero borde punteado Ámbar (#FFE600)
+        Alerta_Contextual: Resaltado de parámetro degradado en HUD
+    }
+
+    Modo_Nominal --> Modo_Supervivencia_Critica: Multiemergencia (NLOS + SPE + Polvo + Talud 22°)
+    Modo_Precaucion --> Modo_Supervivencia_Critica: Escalada simultánea de amenazas
+
+    state Modo_Supervivencia_Critica {
+        [*] --> Triaje_Alerta_Unica
+        Triaje_Alerta_Unica: Canyon-TRN Rust Offline + Dynamic Goal Switching
+        Triaje_Alerta_Unica: Base tachada / Ruta activa WP3 (8 min)
+        Triaje_Alerta_Unica: Chevrones Ámbar/Rojo + Voz Candle/whisper-rs (8s)
+    }
+
+    Modo_Supervivencia_Critica --> Refugio_WP3_Seguro: Llegada a Oquedad Basáltica (>5m roca)
+    Refugio_WP3_Seguro: HUD Verde Bio (#00FFA3) / Emisión Baliza VLF
+    Refugio_WP3_Seguro --> [*]
+```
