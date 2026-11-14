@@ -1,12 +1,22 @@
 # 🛰️ `data/` — Catálogo de Datasets NASA y Escenarios de Misión
 
-Directorio de metadatos, esquemas geoespaciales y coordenadas de misión gestionado principalmente por la **Persona 1 (Ciencia)** y la **Persona 3 (Ingeniería de Datos)**:
+Datos, esquemas y código del pipeline científico de la **Persona 1 (Ciencia)**, consumidos por el motor en Rust de la **Persona 3** y por la consola (Fase 4). La explicación científica está en [`docs/01-planetary-science-mission/ENTREGABLE_1_CIENCIA_Y_MISION.md`](../docs/01-planetary-science-mission/ENTREGABLE_1_CIENCIA_Y_MISION.md).
 
-* **`data/nasa-layers/`:** Metadatos y referencias oficiales del *Planetary Data System (PDS)* y *Mars Trek WMTS* para las 6 capas de **R.E.D. ATLAS**:
-  1. `MOLA_HRSC_DEM` (Topografía, pendientes y *Sky View Factor*)
-  2. `HiRISE_CTX_ORTHO` (Imagen óptica de obstáculos a 0.25 m/px)
-  3. `THEMIS_THERMAL_INERTIA` (Detección de trampas de regolito $<150\text{ TIU}$)
-  4. `CRISM_SHARAD_ISRU` (Sulfatos polihidratados y agua subterránea)
-  5. `MCS_MEDA_WEATHER` (Vientos catabáticos y opacidad de polvo $\tau$)
-  6. `MSL_RAD_DOSIMETRY` (Radiación GCR/SPE y apantallamiento topográfico)
-* **`data/mission-scenarios/`:** Coordenadas y parámetros del escenario **"Triángulo de Supervivencia"** en **Valles Marineris — Melas Chasma** (~9.8°S, 283.6°E).
+| Carpeta | Contenido |
+| :--- | :--- |
+| [`pipeline/`](pipeline/README.md) | Paquete Python `red_atlas_p1` (gestionado con `uv`) que lee los productos reales de la NASA y genera todo lo demás: módulos `terrain`, `scenario` y `hexgrid` |
+| [`nasa-layers/`](nasa-layers/README.md) | Productos NASA resueltos y su cobertura medida, comprobación de realidad del sitio, contrato de los COG y malla H3 de la ruta en Parquet |
+| [`mission-scenarios/`](mission-scenarios/README.md) | Escenario «Triángulo de Supervivencia» de la EVA-07: nodos y tramos en GeoJSON, umbrales Verde/Ámbar/Rojo y cronología minuto a minuto |
+
+**Emplazamiento:** cuenca suroeste de Melas Chasma (Valles Marineris), al pie de su pared suroeste. Base en 9,89646°S, 283,38920°E (76,61080°W), a −1.660 m sobre el areoide MOLA. El triángulo se trasladó 13,6 km desde el diseño original en 9,8°S, 283,6°E, donde el DTM CTX no muestra ni el talud del WP2 ni el escarpe del WP3 (véase [`nasa-layers/SITE_REALITY_CHECK.md`](nasa-layers/SITE_REALITY_CHECK.md)).
+
+**Convenciones comunes:** CRS `IAU_2015:49900` (Marte esférico, R = 3.396.190 m, planetocéntrico, longitud Este 0–360); GeoJSON en orden `[lon, lat, elev]`; procedencia de cada valor como medido, derivado o escenario. Los COG generados viven en `pipeline/build/` y no se versionan.
+
+Regenerar todo, desde `data/pipeline/`:
+
+```bash
+uv sync
+uv run python -m red_atlas_p1.terrain
+uv run python -m red_atlas_p1.scenario
+uv run python -m red_atlas_p1.hexgrid
+```

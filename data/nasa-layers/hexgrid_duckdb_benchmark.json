@@ -1,0 +1,247 @@
+{
+  "parquet": "data/nasa-layers/hexgrid_route_res12.parquet",
+  "filas": 141313,
+  "duckdb": "2.0.0",
+  "maquina": "Darwin arm64, Python 3.12.13",
+  "frio_conexion_y_primera_celda_ms": 13.36,
+  "celda_por_indice": {
+    "n": 200,
+    "mediana_ms": 2.319,
+    "p95_ms": 2.522,
+    "max_ms": 4.34
+  },
+  "spyglass_radio": {
+    "radio_m": 100.0,
+    "n": 50,
+    "mediana_ms": 6.306,
+    "p95_ms": 6.644,
+    "max_ms": 6.884
+  },
+  "spyglass_celdas": {
+    "radio_m": 100.0,
+    "n": 50,
+    "mediana_ms": 5.745,
+    "p95_ms": 6.096,
+    "max_ms": 6.192
+  },
+  "spyglass_kring": {
+    "k": 10,
+    "n": 50,
+    "mediana_ms": 2.345,
+    "p95_ms": 2.487,
+    "max_ms": 2.725
+  },
+  "perfil_tramo": {
+    "L1": {
+      "n": 10,
+      "mediana_ms": 5.128,
+      "p95_ms": 5.537,
+      "max_ms": 5.537
+    },
+    "L2": {
+      "n": 10,
+      "mediana_ms": 4.697,
+      "p95_ms": 4.922,
+      "max_ms": 4.922
+    },
+    "L3": {
+      "n": 10,
+      "mediana_ms": 4.048,
+      "p95_ms": 4.278,
+      "max_ms": 4.278
+    },
+    "L4": {
+      "n": 10,
+      "mediana_ms": 5.258,
+      "p95_ms": 5.57,
+      "max_ms": 5.57
+    },
+    "R1": {
+      "n": 10,
+      "mediana_ms": 5.248,
+      "p95_ms": 5.582,
+      "max_ms": 5.582
+    }
+  },
+  "ejemplo_celda_wp2": {
+    "h3_index": 633025751279123967,
+    "elev_m": -1463.311767578125,
+    "slope_deg_effective": 19.378538131713867,
+    "tiu_effective": 110.0,
+    "tiu_effective_prov": 3,
+    "svf_effective": 0.8399587869644165,
+    "los_base_effective": 0.0,
+    "hazard_bitmask": 10
+  },
+  "ejemplo_spyglass_wp3": [
+    {
+      "sector": "derecha_inercia_termica",
+      "n_celdas": 103,
+      "h2o_max_pct": null,
+      "h2o_cobertura": 0.0,
+      "tiu_min": 620.0,
+      "tiu_cobertura": 0.13592233009708737,
+      "themis_noche_dn_media": 134.35922330097088,
+      "pendiente_max_deg": 22.4668025970459,
+      "pendiente_media_deg": 18.178789398045215,
+      "svf_min": 0.15000000596046448,
+      "svf_medio": 0.6810151570051619,
+      "fraccion_con_los": 0.0,
+      "banderas": 13
+    },
+    {
+      "sector": "izquierda_pendiente_svf",
+      "n_celdas": 102,
+      "h2o_max_pct": null,
+      "h2o_cobertura": 0.0,
+      "tiu_min": 620.0,
+      "tiu_cobertura": 0.18627450980392157,
+      "themis_noche_dn_media": 131.9313725490196,
+      "pendiente_max_deg": 24.108474731445312,
+      "pendiente_media_deg": 20.87438071942797,
+      "svf_min": 0.15000000596046448,
+      "svf_medio": 0.6293224034940496,
+      "fraccion_con_los": 0.0,
+      "banderas": 13
+    },
+    {
+      "sector": "norte_hidratacion",
+      "n_celdas": 102,
+      "h2o_max_pct": null,
+      "h2o_cobertura": 0.0,
+      "tiu_min": 620.0,
+      "tiu_cobertura": 0.13725490196078433,
+      "themis_noche_dn_media": 147.34313725490196,
+      "pendiente_max_deg": 22.193645477294922,
+      "pendiente_media_deg": 12.33450569826014,
+      "svf_min": 0.15000000596046448,
+      "svf_medio": 0.719809308940289,
+      "fraccion_con_los": 0.0,
+      "banderas": 13
+    }
+  ],
+  "ejemplo_spyglass_wp1": [
+    {
+      "sector": "derecha_inercia_termica",
+      "n_celdas": 103,
+      "h2o_max_pct": 12.0,
+      "h2o_cobertura": 0.9611650485436893,
+      "tiu_min": 410.0,
+      "tiu_cobertura": 0.9611650485436893,
+      "themis_noche_dn_media": 228.5242718446602,
+      "pendiente_max_deg": 10.345558166503906,
+      "pendiente_media_deg": 5.76855857163957,
+      "svf_min": 0.8478379249572754,
+      "svf_medio": 0.8482214698513735,
+      "fraccion_con_los": 0.941747572815534,
+      "banderas": 24
+    },
+    {
+      "sector": "izquierda_pendiente_svf",
+      "n_celdas": 102,
+      "h2o_max_pct": 12.0,
+      "h2o_cobertura": 0.8921568627450981,
+      "tiu_min": 410.0,
+      "tiu_cobertura": 0.9019607843137255,
+      "themis_noche_dn_media": 225.3921568627451,
+      "pendiente_max_deg": 7.3049092292785645,
+      "pendiente_media_deg": 6.189158280690511,
+      "svf_min": 0.8478177189826965,
+      "svf_medio": 0.8480723804118586,
+      "fraccion_con_los": 0.35294117647058826,
+      "banderas": 24
+    },
+    {
+      "sector": "norte_hidratacion",
+      "n_celdas": 102,
+      "h2o_max_pct": 12.0,
+      "h2o_cobertura": 0.9117647058823529,
+      "tiu_min": 410.0,
+      "tiu_cobertura": 0.9117647058823529,
+      "themis_noche_dn_media": 226.7156862745098,
+      "pendiente_max_deg": 9.799657821655273,
+      "pendiente_media_deg": 7.783258503558589,
+      "svf_min": 0.8478808999061584,
+      "svf_medio": 0.8484239046480141,
+      "fraccion_con_los": 0.09803921568627451,
+      "banderas": 24
+    }
+  ],
+  "perfiles": {
+    "L1": {
+      "leg_id": "L1",
+      "n_celdas": 147,
+      "longitud_recta_m": 1493.350830078125,
+      "longitud_camino_celdas_m": 1593.587158203125,
+      "distancia_geojson_m": 1500,
+      "desnivel_m": 77.2049560546875,
+      "desnivel_geojson_m": 78,
+      "pendiente_max_deg": 7.992311477661133,
+      "pendiente_max_geojson_deg": 8.0,
+      "fraccion_sin_los": 0.5102040816326531,
+      "margen_los_min_m": -7.3624420166015625,
+      "celdas_sin_dato": 0
+    },
+    "L2": {
+      "leg_id": "L2",
+      "n_celdas": 127,
+      "longitud_recta_m": 1198.6387939453125,
+      "longitud_camino_celdas_m": 1373.3447265625,
+      "distancia_geojson_m": 1200,
+      "desnivel_m": 119.1021728515625,
+      "desnivel_geojson_m": 118,
+      "pendiente_max_deg": 19.851743698120117,
+      "pendiente_max_geojson_deg": 19.9,
+      "fraccion_sin_los": 0.5748031496062992,
+      "margen_los_min_m": -55.99375915527344,
+      "celdas_sin_dato": 0
+    },
+    "L3": {
+      "leg_id": "L3",
+      "n_celdas": 63,
+      "longitud_recta_m": 595.3716430664062,
+      "longitud_camino_celdas_m": 676.9205322265625,
+      "distancia_geojson_m": 600,
+      "desnivel_m": -55.18896484375,
+      "desnivel_geojson_m": -56,
+      "pendiente_max_deg": 22.4668025970459,
+      "pendiente_max_geojson_deg": 22.5,
+      "fraccion_sin_los": 1.0,
+      "margen_los_min_m": -74.66609191894531,
+      "celdas_sin_dato": 0
+    },
+    "L4": {
+      "leg_id": "L4",
+      "n_celdas": 162,
+      "longitud_recta_m": 1600.7313232421875,
+      "longitud_camino_celdas_m": 1758.6448974609375,
+      "distancia_geojson_m": 1600,
+      "desnivel_m": -141.1181640625,
+      "desnivel_geojson_m": -140,
+      "pendiente_max_deg": 20.054189682006836,
+      "pendiente_max_geojson_deg": 20.1,
+      "fraccion_sin_los": 0.2777777777777778,
+      "margen_los_min_m": -28.200397491455078,
+      "celdas_sin_dato": 0
+    },
+    "R1": {
+      "leg_id": "R1",
+      "n_celdas": 224,
+      "longitud_recta_m": 2148.228759765625,
+      "longitud_camino_celdas_m": 2435.55615234375,
+      "distancia_geojson_m": 2150,
+      "desnivel_m": -196.30712890625,
+      "desnivel_geojson_m": -196,
+      "pendiente_max_deg": 21.379270553588867,
+      "pendiente_max_geojson_deg": 21.4,
+      "fraccion_sin_los": 0.5133928571428571,
+      "margen_los_min_m": -66.00062561035156,
+      "celdas_sin_dato": 0
+    }
+  },
+  "ejemplo_spyglass_celdas_wp3": {
+    "crism_water_cells": 102,
+    "themis_trap_cells": 103,
+    "mola_slope_svf_cells": 102
+  }
+}

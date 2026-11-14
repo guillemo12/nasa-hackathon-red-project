@@ -1,0 +1,441 @@
+{
+  "type": "FeatureCollection",
+  "name": "triangulo_supervivencia_melas_eva07",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "IAU_2015:49900",
+      "note": "Mars (2015) esferico, ocentrico, longitud Este positiva 0-360. Radio 3396190 m. Orden de coordenadas GeoJSON: [lon_E, lat, elev_MOLA_m]"
+    }
+  },
+  "metadata": {
+    "mission": "EVA-07",
+    "region": "Valles Marineris - Melas Chasma (cuenca SW, pie de la pared suroeste)",
+    "perimeter_m": 4900,
+    "h3_suggested_res": {
+      "nav": 12,
+      "themis": 9
+    },
+    "units": {
+      "distance": "m",
+      "elev": "m sobre areoide MOLA",
+      "ti": "J m-2 K-1 s-1/2"
+    },
+    "site_relocation": {
+      "original_base": {
+        "lat_pc_deg": -9.8,
+        "lon_e_deg": 283.6
+      },
+      "new_base": {
+        "lat_pc_deg": -9.89646,
+        "lon_e_deg": 283.3892
+      },
+      "displacement_km": 13.57,
+      "bearing_deg": 245.0,
+      "transform": "figura rigida: traslacion + rotacion horaria de 37 grados, sin simetria especular",
+      "reason": "En 9.8S 283.6E no existen ni la rampa del WP2 ni el escarpe del WP3 (ver data/nasa-layers/SITE_REALITY_CHECK.md).",
+      "original_geojson": "triangulo_supervivencia_original_9.8S_283.6E.geojson"
+    },
+    "provenance_legend": {
+      "medido": "leido de un producto real (DTM CTX 20 m)",
+      "derivado": "calculado a partir de datos medidos",
+      "escenario": "supuesto de diseno, no contrastado con datos"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "BASE",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.3892,
+          -9.89646,
+          -1660
+        ]
+      },
+      "properties": {
+        "node_id": "BASE",
+        "name": "Nodo 0 - Base / Habitat",
+        "role": "habitat",
+        "lat_pc_deg": -9.89646,
+        "lon_e_deg": 283.3892,
+        "lon_w_deg": 76.6108,
+        "elev_mola_m": -1660,
+        "slope_local_deg": 2.8,
+        "thermal_inertia_tiu": 320,
+        "sky_view_factor": 0.85,
+        "radio_los_base": true,
+        "h2o_wt_pct": null,
+        "hazards": [],
+        "geology": "Terraza aluvial (abanico distal) sobre el piso de la cuenca SW de Melas",
+        "provenance": "posicion elegida por busqueda rigida sobre DTM CTX 20 m (D); cota medida en el DTM CTX P18_007878_1703_XN_09S076W_ (M); pendiente, sky_view_factor_dem, horizonte y linea de vista derivados de ese DTM (D); inercia termica, geologia y agua son escenario de diseno (E)",
+        "sky_view_factor_dem": 0.85,
+        "radio_los_margin_m": null,
+        "horizon_max_deg": 19.0,
+        "property_provenance": {
+          "lat_pc_deg": "derivado",
+          "lon_e_deg": "derivado",
+          "lon_w_deg": "derivado",
+          "elev_mola_m": "medido",
+          "slope_local_deg": "derivado",
+          "thermal_inertia_tiu": "escenario",
+          "sky_view_factor": "derivado",
+          "sky_view_factor_dem": "derivado",
+          "radio_los_base": "derivado",
+          "radio_los_margin_m": "derivado",
+          "horizon_max_deg": "derivado",
+          "h2o_wt_pct": "escenario",
+          "geology": "escenario",
+          "hazards": "escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WP1",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.401259,
+          -9.918797,
+          -1582
+        ]
+      },
+      "properties": {
+        "node_id": "WP1",
+        "name": "Waypoint 1 - ISRU Agua",
+        "role": "isru_water",
+        "lat_pc_deg": -9.918797,
+        "lon_e_deg": 283.401259,
+        "lon_w_deg": 76.598741,
+        "elev_mola_m": -1582,
+        "slope_local_deg": 6.7,
+        "thermal_inertia_tiu": 410,
+        "sky_view_factor": 0.85,
+        "radio_los_base": true,
+        "h2o_wt_pct": 12.0,
+        "hazards": [],
+        "geology": "Deposito estratificado claro con sulfatos polihidratados interestratificados con monohidratados",
+        "provenance": "posicion elegida por busqueda rigida sobre DTM CTX 20 m (D); cota medida en el DTM CTX P18_007878_1703_XN_09S076W_ (M); pendiente, sky_view_factor_dem, horizonte y linea de vista derivados de ese DTM (D); inercia termica, geologia y agua son escenario de diseno (E)",
+        "sky_view_factor_dem": 0.85,
+        "radio_los_margin_m": 0.6,
+        "horizon_max_deg": 20.1,
+        "property_provenance": {
+          "lat_pc_deg": "derivado",
+          "lon_e_deg": "derivado",
+          "lon_w_deg": "derivado",
+          "elev_mola_m": "medido",
+          "slope_local_deg": "derivado",
+          "thermal_inertia_tiu": "escenario",
+          "sky_view_factor": "derivado",
+          "sky_view_factor_dem": "derivado",
+          "radio_los_base": "derivado",
+          "radio_los_margin_m": "derivado",
+          "horizon_max_deg": "derivado",
+          "h2o_wt_pct": "escenario",
+          "geology": "escenario",
+          "hazards": "escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WP2",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.386234,
+          -9.932611,
+          -1464
+        ]
+      },
+      "properties": {
+        "node_id": "WP2",
+        "name": "Waypoint 2 - Geologia / Alto Riesgo",
+        "role": "science_hazard",
+        "lat_pc_deg": -9.932611,
+        "lon_e_deg": 283.386234,
+        "lon_w_deg": 76.613766,
+        "elev_mola_m": -1464,
+        "slope_local_deg": 19.4,
+        "thermal_inertia_tiu": 110,
+        "sky_view_factor": 0.84,
+        "radio_los_base": false,
+        "h2o_wt_pct": null,
+        "hazards": [
+          "H3_regolith_trap",
+          "H4_radio_shadow"
+        ],
+        "geology": "Contacto entre lobulo de deslizamiento, traza de falla normal y bancos de polvo fino",
+        "provenance": "posicion elegida por busqueda rigida sobre DTM CTX 20 m (D); cota medida en el DTM CTX P18_007878_1703_XN_09S076W_ (M); pendiente, sky_view_factor_dem, horizonte y linea de vista derivados de ese DTM (D); inercia termica, geologia y agua son escenario de diseno (E)",
+        "sky_view_factor_dem": 0.84,
+        "radio_los_margin_m": -24.7,
+        "horizon_max_deg": 22.3,
+        "property_provenance": {
+          "lat_pc_deg": "derivado",
+          "lon_e_deg": "derivado",
+          "lon_w_deg": "derivado",
+          "elev_mola_m": "medido",
+          "slope_local_deg": "derivado",
+          "thermal_inertia_tiu": "escenario",
+          "sky_view_factor": "derivado",
+          "sky_view_factor_dem": "derivado",
+          "radio_los_base": "derivado",
+          "radio_los_margin_m": "derivado",
+          "horizon_max_deg": "derivado",
+          "h2o_wt_pct": "escenario",
+          "geology": "escenario",
+          "hazards": "escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WP3",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.383486,
+          -9.922858,
+          -1520
+        ]
+      },
+      "properties": {
+        "node_id": "WP3",
+        "name": "Waypoint 3 - Refugio Topografico",
+        "role": "shelter",
+        "lat_pc_deg": -9.922858,
+        "lon_e_deg": 283.383486,
+        "lon_w_deg": 76.616514,
+        "elev_mola_m": -1520,
+        "slope_local_deg": 20.1,
+        "thermal_inertia_tiu": 620,
+        "sky_view_factor": 0.15,
+        "radio_los_base": false,
+        "h2o_wt_pct": null,
+        "hazards": [
+          "H4_radio_shadow"
+        ],
+        "geology": "Alcoba bajo cornisa en la base de un escarpe de coladas basalticas estratificadas",
+        "provenance": "posicion elegida por busqueda rigida sobre DTM CTX 20 m (D); cota medida en el DTM CTX P18_007878_1703_XN_09S076W_ (M); pendiente, sky_view_factor_dem, horizonte y linea de vista derivados de ese DTM (D); inercia termica, geologia y agua son escenario de diseno (E); sky_view_factor 0.15 es la alcoba con cornisa de diseno, que un DEM no representa (E)",
+        "sky_view_factor_dem": 0.76,
+        "radio_los_margin_m": -28.2,
+        "horizon_max_deg": 20.7,
+        "property_provenance": {
+          "lat_pc_deg": "derivado",
+          "lon_e_deg": "derivado",
+          "lon_w_deg": "derivado",
+          "elev_mola_m": "medido",
+          "slope_local_deg": "derivado",
+          "thermal_inertia_tiu": "escenario",
+          "sky_view_factor": "escenario",
+          "sky_view_factor_dem": "derivado",
+          "radio_los_base": "derivado",
+          "radio_los_margin_m": "derivado",
+          "horizon_max_deg": "derivado",
+          "h2o_wt_pct": "escenario",
+          "geology": "escenario",
+          "hazards": "escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L1",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.3892,
+            -9.89646,
+            -1660
+          ],
+          [
+            283.401259,
+            -9.918797,
+            -1582
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L1",
+        "from": "BASE",
+        "to": "WP1",
+        "kind": "planned",
+        "distance_m": 1500,
+        "delta_elev_m": 78,
+        "bearing_deg": 152,
+        "risk": "bajo: pendiente maxima 8 grados, con linea de vista a la Base",
+        "slope_max_deg": 8.0,
+        "mean_slope_deg": 2.96,
+        "property_provenance": {
+          "distance_m": "derivado",
+          "delta_elev_m": "derivado",
+          "bearing_deg": "derivado",
+          "slope_max_deg": "derivado",
+          "mean_slope_deg": "derivado",
+          "risk": "derivado + escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L2",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.401259,
+            -9.918797,
+            -1582
+          ],
+          [
+            283.386234,
+            -9.932611,
+            -1464
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L2",
+        "from": "WP1",
+        "to": "WP2",
+        "kind": "planned",
+        "distance_m": 1200,
+        "delta_elev_m": 118,
+        "bearing_deg": 227,
+        "risk": "alto: pendiente real hasta 20 grados, <150 TIU (E), sombra de radio real",
+        "slope_max_deg": 19.9,
+        "mean_slope_deg": 5.62,
+        "property_provenance": {
+          "distance_m": "derivado",
+          "delta_elev_m": "derivado",
+          "bearing_deg": "derivado",
+          "slope_max_deg": "derivado",
+          "mean_slope_deg": "derivado",
+          "risk": "derivado + escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L3",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.386234,
+            -9.932611,
+            -1464
+          ],
+          [
+            283.383486,
+            -9.922858,
+            -1520
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L3",
+        "from": "WP2",
+        "to": "WP3",
+        "kind": "planned",
+        "distance_m": 600,
+        "delta_elev_m": -56,
+        "bearing_deg": 344,
+        "risk": "medio-alto: ruta de escape en ladera, pendiente real hasta 22 grados, 8 min a marcha urgente (E)",
+        "slope_max_deg": 22.5,
+        "mean_slope_deg": -5.26,
+        "property_provenance": {
+          "distance_m": "derivado",
+          "delta_elev_m": "derivado",
+          "bearing_deg": "derivado",
+          "slope_max_deg": "derivado",
+          "mean_slope_deg": "derivado",
+          "risk": "derivado + escenario"
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L4",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.383486,
+            -9.922858,
+            -1520
+          ],
+          [
+            283.3892,
+            -9.89646,
+            -1660
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L4",
+        "from": "WP3",
+        "to": "BASE",
+        "kind": "planned",
+        "distance_m": 1600,
+        "delta_elev_m": -140,
+        "bearing_deg": 12,
+        "risk": "medio: descenso, pendiente real hasta 20 grados, recupera LOS a ~634 m del WP3",
+        "slope_max_deg": 20.1,
+        "mean_slope_deg": -5.02,
+        "property_provenance": {
+          "distance_m": "derivado",
+          "delta_elev_m": "derivado",
+          "bearing_deg": "derivado",
+          "slope_max_deg": "derivado",
+          "mean_slope_deg": "derivado",
+          "risk": "derivado + escenario",
+          "los_recovered_at_m": "derivado"
+        },
+        "los_recovered_at_m": 634.0
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "R1",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.386234,
+            -9.932611,
+            -1464
+          ],
+          [
+            283.3892,
+            -9.89646,
+            -1660
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "R1",
+        "from": "WP2",
+        "to": "BASE",
+        "kind": "contingency",
+        "distance_m": 2150,
+        "delta_elev_m": -196,
+        "bearing_deg": 5,
+        "risk": "retorno directo: 2150 m en linea recta, pendiente real hasta 21 grados; 2500 m por ruta segura D* Lite (rodeo 1.16) (E)",
+        "slope_max_deg": 21.4,
+        "mean_slope_deg": -5.2,
+        "property_provenance": {
+          "distance_m": "derivado",
+          "delta_elev_m": "derivado",
+          "bearing_deg": "derivado",
+          "slope_max_deg": "derivado",
+          "mean_slope_deg": "derivado",
+          "risk": "derivado + escenario"
+        }
+      }
+    }
+  ]
+}

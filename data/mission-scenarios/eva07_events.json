@@ -1,0 +1,1076 @@
+{
+  "schema_version": "1.0",
+  "mission": "EVA-07",
+  "generator": "uv run python -m red_atlas_p1.scenario",
+  "doc": "data/mission-scenarios/SCHEMA_EVA07.md",
+  "time_unit": "min terrestres desde la salida (T+0 = 14:45 LMST)",
+  "nominal_dose_profile": "rampa_calibrada",
+  "projection_dose_profile": "envolvente",
+  "events": [
+    {
+      "t_min": -45,
+      "lmst": "14:01",
+      "id": "spyglass",
+      "title": "Inspección Spyglass de 3 sectores en la consola",
+      "threat": null,
+      "active_threats": [],
+      "phase_id": "A1_consola",
+      "values": {
+        "o2_remaining_pct": 100.0,
+        "o2_remaining_g": 800.0,
+        "metabolic_power_w": 0.0,
+        "o2_l_min": 0.0,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0,
+        "radio_rssi_dbm": -15.2098,
+        "radio_class": "VERDE",
+        "dust_tau": 0.7,
+        "base_time_min": 0.0,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 0.0,
+        "base_viable": true,
+        "wp3_time_min": 21.3333,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": -30,
+      "lmst": "14:15",
+      "id": "chaos_mode",
+      "title": "Chaos Mode: 10.000 simulaciones, 99,4 % de supervivencia",
+      "threat": null,
+      "active_threats": [],
+      "phase_id": "A1_consola",
+      "values": {
+        "o2_remaining_pct": 100.0,
+        "o2_remaining_g": 800.0,
+        "metabolic_power_w": 0.0,
+        "o2_l_min": 0.0,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0,
+        "radio_rssi_dbm": -15.2098,
+        "radio_class": "VERDE",
+        "dust_tau": 0.7,
+        "base_time_min": 0.0,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 0.0,
+        "base_viable": true,
+        "wp3_time_min": 21.3333,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": -10,
+      "lmst": "14:35",
+      "id": "zenoh_sync",
+      "title": "Sincronización de la sub-malla h3o al traje por Zenoh",
+      "threat": null,
+      "active_threats": [],
+      "phase_id": "A1_consola",
+      "values": {
+        "o2_remaining_pct": 100.0,
+        "o2_remaining_g": 800.0,
+        "metabolic_power_w": 0.0,
+        "o2_l_min": 0.0,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0,
+        "radio_rssi_dbm": -15.2098,
+        "radio_class": "VERDE",
+        "dust_tau": 0.7,
+        "base_time_min": 0.0,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 0.0,
+        "base_viable": true,
+        "wp3_time_min": 21.3333,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": 0,
+      "lmst": "14:45",
+      "id": "salida",
+      "title": "Salida de la Base con rumbo 152°",
+      "threat": null,
+      "active_threats": [],
+      "phase_id": "A2_marcha_L1",
+      "values": {
+        "o2_remaining_pct": 100.0,
+        "o2_remaining_g": 800.0,
+        "metabolic_power_w": 446.5846,
+        "o2_l_min": 1.3331,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0,
+        "radio_rssi_dbm": -15.2098,
+        "radio_class": "VERDE",
+        "dust_tau": 0.7,
+        "base_time_min": 0.0,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 0.0,
+        "base_viable": true,
+        "wp3_time_min": 21.3333,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": 28,
+      "lmst": "15:12",
+      "id": "llegada_wp1",
+      "title": "Llegada a WP1 (ISRU)",
+      "threat": null,
+      "active_threats": [],
+      "phase_id": "A2_isru_wp1",
+      "values": {
+        "o2_remaining_pct": 93.3326,
+        "o2_remaining_g": 746.6605,
+        "metabolic_power_w": 250.0,
+        "o2_l_min": 0.7463,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0126,
+        "radio_rssi_dbm": -58.7294,
+        "radio_class": "VERDE",
+        "dust_tau": 0.7,
+        "base_time_min": 28.8,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 0.0,
+        "base_viable": true,
+        "wp3_time_min": 14.2038,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": 75,
+      "lmst": "15:57",
+      "id": "salida_wp1",
+      "title": "Objetivo ISRU cumplido; salida hacia WP2",
+      "threat": null,
+      "active_threats": [],
+      "phase_id": "A3_marcha_L2",
+      "values": {
+        "o2_remaining_pct": 87.0674,
+        "o2_remaining_g": 696.5388,
+        "metabolic_power_w": 539.0839,
+        "o2_l_min": 1.6092,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0337,
+        "radio_rssi_dbm": -58.7294,
+        "radio_class": "VERDE",
+        "dust_tau": 0.7,
+        "base_time_min": 28.8,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 0.0,
+        "base_viable": true,
+        "wp3_time_min": 14.2038,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": 92,
+      "lmst": "16:14",
+      "id": "nlos",
+      "title": "Amenaza 1: sombra de radio (NLOS) tras el espolón",
+      "threat": "sombra_radio",
+      "active_threats": [
+        "sombra_radio"
+      ],
+      "phase_id": "A3_marcha_L2_nlos",
+      "values": {
+        "o2_remaining_pct": 82.1808,
+        "o2_remaining_g": 657.4464,
+        "metabolic_power_w": 539.0839,
+        "o2_l_min": 1.6092,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0414,
+        "radio_rssi_dbm": -100.9211,
+        "radio_class": "ROJO",
+        "dust_tau": 0.7,
+        "base_time_min": 42.9913,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 3.2988,
+        "base_viable": true,
+        "wp3_time_min": 9.6184,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": 98,
+      "lmst": "16:20",
+      "id": "regolito",
+      "title": "Amenaza 2: regolito suelto en rampa de 22° (pico 3,2 L/min)",
+      "threat": "trampa_regolito",
+      "active_threats": [
+        "trampa_regolito",
+        "sombra_radio"
+      ],
+      "phase_id": "A3_rampa_pico",
+      "values": {
+        "o2_remaining_pct": 80.4561,
+        "o2_remaining_g": 643.6491,
+        "metabolic_power_w": 1072.9116,
+        "o2_l_min": 3.2027,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0441,
+        "radio_rssi_dbm": -101.8579,
+        "radio_class": "ROJO",
+        "dust_tau": 0.7,
+        "base_time_min": 48.0,
+        "base_dose_proj_env_msv": 0.0,
+        "base_dose_proj_ramp_msv": 4.6947,
+        "base_viable": true,
+        "wp3_time_min": 8.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0139,
+        "wp3_viable": true,
+        "viable_destination": "BASE"
+      }
+    },
+    {
+      "t_min": 105,
+      "lmst": "16:27",
+      "id": "spe_polvo",
+      "title": "Amenazas 3 y 4: alerta SPE y frente de polvo; 4 amenazas activas",
+      "threat": "spe",
+      "active_threats": [
+        "polvo",
+        "spe",
+        "trampa_regolito",
+        "sombra_radio"
+      ],
+      "phase_id": "A4_dgs_salida",
+      "values": {
+        "o2_remaining_pct": 77.4922,
+        "o2_remaining_g": 619.9373,
+        "metabolic_power_w": 593.2109,
+        "o2_l_min": 1.7708,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0472,
+        "radio_rssi_dbm": -101.8579,
+        "radio_class": "ROJO",
+        "dust_tau": 2.4,
+        "base_time_min": 48.0,
+        "base_dose_proj_env_msv": 6.4,
+        "base_dose_proj_ramp_msv": 5.362,
+        "base_viable": false,
+        "wp3_time_min": 8.0,
+        "wp3_dose_proj_env_msv": 1.0667,
+        "wp3_dose_proj_ramp_msv": 0.5784,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 105,
+      "lmst": "16:27",
+      "id": "dynamic_goal_switching",
+      "title": "Dynamic Goal Switching: destino Base → WP3",
+      "threat": "spe",
+      "active_threats": [
+        "polvo",
+        "spe",
+        "trampa_regolito",
+        "sombra_radio"
+      ],
+      "phase_id": "A4_dgs_salida",
+      "values": {
+        "o2_remaining_pct": 77.4922,
+        "o2_remaining_g": 619.9373,
+        "metabolic_power_w": 593.2109,
+        "o2_l_min": 1.7708,
+        "spe_ext_rate_cal_msv_h": 0.0,
+        "spe_local_rate_msv_h": 0.0,
+        "dose_spe_msv": 0.0,
+        "dose_spe_env_msv": 0.0,
+        "dose_spe_linear_msv": 0.0,
+        "dose_gcr_msv": 0.0472,
+        "radio_rssi_dbm": -101.8579,
+        "radio_class": "ROJO",
+        "dust_tau": 2.4,
+        "base_time_min": 48.0,
+        "base_dose_proj_env_msv": 6.4,
+        "base_dose_proj_ramp_msv": 5.362,
+        "base_viable": false,
+        "wp3_time_min": 8.0,
+        "wp3_dose_proj_env_msv": 1.0667,
+        "wp3_dose_proj_ramp_msv": 0.5784,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 113,
+      "lmst": "16:34",
+      "id": "llegada_wp3",
+      "title": "Llegada a WP3 tras 8 min de escape",
+      "threat": "spe",
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "phase_id": "A4_entrada_cornisa",
+      "values": {
+        "o2_remaining_pct": 75.6346,
+        "o2_remaining_g": 605.0766,
+        "metabolic_power_w": 644.885,
+        "o2_l_min": 1.925,
+        "spe_ext_rate_cal_msv_h": 5.8824,
+        "spe_local_rate_msv_h": 0.8824,
+        "dose_spe_msv": 0.5784,
+        "dose_spe_env_msv": 1.0667,
+        "dose_spe_linear_msv": 0.2133,
+        "dose_gcr_msv": 0.0508,
+        "radio_rssi_dbm": -99.2917,
+        "radio_class": "ROJO",
+        "dust_tau": 2.4,
+        "base_time_min": 30.72,
+        "base_dose_proj_env_msv": 4.096,
+        "base_dose_proj_ramp_msv": 3.8566,
+        "base_viable": false,
+        "wp3_time_min": 0.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 114,
+      "lmst": "16:35",
+      "id": "refugio_activo",
+      "title": "Bajo la cornisa: refugio activo",
+      "threat": "spe",
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "phase_id": "A4_refugio",
+      "values": {
+        "o2_remaining_pct": 75.2907,
+        "o2_remaining_g": 602.3258,
+        "metabolic_power_w": 130.0,
+        "o2_l_min": 0.3881,
+        "spe_ext_rate_cal_msv_h": 6.0588,
+        "spe_local_rate_msv_h": 0.9088,
+        "dose_spe_msv": 0.5934,
+        "dose_spe_env_msv": 1.0867,
+        "dose_spe_linear_msv": 0.2218,
+        "dose_gcr_msv": 0.0513,
+        "radio_rssi_dbm": -99.2917,
+        "radio_class": "ROJO",
+        "dust_tau": 2.4,
+        "base_time_min": 30.72,
+        "base_dose_proj_env_msv": 4.096,
+        "base_dose_proj_ramp_msv": 3.8735,
+        "base_viable": false,
+        "wp3_time_min": 0.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 125,
+      "lmst": "16:46",
+      "id": "pico_spe",
+      "title": "Pico del SPE: 8 mSv/h fuera, 1,2 mSv/h en la alcoba",
+      "threat": "spe",
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "phase_id": "A4_refugio_pico",
+      "values": {
+        "o2_remaining_pct": 74.5282,
+        "o2_remaining_g": 596.2258,
+        "metabolic_power_w": 130.0,
+        "o2_l_min": 0.3881,
+        "spe_ext_rate_cal_msv_h": 8.0,
+        "spe_local_rate_msv_h": 1.2,
+        "dose_spe_msv": 0.7867,
+        "dose_spe_env_msv": 1.3067,
+        "dose_spe_linear_msv": 0.3813,
+        "dose_gcr_msv": 0.0562,
+        "radio_rssi_dbm": -99.2917,
+        "radio_class": "ROJO",
+        "dust_tau": 2.4,
+        "base_time_min": 30.72,
+        "base_dose_proj_env_msv": 4.096,
+        "base_dose_proj_ramp_msv": 3.6018,
+        "base_viable": false,
+        "wp3_time_min": 0.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 140,
+      "lmst": "17:01",
+      "id": "remite_spe",
+      "title": "Remite el pico del SPE",
+      "threat": "spe",
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "phase_id": "A5_permanencia",
+      "values": {
+        "o2_remaining_pct": 73.4885,
+        "o2_remaining_g": 587.9078,
+        "metabolic_power_w": 130.0,
+        "o2_l_min": 0.3881,
+        "spe_ext_rate_cal_msv_h": 8.0,
+        "spe_local_rate_msv_h": 1.2,
+        "dose_spe_msv": 1.0867,
+        "dose_spe_env_msv": 1.6067,
+        "dose_spe_linear_msv": 0.6813,
+        "dose_gcr_msv": 0.063,
+        "radio_rssi_dbm": -99.2917,
+        "radio_class": "ROJO",
+        "dust_tau": 2.4,
+        "base_time_min": 30.72,
+        "base_dose_proj_env_msv": 4.096,
+        "base_dose_proj_ramp_msv": 2.274,
+        "base_viable": false,
+        "wp3_time_min": 0.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 158,
+      "lmst": "17:18",
+      "id": "zenoh_restablecido",
+      "title": "Enlace Zenoh restablecido por el repetidor del rover",
+      "threat": "sombra_radio",
+      "active_threats": [
+        "polvo",
+        "spe"
+      ],
+      "phase_id": "A5_zenoh",
+      "values": {
+        "o2_remaining_pct": 72.2408,
+        "o2_remaining_g": 577.9261,
+        "metabolic_power_w": 130.0,
+        "o2_l_min": 0.3881,
+        "spe_ext_rate_cal_msv_h": 3.68,
+        "spe_local_rate_msv_h": 0.552,
+        "dose_spe_msv": 1.3495,
+        "dose_spe_env_msv": 1.9667,
+        "dose_spe_linear_msv": 0.9441,
+        "dose_gcr_msv": 0.0711,
+        "radio_rssi_dbm": -59.2917,
+        "radio_class": "VERDE",
+        "dust_tau": 2.4,
+        "base_time_min": 30.72,
+        "base_dose_proj_env_msv": 4.096,
+        "base_dose_proj_ramp_msv": 1.122,
+        "base_viable": false,
+        "wp3_time_min": 0.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    },
+    {
+      "t_min": 165,
+      "lmst": "17:25",
+      "id": "telemetria_final",
+      "title": "Telemetría final recibida en la consola",
+      "threat": null,
+      "active_threats": [
+        "polvo",
+        "spe"
+      ],
+      "phase_id": "A5_zenoh",
+      "values": {
+        "o2_remaining_pct": 71.7555,
+        "o2_remaining_g": 574.0444,
+        "metabolic_power_w": 130.0,
+        "o2_l_min": 0.3881,
+        "spe_ext_rate_cal_msv_h": 2.0,
+        "spe_local_rate_msv_h": 0.3,
+        "dose_spe_msv": 1.3992,
+        "dose_spe_env_msv": 2.1067,
+        "dose_spe_linear_msv": 0.9938,
+        "dose_gcr_msv": 0.0743,
+        "radio_rssi_dbm": -59.2917,
+        "radio_class": "VERDE",
+        "dust_tau": 2.4,
+        "base_time_min": 30.72,
+        "base_dose_proj_env_msv": 4.096,
+        "base_dose_proj_ramp_msv": 1.024,
+        "base_viable": false,
+        "wp3_time_min": 0.0,
+        "wp3_dose_proj_env_msv": 0.0,
+        "wp3_dose_proj_ramp_msv": 0.0,
+        "wp3_viable": true,
+        "viable_destination": "WP3"
+      }
+    }
+  ],
+  "threat_windows_t_min": {
+    "sombra_radio": [
+      92,
+      158
+    ],
+    "trampa_regolito": [
+      98,
+      106
+    ],
+    "spe": [
+      105,
+      166
+    ],
+    "polvo": [
+      105,
+      166
+    ]
+  },
+  "power_sources": {
+    "modelo": "modelo del canónico con los parámetros que publica el propio canónico",
+    "modelo_tramo_real": "modelo con la pendiente media real del tramo (GeoJSON, DTM CTX 20 m), la velocidad media de la cronología y el η del tramo",
+    "modelo_ritmo_regulado": "modelo con la velocidad que lleva la potencia al rojo sostenido (585 W)",
+    "modelo_parametro_escenario": "modelo con un parámetro de escenario declarado (velocidad)",
+    "escenario": "potencia de escenario del canónico (sin modelo de marcha)",
+    "sin_consumo": "sin consumo de O₂ primario (astronauta en la Base)"
+  },
+  "phases": [
+    {
+      "phase_id": "A1_consola",
+      "t0": -45,
+      "t1": 0,
+      "act": 1,
+      "description": "Consola de Base: Spyglass, Chaos Mode y sincronización",
+      "location": "BASE",
+      "goal": "WP1",
+      "power_w": 0.0,
+      "power_source": "sin_consumo",
+      "o2_l_min": 0.0,
+      "svf_geo": 0.85,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "inactiva"
+      }
+    },
+    {
+      "phase_id": "A2_marcha_L1",
+      "t0": 0,
+      "t1": 28,
+      "act": 2,
+      "description": "Marcha Base→WP1 (0,89 m/s, pendiente media +3,0°, η 1,3)",
+      "location": "BASE→WP1",
+      "goal": "WP1",
+      "power_w": 446.58,
+      "power_source": "modelo_tramo_real",
+      "o2_l_min": 1.3331,
+      "svf_geo": 0.85,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "inactiva"
+      }
+    },
+    {
+      "phase_id": "A2_isru_wp1",
+      "t0": 28,
+      "t1": 75,
+      "act": 2,
+      "description": "Muestreo ISRU en WP1",
+      "location": "WP1",
+      "goal": "WP1",
+      "power_w": 250.0,
+      "power_source": "escenario",
+      "o2_l_min": 0.7463,
+      "svf_geo": 0.85,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "inactiva"
+      }
+    },
+    {
+      "phase_id": "A3_marcha_L2",
+      "t0": 75,
+      "t1": 92,
+      "act": 3,
+      "description": "Aproximación al lóbulo de WP2 con línea de vista",
+      "location": "WP1→WP2",
+      "goal": "WP2",
+      "power_w": 539.08,
+      "power_source": "modelo_tramo_real",
+      "o2_l_min": 1.6092,
+      "svf_geo": 0.85,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "inactiva"
+      }
+    },
+    {
+      "phase_id": "A3_marcha_L2_nlos",
+      "t0": 92,
+      "t1": 98,
+      "act": 3,
+      "description": "Aproximación a WP2 sin línea de vista",
+      "location": "WP1→WP2",
+      "goal": "WP2",
+      "power_w": 539.08,
+      "power_source": "modelo_tramo_real",
+      "o2_l_min": 1.6092,
+      "svf_geo": 0.84,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A3_rampa_pico",
+      "t0": 98,
+      "t1": 101,
+      "act": 3,
+      "description": "Rampa local de 22° en 110 TIU: pico de 3,2 L/min",
+      "location": "WP2",
+      "goal": "WP2",
+      "power_w": 1072.91,
+      "power_source": "modelo",
+      "o2_l_min": 3.2027,
+      "svf_geo": 0.84,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [
+        "trampa_regolito",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "activa",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A3_rampa_lenta",
+      "t0": 101,
+      "t1": 105,
+      "act": 3,
+      "description": "Progresión lenta por la rampa, ritmo regulado a 585 W",
+      "location": "WP2",
+      "goal": "WP2",
+      "power_w": 585.0,
+      "power_source": "modelo_ritmo_regulado",
+      "o2_l_min": 1.7463,
+      "svf_geo": 0.84,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 0.0,
+      "active_threats": [
+        "trampa_regolito",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "inactiva",
+        "spe": "inactiva",
+        "trampa_regolito": "activa",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A4_dgs_salida",
+      "t0": 105,
+      "t1": 106,
+      "act": 4,
+      "description": "Alerta SPE y polvo; Dynamic Goal Switching; salida del banco blando (η 2,1)",
+      "location": "WP2→WP3",
+      "goal": "WP3",
+      "power_w": 593.21,
+      "power_source": "modelo_tramo_real",
+      "o2_l_min": 1.7708,
+      "svf_geo": 0.84,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 0.0,
+      "spe_ext_rate_cal_last_msv_h": 0.0,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe",
+        "trampa_regolito",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "activa",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A4_escape_L3",
+      "t0": 106,
+      "t1": 113,
+      "act": 4,
+      "description": "Marcha de escape a WP3, cuesta abajo (1,25 m/s, rumbo 344°)",
+      "location": "WP2→WP3",
+      "goal": "WP3",
+      "power_w": 412.94,
+      "power_source": "modelo_tramo_real",
+      "o2_l_min": 1.2327,
+      "svf_geo": 0.84,
+      "dose_factor": 1.0,
+      "spe_ext_rate_cal_t0_msv_h": 1.6667,
+      "spe_ext_rate_cal_last_msv_h": 5.7059,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A4_entrada_cornisa",
+      "t0": 113,
+      "t1": 114,
+      "act": 4,
+      "description": "Llegada a WP3 y trepada corta bajo la cornisa por el talud real",
+      "location": "WP3",
+      "goal": "WP3",
+      "power_w": 644.88,
+      "power_source": "modelo_parametro_escenario",
+      "o2_l_min": 1.925,
+      "svf_geo": 0.15,
+      "dose_factor": 0.15,
+      "spe_ext_rate_cal_t0_msv_h": 5.8824,
+      "spe_ext_rate_cal_last_msv_h": 5.8824,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A4_refugio",
+      "t0": 114,
+      "t1": 125,
+      "act": 4,
+      "description": "Refugio activo, subida hacia el pico SPE",
+      "location": "WP3",
+      "goal": "WP3",
+      "power_w": 130.0,
+      "power_source": "escenario",
+      "o2_l_min": 0.3881,
+      "svf_geo": 0.15,
+      "dose_factor": 0.15,
+      "spe_ext_rate_cal_t0_msv_h": 6.0588,
+      "spe_ext_rate_cal_last_msv_h": 7.8235,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A4_refugio_pico",
+      "t0": 125,
+      "t1": 140,
+      "act": 4,
+      "description": "Refugio activo durante el pico SPE",
+      "location": "WP3",
+      "goal": "WP3",
+      "power_w": 130.0,
+      "power_source": "escenario",
+      "o2_l_min": 0.3881,
+      "svf_geo": 0.15,
+      "dose_factor": 0.15,
+      "spe_ext_rate_cal_t0_msv_h": 8.0,
+      "spe_ext_rate_cal_last_msv_h": 8.0,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A5_permanencia",
+      "t0": 140,
+      "t1": 158,
+      "act": 5,
+      "description": "Remite el pico; permanencia protegida",
+      "location": "WP3",
+      "goal": "WP3",
+      "power_w": 130.0,
+      "power_source": "escenario",
+      "o2_l_min": 0.3881,
+      "svf_geo": 0.15,
+      "dose_factor": 0.15,
+      "spe_ext_rate_cal_t0_msv_h": 8.0,
+      "spe_ext_rate_cal_last_msv_h": 3.92,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe",
+        "sombra_radio"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "activa"
+      }
+    },
+    {
+      "phase_id": "A5_zenoh",
+      "t0": 158,
+      "t1": 165,
+      "act": 5,
+      "description": "Enlace Zenoh restablecido por repetidor; telemetría final",
+      "location": "WP3",
+      "goal": "WP3",
+      "power_w": 130.0,
+      "power_source": "escenario",
+      "o2_l_min": 0.3881,
+      "svf_geo": 0.15,
+      "dose_factor": 0.15,
+      "spe_ext_rate_cal_t0_msv_h": 3.68,
+      "spe_ext_rate_cal_last_msv_h": 2.24,
+      "spe_ext_rate_env_t0_msv_h": 8.0,
+      "active_threats": [
+        "polvo",
+        "spe"
+      ],
+      "threat_states": {
+        "polvo": "activa",
+        "spe": "activa",
+        "trampa_regolito": "inactiva",
+        "sombra_radio": "inactiva"
+      }
+    }
+  ],
+  "reference_figures": {
+    "flat_1ms_w": 300.27,
+    "ramp10_w": 590.91,
+    "ramp20_w": 841.48,
+    "wp2_peak_w": 1072.91,
+    "fspl_2500m_db": 93.17,
+    "rssi_los_2500m_dbm": -63.17,
+    "rssi_nlos_2500m_dbm": -103.17,
+    "diffraction_db_used": 40.0,
+    "open_sky_window_min": 15.0,
+    "wp3_rate_msv_h": 1.2
+  },
+  "spe_profile_comparison": {
+    "envolvente": {
+      "knots_t_min_msv_h": [
+        [
+          105.0,
+          8.0
+        ],
+        [
+          165.0,
+          8.0
+        ]
+      ],
+      "dose_escape_T105_T113_msv": 1.0667,
+      "mean_rate_escape_msv_h": 8.0,
+      "dose_arrival_T114_msv": 1.0867,
+      "dose_refuge_T114_T165_msv": 1.02,
+      "dose_total_spe_msv": 2.1067,
+      "dose_return_base_48min_msv": 6.4,
+      "base_viable_T105": false,
+      "wp3_viable_T105": true
+    },
+    "rampa_lineal": {
+      "knots_t_min_msv_h": [
+        [
+          105.0,
+          0.0
+        ],
+        [
+          125.0,
+          8.0
+        ],
+        [
+          140.0,
+          8.0
+        ],
+        [
+          165.0,
+          2.0
+        ]
+      ],
+      "dose_escape_T105_T113_msv": 0.2133,
+      "mean_rate_escape_msv_h": 1.6,
+      "dose_arrival_T114_msv": 0.2218,
+      "dose_refuge_T114_T165_msv": 0.772,
+      "dose_total_spe_msv": 0.9938,
+      "dose_return_base_48min_msv": 4.7287,
+      "base_viable_T105": false,
+      "wp3_viable_T105": true
+    },
+    "rampa_calibrada": {
+      "knots_t_min_msv_h": [
+        [
+          105.0,
+          0.0
+        ],
+        [
+          108.0,
+          5.0
+        ],
+        [
+          125.0,
+          8.0
+        ],
+        [
+          140.0,
+          8.0
+        ],
+        [
+          165.0,
+          2.0
+        ]
+      ],
+      "dose_escape_T105_T113_msv": 0.5784,
+      "mean_rate_escape_msv_h": 4.3382,
+      "dose_arrival_T114_msv": 0.5934,
+      "dose_refuge_T114_T165_msv": 0.8058,
+      "dose_total_spe_msv": 1.3992,
+      "dose_return_base_48min_msv": 5.362,
+      "base_viable_T105": false,
+      "wp3_viable_T105": true
+    }
+  },
+  "final": {
+    "o2_remaining_pct": 71.7555,
+    "dose_spe_msv": 1.3992,
+    "dose_spe_env_msv": 2.1067,
+    "dose_gcr_msv": 0.0743
+  }
+}
