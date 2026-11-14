@@ -177,6 +177,34 @@ fn crc16_ccitt(data: &[u8]) -> u16 {
 /// never raises a hazard flag. `serde_json` writes NaN as `null`; `f32_or_no_data` reads it back.
 pub const CELL_NO_DATA: f32 = f32::NAN;
 
+/// True when an `f32` cell field carries the `CELL_NO_DATA` sentinel.
+#[inline]
+pub fn is_no_data(value: f32) -> bool {
+    value.is_nan()
+}
+
+/// Returns `value`, or `assumed` when it is `CELL_NO_DATA`. Every consumer that turns a cell field
+/// into a cost or a rate must go through this (or an explicit `is_no_data` branch): a raw NaN
+/// would poison D* Lite keys and Poisson rates.
+#[inline]
+pub fn or_assumed(value: f32, assumed: f32) -> f32 {
+    if is_no_data(value) {
+        assumed
+    } else {
+        value
+    }
+}
+
+/// Planner assumption for a cell without thermal inertia (P1 `NULL`: 139,978 of the 141,313
+/// resolution-12 cells, since TIU only exists inside the scenario discs). Mid band 250-400 TIU
+/// (eta 1.3): neither firm ground (> 400) nor regolith trap (< 150); it is also the band of P3's
+/// synthetic background (360 TIU). Hazard flags and trap checks keep using the raw value, so a
+/// missing TIU never raises `REGOLITH_TRAP`. Open decision for P1 (no quantitative THEMIS TI).
+pub const TIU_NO_DATA_ASSUMED: f32 = 325.0;
+
+/// Planner assumption for a cell without Sky View Factor: open sky (1.0), the worst case for dose.
+pub const SVF_NO_DATA_ASSUMED: f32 = 1.0;
+
 /// Deserializes an `f32` that may be `null` (no data) into `CELL_NO_DATA`.
 fn f32_or_no_data<'de, D>(deserializer: D) -> Result<f32, D::Error>
 where
@@ -958,6 +986,11 @@ mod tests {
         // A missing value never satisfies a hazard threshold.
         assert!(!(back.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD));
         assert!(!(back.isru_h2o_pct >= ISRU_WATER_MIN_PCT));
+        // Consumers substitute the documented assumption explicitly.
+        assert!(is_no_data(back.thermal_inertia_tiu) && !is_no_data(back.sky_view_factor));
+        assert_eq!(or_assumed(back.thermal_inertia_tiu, TIU_NO_DATA_ASSUMED), TIU_NO_DATA_ASSUMED);
+        assert_eq!(or_assumed(back.sky_view_factor, SVF_NO_DATA_ASSUMED), 0.85);
+        assert!(TIU_NO_DATA_ASSUMED >= TIU_ETA_MID_THRESHOLD && TIU_NO_DATA_ASSUMED <= TIU_AMBER_THRESHOLD);
     }
 
     #[test]

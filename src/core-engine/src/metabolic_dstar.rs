@@ -12,6 +12,7 @@ use red_atlas_shared::{
     SPE_CRITICAL_RATE_MSV_H, TERRAIN_ETA_BY_TIU_BAND, TIU_AMBER_THRESHOLD,
     TIU_ETA_MID_THRESHOLD, TOTAL_EVA_MASS_KG, TargetGoal, UNPASSABLE_SLOPE_DEG,
     WALKBACK_SAFETY_FACTOR, WalkbackDualStatus, CRITICAL_SLOPE_DEG, LOW_TIU_TRAP_THRESHOLD,
+    is_no_data, or_assumed, SVF_NO_DATA_ASSUMED, TIU_NO_DATA_ASSUMED,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,12 @@ const MAX_SLIP_FRACTION: f64 = 0.95;
 const REGOLITH_TRAP_SPEED_FACTOR: f64 = 0.45;
 const RADIATION_SWITCH_RATIO: f64 = 0.35;
 const MIN_SVF: f64 = 0.05;
+
+/// Sky View Factor used for dose: the cell value clamped to `[MIN_SVF, 1]`, or open sky
+/// (`SVF_NO_DATA_ASSUMED`) when the cell has no SVF (`clamp` does not clean a NaN).
+fn dose_svf(sky_view_factor: f32) -> f64 {
+    (or_assumed(sky_view_factor, SVF_NO_DATA_ASSUMED) as f64).clamp(MIN_SVF, 1.0)
+}
 
 /// Multi-criteria edge cost weights combining metabolic O2, SPE radiation, and dust drag.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -55,8 +62,11 @@ pub struct PathResult {
 
 /// THEMIS-derived terrain factor `\eta(I)` (P1 reference bands):
 /// 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150).
+///
+/// A cell without TIU (`CELL_NO_DATA`, most of P1's grid) uses `TIU_NO_DATA_ASSUMED` (mid band,
+/// eta 1.3) explicitly; before, NaN failed every comparison and fell into the softest band (2.1).
 pub fn soil_sinkage_eta(thermal_inertia_tiu: f32) -> f64 {
-    let tiu = thermal_inertia_tiu;
+    let tiu = or_assumed(thermal_inertia_tiu, TIU_NO_DATA_ASSUMED);
     if tiu > TIU_AMBER_THRESHOLD {
         TERRAIN_ETA_BY_TIU_BAND[0]
     } else if tiu >= TIU_ETA_MID_THRESHOLD {
@@ -104,7 +114,12 @@ pub fn metabolic_o2_rate_l_min(watts: f64) -> f64 {
 /// Evaluates the dynamic multi-criteria edge cost `C(u, v, t)` between adjacent hex cells.
 ///
 /// Returns `(total_cost, delta_t_min, o2_liters)`.
-/// Returns `(f64::INFINITY, f64::INFINITY, f64::INFINITY)` if the slope exceeds `UNPASSABLE_SLOPE_DEG`.
+/// Returns `(f64::INFINITY, f64::INFINITY, f64::INFINITY)` if the slope exceeds `UNPASSABLE_SLOPE_DEG`
+/// or if either cell has no elevation (`CELL_NO_DATA`): unknown terrain is a no-go.
+///
+/// No-data handling: a missing cell slope falls back to the geometric slope between centers; a
+/// missing TIU uses `TIU_NO_DATA_ASSUMED` for eta and never triggers the regolith trap; a missing
+/// SVF counts as open sky. The result is never NaN.
 pub fn edge_cost(
     u: &HexCellState64B,
     v: &HexCellState64B,
@@ -119,9 +134,17 @@ pub fn edge_cost(
         return (0.0, 0.0, 0.0);
     }
 
+    if is_no_data(u.elev_m) || is_no_data(v.elev_m) || dist_m.is_nan() {
+        return (f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    }
+
     let dz = (v.elev_m - u.elev_m) as f64;
     let geom_slope_deg = (dz / dist_m).atan().to_degrees();
-    let cell_slope_deg = v.slope_deg as f64;
+    let cell_slope_deg = if is_no_data(v.slope_deg) {
+        geom_slope_deg
+    } else {
+        v.slope_deg as f64
+    };
     let unpassable = UNPASSABLE_SLOPE_DEG as f64;
 
     if geom_slope_deg.abs() > unpassable || cell_slope_deg.abs() > unpassable {
@@ -161,7 +184,7 @@ pub fn edge_cost(
     let delta_t_min = (dist_m / effective_speed_mps) / 60.0;
     let o2_liters = o2_rate_l_min * delta_t_min;
 
-    let svf = (v.sky_view_factor as f64).clamp(MIN_SVF, 1.0);
+    let svf = dose_svf(v.sky_view_factor);
     let spe_rate = hazards.spe_dose_rate_msv_h.max(0.0) as f64;
     let rad_msv = spe_rate * svf * (delta_t_min / 60.0);
 
@@ -500,7 +523,7 @@ impl MetabolicDStarPlanner {
 
             let next = best_next?;
             let (c, dt_min, o2_l) = best_metrics;
-            let svf = (self.cells[next].sky_view_factor as f64).clamp(MIN_SVF, 1.0);
+            let svf = dose_svf(self.cells[next].sky_view_factor);
             let spe_rate = hazards.spe_dose_rate_msv_h.max(0.0) as f64;
             let rad_msv = spe_rate * svf * (dt_min / 60.0);
 
@@ -538,7 +561,7 @@ impl MetabolicDStarPlanner {
         let current_svf = self
             .h3_to_idx
             .get(&current_h3)
-            .map(|&idx| (self.cells[idx].sky_view_factor as f64).clamp(MIN_SVF, 1.0))
+            .map(|&idx| dose_svf(self.cells[idx].sky_view_factor))
             .unwrap_or(1.0);
         let local_rad_rate_msv_h = (hazards.spe_dose_rate_msv_h.max(0.0) as f64) * current_svf;
         let t_rad_min = if local_rad_rate_msv_h > 1e-6 {
@@ -658,6 +681,53 @@ mod tests {
             (eta_wp2_regolith - 2.1).abs() < 1e-9,
             "Expected 110 TIU regolith eta 2.1, got {eta_wp2_regolith}"
         );
+    }
+
+    #[test]
+    fn test_no_data_cells_have_explicit_costs() {
+        use red_atlas_shared::CELL_NO_DATA;
+        // Missing TIU: mid band (eta 1.3), not the softest band (2.1).
+        assert!((soil_sinkage_eta(CELL_NO_DATA) - 1.3).abs() < 1e-9);
+        assert!((soil_sinkage_eta(CELL_NO_DATA) - soil_sinkage_eta(TIU_NO_DATA_ASSUMED)).abs() < 1e-12);
+
+        let weights = CostWeights::default();
+        let mut hazards = nominal_hazards();
+        hazards.spe_dose_rate_msv_h = red_atlas_shared::SPE_PEAK_ENVELOPE_MSV_H;
+        let u = make_cell(1, 0.0, 2.0, 400.0, 0.85);
+
+        // Missing elevation on either end: unpassable, never NaN.
+        let v_no_elev = make_cell(2, CELL_NO_DATA, 2.0, 400.0, 0.85);
+        assert!(edge_cost(&u, &v_no_elev, 10.0, &hazards, &weights).0.is_infinite());
+        assert!(edge_cost(&v_no_elev, &u, 10.0, &hazards, &weights).0.is_infinite());
+
+        // Missing TIU / SVF / slope: finite costs equal to the documented assumptions.
+        let v_no_tiu = make_cell(3, 0.0, 2.0, CELL_NO_DATA, 0.85);
+        let v_mid_tiu = make_cell(4, 0.0, 2.0, TIU_NO_DATA_ASSUMED, 0.85);
+        let (c_nan, t_nan, _) = edge_cost(&u, &v_no_tiu, 10.0, &hazards, &weights);
+        let (c_mid, t_mid, _) = edge_cost(&u, &v_mid_tiu, 10.0, &hazards, &weights);
+        assert!(c_nan.is_finite() && (c_nan - c_mid).abs() < 1e-12 && (t_nan - t_mid).abs() < 1e-12);
+
+        // A missing TIU on a steep edge never triggers the regolith trap slowdown.
+        // (dz 4 m over 10 m = 21.8 deg, above the 20 deg trap slope.)
+        let steep_nan = make_cell(5, 4.0, 22.0, CELL_NO_DATA, 0.85);
+        let steep_trap = make_cell(9, 4.0, 22.0, 110.0, 0.85);
+        let mut trap_hazards = hazards.clone();
+        trap_hazards.h3_regolith_slope = true;
+        let (_, t_steep, _) = edge_cost(&u, &steep_nan, 10.0, &trap_hazards, &weights);
+        let (_, t_trap, _) = edge_cost(&u, &steep_trap, 10.0, &trap_hazards, &weights);
+        let t_free = (10.0 / NOMINAL_WALK_SPEED_MPS) / 60.0;
+        assert!((t_steep - t_free).abs() < 1e-9, "{t_steep} vs {t_free}");
+        assert!(t_trap > t_steep * 2.0, "110 TIU must still trigger the trap");
+
+        let v_no_svf = make_cell(6, 0.0, 2.0, 400.0, CELL_NO_DATA);
+        let v_open = make_cell(7, 0.0, 2.0, 400.0, SVF_NO_DATA_ASSUMED);
+        let (c_svf, _, _) = edge_cost(&u, &v_no_svf, 10.0, &hazards, &weights);
+        let (c_open, _, _) = edge_cost(&u, &v_open, 10.0, &hazards, &weights);
+        assert!(c_svf.is_finite() && (c_svf - c_open).abs() < 1e-12);
+
+        let v_no_slope = make_cell(8, 0.0, CELL_NO_DATA, 400.0, 0.85);
+        let (c_slope, _, _) = edge_cost(&u, &v_no_slope, 10.0, &hazards, &weights);
+        assert!(c_slope.is_finite());
     }
 
     #[test]
