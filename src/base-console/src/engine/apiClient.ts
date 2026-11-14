@@ -73,6 +73,14 @@ export interface MarsRawImage {
   proxyUrl: string;
   originalUrl: string;
   title: string;
+  dateTakenMars: string;
+  dateTakenUtc: string;
+  mastAz: string;
+  mastEl: string;
+  site: number;
+  drive: number;
+  credit: string;
+  link: string;
 }
 
 export async function fetchMars2020RawImages(limit = 8): Promise<MarsRawImage[]> {
@@ -86,6 +94,13 @@ export async function fetchMars2020RawImages(limit = 8): Promise<MarsRawImage[]>
         imageid: string;
         sol: number;
         title?: string;
+        date_taken_mars?: string;
+        date_taken_utc?: string;
+        site?: number;
+        drive?: number;
+        credit?: string;
+        link?: string;
+        extended?: { mastAz?: string; mastEl?: string };
         camera?: { instrument?: string };
         image_files?: { medium?: string; large?: string };
       }>;
@@ -101,9 +116,39 @@ export async function fetchMars2020RawImages(limit = 8): Promise<MarsRawImage[]>
           proxyUrl,
           originalUrl: orig,
           title: img.title || `Mars 2020 Sol ${img.sol}`,
+          dateTakenMars: img.date_taken_mars || `Sol-${img.sol}`,
+          dateTakenUtc: img.date_taken_utc || '',
+          mastAz: img.extended?.mastAz || '0.0',
+          mastEl: img.extended?.mastEl || '0.0',
+          site: img.site ?? 0,
+          drive: img.drive ?? 0,
+          credit: img.credit || 'NASA/JPL-Caltech/ASU',
+          link: img.link || 'https://mars.nasa.gov/mars2020/multimedia/raw-images/',
         };
       })
       .filter((x) => Boolean(x.proxyUrl));
+  } catch {
+    return [];
+  }
+}
+
+export interface HexCellPoint {
+  h3_hex: string;
+  lat: number;
+  lon_e: number;
+  elev_m: number;
+  slope_deg: number;
+  thermal_inertia_tiu: number;
+  isru_h2o_pct: number;
+  sky_view_factor: number;
+  los_base_rssi_dbm: number;
+}
+
+export async function fetchHexGrid(): Promise<HexCellPoint[]> {
+  try {
+    const res = await fetch('/api/hexgrid');
+    if (!res.ok) return [];
+    return (await res.json()) as HexCellPoint[];
   } catch {
     return [];
   }

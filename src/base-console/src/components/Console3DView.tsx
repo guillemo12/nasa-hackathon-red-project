@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Check, ChevronLeft, ChevronRight, Eye, Layers, Lock, RefreshCw, Unlock } from 'lucide-react';
 import { CANONICAL_WAYPOINTS } from '@/data/missionData';
-import type { MarsRawImage } from '@/engine/apiClient';
+import { fetchHexGrid, type HexCellPoint, type MarsRawImage } from '@/engine/apiClient';
+import { getTrekTileUrl } from '@/engine/marsTrekTiles';
 import type { Eva07Event, SpyglassMode, WaypointNode } from '@/types/mission';
 
 interface Console3DViewProps {
@@ -28,28 +29,38 @@ interface SpyglassSample {
   crismH2oPct: number;
   themisTiu: number;
   svf: number;
+  rssiDbm: number;
+  lat: number;
+  lonE: number;
+  h3Hex: string | null;
   nearestWp: string;
 }
 
-function sampleTerrainProps(vx: number, vz: number, molaScale = 1): SpyglassSample {
-  const nx = vx / 4.75;
-  const nz = vz / 4.75;
-  const eps = 0.04;
-  const y0 = terrainElevationOffset(nx, nz) * molaScale;
-  const yx = terrainElevationOffset(nx + eps, nz) * molaScale;
-  const yz = terrainElevationOffset(nx, nz + eps) * molaScale;
-  const grad = Math.hypot((yx - y0) / (eps * 4.75), (yz - y0) / (eps * 4.75));
-  const slopeDeg = Math.min(34, Math.max(1.2, Math.atan(grad) * (180 / Math.PI) * 1.15));
-  const elevM = Math.round(-1640 + y0 * 110);
+// Convert canonical lat/lonE around Melas SW basin into local scene coords
+function geoToScene(lat: number, lonE: number): { x: number; z: number } {
+  const centerLat = -9.915;
+  const centerLon = 283.391;
+  const x = (lonE - centerLon) * 140; // ~[-1.6, 1.6]
+  const z = -(lat - centerLat) * 140; // ~[-2.6, 2.6]
+  return { x, z };
+}
 
-  const dWp1 = Math.hypot(vx - 1.4, vz - 0.5);
-  const crismH2oPct = Number((3.8 + Math.exp(-(dWp1 * dWp1) / 0.85) * 9.8).toFixed(1));
+function sceneToGeo(x: number, z: number): { lat: number; lonE: number } {
+  const centerLat = -9.915;
+  const centerLon = 283.391;
+  return {
+    lat: centerLat - z / 140,
+    lonE: centerLon + x / 140,
+  };
+}
 
-  const dWp2 = Math.hypot(vx + 0.65, vz - 2.4);
-  const themisTiu = Math.round(335 - Math.exp(-(dWp2 * dWp2) / 1.1) * 225);
-
-  const dWp3 = Math.hypot(vx + 1.33, vz + 0.85);
-  const svf = Number(Math.max(0.15, Math.min(0.94, 0.78 - Math.exp(-(dWp3 * dWp3) / 0.7) * 0.63)).toFixed(2));
+function sampleTerrainProps(
+  vx: number,
+  vz: number,
+  molaScale = 1,
+  hexCells: HexCellPoint[] = []
+): SpyglassSample {
+  const { lat, lonE } = sceneToGeo(vx, vz);
 
   let nearestWp = 'CUENCA SW';
   let minD = 999;
@@ -62,7 +73,64 @@ function sampleTerrainProps(vx: number, vz: number, molaScale = 1): SpyglassSamp
     }
   }
 
-  return { elevM, slopeDeg: Number(slopeDeg.toFixed(1)), crismH2oPct, themisTiu, svf, nearestWp };
+  const nx = vx / 4.75;
+  const nz = vz / 4.75;
+  const eps = 0.04;
+  const y0 = terrainElevationOffset(nx, nz) * molaScale;
+  const yx = terrainElevationOffset(nx + eps, nz) * molaScale;
+  const yz = terrainElevationOffset(nx, nz + eps) * molaScale;
+  const grad = Math.hypot((yx - y0) / (eps * 4.75), (yz - y0) / (eps * 4.75));
+  const slopeFallback = Number(Math.min(34, Math.max(1.2, Math.atan(grad) * (180 / Math.PI) * 1.15)).toFixed(1));
+  const elevFallback = Math.round(-1640 + y0 * 110);
+
+  const dWp1 = Math.hypot(vx - 1.4, vz - 0.5);
+  const crismFallback = Number((3.8 + Math.exp(-(dWp1 * dWp1) / 0.85) * 9.8).toFixed(1));
+
+  const dWp2 = Math.hypot(vx + 0.65, vz - 2.4);
+  const themisFallback = Math.round(335 - Math.exp(-(dWp2 * dWp2) / 1.1) * 225);
+
+  const dWp3 = Math.hypot(vx + 1.33, vz + 0.85);
+  const svfFallback = Number(Math.max(0.15, Math.min(0.94, 0.78 - Math.exp(-(dWp3 * dWp3) / 0.7) * 0.63)).toFixed(2));
+
+  // Query real H3 Parquet cell from Rust backend if loaded
+  if (hexCells.length > 0) {
+    let bestCell: HexCellPoint | null = null;
+    let bestDist = Infinity;
+    for (const c of hexCells) {
+      const d = (c.lat - lat) ** 2 + (c.lon_e - lonE) ** 2;
+      if (d < bestDist) {
+        bestDist = d;
+        bestCell = c;
+      }
+    }
+    if (bestCell) {
+      return {
+        elevM: typeof bestCell.elev_m === 'number' ? Math.round(bestCell.elev_m) : elevFallback,
+        slopeDeg: typeof bestCell.slope_deg === 'number' ? Number(bestCell.slope_deg.toFixed(1)) : slopeFallback,
+        crismH2oPct: typeof bestCell.isru_h2o_pct === 'number' ? Number(bestCell.isru_h2o_pct.toFixed(1)) : crismFallback,
+        themisTiu: typeof bestCell.thermal_inertia_tiu === 'number' ? Math.round(bestCell.thermal_inertia_tiu) : themisFallback,
+        svf: typeof bestCell.sky_view_factor === 'number' ? Number(bestCell.sky_view_factor.toFixed(2)) : svfFallback,
+        rssiDbm: typeof bestCell.los_base_rssi_dbm === 'number' ? Number(bestCell.los_base_rssi_dbm.toFixed(1)) : -63.0,
+        lat: bestCell.lat,
+        lonE: bestCell.lon_e,
+        h3Hex: bestCell.h3_hex,
+        nearestWp,
+      };
+    }
+  }
+
+  return {
+    elevM: elevFallback,
+    slopeDeg: slopeFallback,
+    crismH2oPct: crismFallback,
+    themisTiu: themisFallback,
+    svf: svfFallback,
+    rssiDbm: -63.0,
+    lat,
+    lonE,
+    h3Hex: null,
+    nearestWp,
+  };
 }
 
 function terrainElevationOffset(nx: number, nz: number): number {
@@ -72,15 +140,6 @@ function terrainElevationOffset(nx: number, nz: number): number {
   const wp2Ramp = Math.exp(-((nx - 0.18) ** 2 + (nz - 0.35) ** 2) / 0.14) * 0.55;
   const wp3Alcove = Math.exp(-((nx + 0.28) ** 2 + (nz + 0.18) ** 2) / 0.1) * 0.25;
   return wallSlope + ridge + wp2Ramp - wp3Alcove;
-}
-
-// Convert canonical lat/lonE around Melas SW basin into local scene coords
-function geoToScene(lat: number, lonE: number): { x: number; z: number } {
-  const centerLat = -9.915;
-  const centerLon = 283.391;
-  const x = (lonE - centerLon) * 140; // ~[-1.6, 1.6]
-  const z = -(lat - centerLat) * 140; // ~[-2.6, 2.6]
-  return { x, z };
 }
 
 export const Console3DView: React.FC<Console3DViewProps> = ({
@@ -103,6 +162,8 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const [spyglassPinned, setSpyglassPinned] = useState(false);
   const [spyglassPos, setSpyglassPos] = useState({ x: 530, y: 210 });
   const [spyglassSample, setSpyglassSample] = useState<SpyglassSample>(() => sampleTerrainProps(0.4, 0.2, 1));
+  const [hexCells, setHexCells] = useState<HexCellPoint[]>([]);
+  const [textureSource, setTextureSource] = useState<'trek-viking' | 'trek-mola'>('trek-viking');
   const [layers, setLayers] = useState({
     mola: true,
     crism: true,
@@ -110,6 +171,19 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     h3o: true,
   });
   const [markers, setMarkers] = useState<ProjectedMarker[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchHexGrid().then((cells) => {
+      if (active && cells.length > 0) {
+        setHexCells(cells);
+        setSpyglassSample(sampleTerrainProps(0.4, 0.2, 1, cells));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -185,9 +259,13 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       roughness: 0.9,
       metalness: 0.08,
     });
-    if (activeMarsImage) {
+    const texUrl =
+      textureSource === 'trek-viking'
+        ? getTrekTileUrl('viking', 5, 17, 16)
+        : getTrekTileUrl('mola', 5, 17, 16);
+    if (texUrl) {
       const loader = new THREE.TextureLoader();
-      loader.load(activeMarsImage.proxyUrl, (tex) => {
+      loader.load(texUrl, (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
@@ -300,7 +378,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       window.removeEventListener('resize', handleResize);
       renderer.dispose();
     };
-  }, [layers, activeMarsImage?.proxyUrl]);
+  }, [layers, textureSource, activeMarsImage?.proxyUrl]);
 
   const sampleAtScreenPos = (clientOffsetX: number, clientOffsetY: number) => {
     const container = mountRef.current;
@@ -314,7 +392,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     const hits = raycasterRef.current.intersectObject(mesh, false);
     if (hits.length > 0) {
       const p = hits[0].point;
-      setSpyglassSample(sampleTerrainProps(p.x, p.z, layers.mola ? 1 : 0.12));
+      setSpyglassSample(sampleTerrainProps(p.x, p.z, layers.mola ? 1 : 0.12, hexCells));
     }
   };
 
@@ -443,9 +521,12 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
             </div>
           )}
         </div>
-        <div className="mt-1 px-2 py-0.5 rounded bg-[#0B0E14]/90 border border-[#1E2738] font-mono-tech text-[9.5px] text-slate-200 whitespace-nowrap">
-          {spyglassSample.nearestWp} · {spyglassSample.elevM}m · {spyglassSample.slopeDeg}°
-          {spyglassPinned ? ' · FIJA' : ''}
+        <div className="mt-1 px-2.5 py-0.5 rounded bg-[#0B0E14]/92 border border-[#1E2738] font-mono-tech text-[9.5px] text-slate-200 whitespace-nowrap flex items-center gap-1.5">
+          <span className="text-[#00F5D4] font-bold">{spyglassSample.nearestWp}</span>
+          <span>· {spyglassSample.lat.toFixed(3)}°, {spyglassSample.lonE.toFixed(3)}°E</span>
+          <span>· {spyglassSample.elevM}m · {spyglassSample.slopeDeg}°</span>
+          {spyglassSample.h3Hex && <span className="text-[#00FFA3]">· H3:{spyglassSample.h3Hex.slice(-5)}</span>}
+          {spyglassPinned && <span className="text-[#FF9100] font-bold">· FIJA</span>}
         </div>
       </div>
 
@@ -578,7 +659,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
                   onClick={() => {
                     setFocusedWaypointId(wp.id);
                     const p = geoToScene(wp.lat, wp.lonE);
-                    setSpyglassSample(sampleTerrainProps(p.x, p.z, layers.mola ? 1 : 0.12));
+                    setSpyglassSample(sampleTerrainProps(p.x, p.z, layers.mola ? 1 : 0.12, hexCells));
                     const m = markers.find((mk) => mk.node.id === wp.id);
                     if (m) {
                       setSpyglassPinned(true);
@@ -686,44 +767,52 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
         <span>CRS: IAU_2015:49900 (MOLA / CTX 20M)</span>
       </div>
 
-      {/* Live NASA Mars 2020 Raw Image Texture Selector */}
-      {activeMarsImage && (
-        <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-[#0B0E14]/90 border border-[#1E2738] rounded-lg px-2.5 py-1.5 font-mono-tech text-[10px] text-slate-200">
-          <img
-            src={activeMarsImage.proxyUrl}
-            alt={activeMarsImage.imageid}
-            className="w-7 h-7 rounded object-cover border border-[#00F5D4]/50"
-          />
-          <div>
-            <div className="text-[#00F5D4] font-bold">
-              NASA MARS 2020 · SOL {activeMarsImage.sol}
-            </div>
-            <div className="text-slate-400">
-              {activeMarsImage.instrument} · #{selectedImageIdx + 1}/{marsImages.length}
-            </div>
-          </div>
-          <div className="flex items-center gap-1 ml-1">
+      {/* NASA Mars Trek Orbital Texture Selector */}
+      <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-[#0B0E14]/90 border border-[#1E2738] rounded-lg px-2.5 py-1.5 font-mono-tech text-[10px] text-slate-200">
+        <span className="text-slate-400">ORBITAL BASE:</span>
+        <div className="flex items-center gap-1">
+          {[
+            { id: 'trek-viking', label: 'VIKING 232m' },
+            { id: 'trek-mola', label: 'MOLA 463m' },
+          ].map((src) => (
+            <button
+              key={src.id}
+              type="button"
+              onClick={() => setTextureSource(src.id as 'trek-viking' | 'trek-mola')}
+              className={`px-2 py-1 rounded font-bold transition cursor-pointer ${
+                textureSource === src.id
+                  ? 'bg-[#00F5D4]/20 text-[#00F5D4] border border-[#00F5D4]/60'
+                  : 'bg-[#111622] text-slate-400 hover:text-white border border-[#1E2738]'
+              }`}
+            >
+              {src.label}
+            </button>
+          ))}
+        </div>
+        {activeMarsImage && (
+          <div className="hidden xl:flex items-center gap-1.5 pl-2 border-l border-[#1E2738]">
+            <span className="text-[#FF9100]">MARS 2020 SOL {activeMarsImage.sol}</span>
             <button
               type="button"
               onClick={() =>
                 onChangeImageIdx((selectedImageIdx - 1 + marsImages.length) % marsImages.length)
               }
-              className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] cursor-pointer"
+              className="p-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] cursor-pointer"
               title="Imagen anterior NASA Mars 2020"
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
+              <ChevronLeft className="w-3 h-3" />
             </button>
             <button
               type="button"
               onClick={() => onChangeImageIdx((selectedImageIdx + 1) % marsImages.length)}
-              className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] cursor-pointer"
+              className="p-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] cursor-pointer"
               title="Siguiente imagen NASA Mars 2020"
             >
-              <ChevronRight className="w-3.5 h-3.5" />
+              <ChevronRight className="w-3 h-3" />
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

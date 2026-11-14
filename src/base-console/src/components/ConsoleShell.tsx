@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Compass,
   Route,
   UserCheck,
-  AlertTriangle,
   Radio,
   ShieldAlert,
   User,
@@ -24,6 +23,7 @@ interface ConsoleShellProps {
   zenohSynced: boolean;
   apiHealth: ApiHealth | null;
   isLive?: boolean;
+  telemetryFromApi?: boolean;
   onToggleLive?: () => void;
   toast?: ToastMessage | null;
   onDismissToast?: () => void;
@@ -37,12 +37,26 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
   zenohSynced,
   apiHealth,
   isLive = true,
+  telemetryFromApi = false,
   onToggleLive,
   toast = null,
   onDismissToast,
   children,
 }) => {
-  const isEmergency = activeView === 'eva-emergency' || currentEvent.values.viable_destination === 'WP3';
+  const [localTime, setLocalTime] = useState(() =>
+    new Date().toLocaleTimeString('es-ES', { hour12: false })
+  );
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setLocalTime(new Date().toLocaleTimeString('es-ES', { hour12: false }));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const isEmergency =
+    activeView === 'eva-emergency' ||
+    (currentEvent.active_threats.length >= 2 && currentEvent.t_min < 114);
   const isCaution = !isEmergency && (currentEvent.active_threats.length === 1 || currentEvent.values.radio_class !== 'VERDE');
 
   const statusPill = isEmergency
@@ -110,18 +124,6 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
               >
                 <UserCheck className="w-4 h-4 shrink-0" />
                 <span>Telemetría EVA</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelectView('eva-emergency')}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
-                  activeView === 'eva-emergency'
-                    ? 'bg-[#FF1744]/20 text-[#FF1744] border border-[#FF1744]/50'
-                    : 'text-slate-400 hover:text-[#FF1744] hover:bg-[#FF1744]/10 border border-transparent'
-                }`}
-              >
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>HUD Multiemergencia</span>
               </button>
             </div>
 
@@ -204,18 +206,28 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
                   onClick={onToggleLive}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border font-mono-tech text-[11px] font-bold transition cursor-pointer ${
                     isLive
-                      ? 'bg-[#00FFA3]/15 border-[#00FFA3]/50 text-[#00FFA3]'
+                      ? telemetryFromApi
+                        ? 'bg-[#00FFA3]/15 border-[#00FFA3]/50 text-[#00FFA3]'
+                        : 'bg-[#FFE600]/15 border-[#FFE600]/50 text-[#FFE600]'
                       : 'bg-[#111622] border-[#1E2738] text-slate-400 hover:text-white'
                   }`}
-                  title="Pausar/Reanudar flujo en tiempo real desde la API Rust"
+                  title="Pausar/Reanudar flujo en tiempo real desde GET /api/eva07 (Rust API)"
                 >
-                  <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-[#00FFA3] animate-pulse' : 'bg-slate-500'}`} />
-                  <span>{isLive ? 'EN VIVO' : 'PAUSA'}</span>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isLive ? (telemetryFromApi ? 'bg-[#00FFA3]' : 'bg-[#FFE600]') : 'bg-slate-500'
+                    }`}
+                  />
+                  <span>
+                    {isLive ? (telemetryFromApi ? 'EN VIVO · API' : 'EN VIVO · LOCAL') : 'PAUSA'}
+                  </span>
                 </button>
               )}
-              <div className="text-right font-mono-tech">
-                <div className="text-[10px] text-slate-500">LMST · T{currentEvent.t_min >= 0 ? `+${currentEvent.t_min}` : currentEvent.t_min}m</div>
-                <div className="text-xs font-bold text-slate-100">{currentEvent.lmst}</div>
+              <div className="text-right font-mono-tech tabular-nums min-w-[138px]">
+                <div className="text-xs font-bold text-slate-100">{localTime}</div>
+                <div className="text-[10px] text-slate-400">
+                  LMST {currentEvent.lmst} · T{currentEvent.t_min >= 0 ? `+${Math.round(currentEvent.t_min)}` : Math.round(currentEvent.t_min)}m
+                </div>
               </div>
               <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#111622] border border-[#1E2738] text-[11px] font-mono-tech text-[#00F5D4]">
                 <Radio className="w-3.5 h-3.5" />
@@ -276,11 +288,15 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
               <span className="text-slate-400 hidden lg:inline">PROTOCOLO 07-ALPHA</span>
               <button
                 type="button"
-                onClick={() => onSelectView('eva-emergency')}
-                className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#FF1744] hover:bg-[#FF1744]/90 text-white font-bold text-[10px] tracking-wider transition cursor-pointer"
+                onClick={() => onSelectView(isEmergency ? 'eva-hud-nominal' : 'eva-emergency')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded font-bold text-[10px] tracking-wider transition cursor-pointer ${
+                  isEmergency
+                    ? 'bg-[#00FFA3] hover:bg-[#00FFA3]/90 text-[#0B0E14]'
+                    : 'bg-[#FF1744] hover:bg-[#FF1744]/90 text-white'
+                }`}
               >
                 <ShieldAlert className="w-3.5 h-3.5" />
-                <span>SIMULAR ABORT / WP3</span>
+                <span>{isEmergency ? 'RESTAURAR NOMINAL' : 'SIMULAR ABORT / WP3'}</span>
               </button>
             </div>
           </footer>

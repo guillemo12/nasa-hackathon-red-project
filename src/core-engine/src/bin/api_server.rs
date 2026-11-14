@@ -10,6 +10,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::Arc;
 
+use h3o::{CellIndex, LatLng};
 use red_atlas_core::h3_mars_grid::H3MarsGrid;
 use red_atlas_core::metabolic_dstar::{metabolic_o2_rate_l_min, pandolf_mars_metabolic_watts};
 use red_atlas_core::stochastic_hazard::run_chaos_mode_monte_carlo;
@@ -244,6 +245,42 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
         ("GET", "/api/geojson") => {
             send_json(&mut stream, "200 OK", &state.geojson_value.to_string());
         }
+        ("GET", "/api/hexgrid") => {
+            #[derive(Serialize)]
+            struct HexCellOut {
+                h3_hex: String,
+                lat: f64,
+                lon_e: f64,
+                elev_m: f32,
+                slope_deg: f32,
+                thermal_inertia_tiu: f32,
+                isru_h2o_pct: f32,
+                sky_view_factor: f32,
+                los_base_rssi_dbm: f32,
+            }
+            let out: Vec<HexCellOut> = state
+                .corridor_cells
+                .iter()
+                .filter_map(|c| {
+                    let ci = CellIndex::try_from(c.h3_index).ok()?;
+                    let ll = LatLng::from(ci);
+                    let lon_e = ((ll.lng() % 360.0) + 360.0) % 360.0;
+                    Some(HexCellOut {
+                        h3_hex: format!("{:x}", c.h3_index),
+                        lat: ll.lat(),
+                        lon_e,
+                        elev_m: c.elev_m,
+                        slope_deg: c.slope_deg,
+                        thermal_inertia_tiu: c.thermal_inertia_tiu,
+                        isru_h2o_pct: c.isru_h2o_pct,
+                        sky_view_factor: c.sky_view_factor,
+                        los_base_rssi_dbm: c.los_base_rssi_dbm,
+                    })
+                })
+                .collect();
+            let body = serde_json::to_string(&out).unwrap_or_else(|_| "[]".to_string());
+            send_json(&mut stream, "200 OK", &body);
+        }
         ("GET", "/api/chaos-mode") => {
             let seed = parse_query_param(query, "seed")
                 .and_then(|s| s.parse::<u64>().ok())
@@ -283,49 +320,49 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
             send_json(&mut stream, "200 OK", &body);
         }
         ("POST", "/api/zenoh-sync") => {
-            let body = serde_json::to_string(&ZenohSyncResponse {
-                synced: true,
-                protocol: "Eclipse Zenoh / ROS 2 rclrs",
-                target_node: "xEMU-04 (Melas SW EVA-07)",
-                checksum: "0x9F4A7C15",
-                cells_synced: state.total_cells,
+            let body = serde_json::json!({
+                "synced": true,
+                "checksum": "0x7F4A_ZENOH_WP3_OK",
+                "cells_synced": state.total_cells,
             })
-            .unwrap_or_else(|_| "{}".to_string());
+            .to_string();
             send_json(&mut stream, "200 OK", &body);
         }
         _ => {
-            send_json(
-                &mut stream,
-                "404 Not Found",
-                r#"{"error":"Endpoint not found"}"#,
-            );
+            send_json(&mut stream, "404 Not Found", r#"{"error":"not_found"}"#);
         }
     }
 }
 
 fn main() {
-    let (grid_res, total_cells, corridor_cells) = load_corridor_grid();
     let events_value: serde_json::Value =
         serde_json::from_str(P1_EVENTS_JSON).expect("valid eva07_events.json");
     let geojson_value: serde_json::Value =
         serde_json::from_str(P1_GEOJSON).expect("valid triangulo_supervivencia.geojson");
 
+    let parquet_path = Path::new("data/nasa-layers/hexgrid_route_res9_hexcell64b.parquet");
+    let grid = H3MarsGrid::load_p1_parquet(parquet_path).expect("load P1 parquet");
+    let total_cells = grid.len();
+    let corridor_cells: Vec<HexCellState64B> = grid.cells.values().copied().collect();
+    println!(
+        "[api_server] Loaded P1 Parquet '{}' ({} cells, res 9)",
+        parquet_path.display(),
+        total_cells
+    );
+
     let state = Arc::new(AppState {
-        grid_res,
+        grid_res: 9,
         total_cells,
         corridor_cells,
         events_value,
         geojson_value,
     });
 
-    let addr = "127.0.0.1:3001";
-    let listener = TcpListener::bind(addr).expect("bind 127.0.0.1:3001");
-    println!("[api_server] R.E.D. ATLAS Rust API listening on http://{addr}");
+    let listener = TcpListener::bind("127.0.0.1:3001").expect("bind 127.0.0.1:3001");
+    println!("[api_server] R.E.D. ATLAS Rust API listening on http://127.0.0.1:3001");
 
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            let st = Arc::clone(&state);
-            std::thread::spawn(move || handle_client(stream, st));
-        }
+    for stream in listener.incoming().flatten() {
+        let st = Arc::clone(&state);
+        std::thread::spawn(move || handle_client(stream, st));
     }
 }

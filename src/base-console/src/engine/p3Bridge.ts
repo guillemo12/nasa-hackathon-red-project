@@ -135,10 +135,11 @@ export function runChaosModeMonteCarlo(seed = 20261114, totalRuns = 100): ChaosR
 export type AlertTriadLevel = 'NOMINAL' | 'CAUTION' | 'CRITICAL_EMERGENCY';
 
 export function classifyEvaState(ev: Eva07Event): AlertTriadLevel {
-  if (ev.active_threats.length >= 2 || ev.values.viable_destination === 'WP3') {
+  // Active multi-hazard emergency window (T+105..T+113 before reaching WP3 shelter)
+  if (ev.active_threats.length >= 2 && ev.t_min < 114) {
     return 'CRITICAL_EMERGENCY';
   }
-  if (ev.active_threats.length === 1 || ev.values.radio_class !== 'VERDE') {
+  if (ev.active_threats.length >= 1 || ev.values.radio_class !== 'VERDE') {
     return 'CAUTION';
   }
   return 'NOMINAL';

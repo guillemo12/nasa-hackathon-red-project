@@ -1,18 +1,36 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   AlertOctagon,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   Compass,
   Layers,
+  MapPin,
   Mic,
+  Minus,
+  Plus,
   Radio,
+  RotateCcw,
   RotateCw,
   ShieldCheck,
+  Trash2,
+  Undo2,
   Volume2,
 } from 'lucide-react';
-import { EVA07_EVENTS } from '@/data/missionData';
+import { CANONICAL_WAYPOINTS, EVA07_EVENTS } from '@/data/missionData';
 import type { MarsRawImage } from '@/engine/apiClient';
+import {
+  MARS_TREK_LAYERS,
+  MELAS_CENTER,
+  TILE_SIZE,
+  getTrekTileUrl,
+  haversineMarsKm,
+  latLonToWorldPx,
+  worldPxToLatLon,
+  type MarsTrekLayerId,
+} from '@/engine/marsTrekTiles';
 import { classifyEvaState } from '@/engine/p3Bridge';
 import type { Eva07Event } from '@/types/mission';
 
@@ -20,23 +38,143 @@ interface EvaHudViewProps {
   forceEmergency?: boolean;
   currentEvent: Eva07Event;
   marsImage?: MarsRawImage | null;
+  marsImages?: MarsRawImage[];
+  selectedImageIdx?: number;
+  onChangeImageIdx?: (idx: number) => void;
   onSelectTimeMin: (tMin: number) => void;
   onNotify?: (title: string, detail?: string, tone?: 'cyan' | 'green' | 'amber' | 'red') => void;
+}
+
+interface CustomMapPoint {
+  id: number;
+  lat: number;
+  lonE: number;
+  label: string;
+  kind: 'ISRU' | 'PELIGRO' | 'REFUGIO';
 }
 
 export const EvaHudView: React.FC<EvaHudViewProps> = ({
   forceEmergency = false,
   currentEvent,
   marsImage = null,
+  marsImages = [],
+  selectedImageIdx = 0,
+  onChangeImageIdx,
   onSelectTimeMin,
   onNotify,
 }) => {
   const [dialPos, setDialPos] = useState<1 | 2 | 3>(forceEmergency ? 3 : 2);
-  const [activeCuffZone, setActiveCuffZone] = useState<number>(2);
   const [voicePlaying, setVoicePlaying] = useState(false);
   const [showArGrid, setShowArGrid] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [isruSamples, setIsruSamples] = useState(1);
+
+  // Extensible NASA JPL Mars Trek WMTS Map State
+  const visorRef = useRef<HTMLDivElement | null>(null);
+  const [visorSize, setVisorSize] = useState({ width: 900, height: 430 });
+  const [baseLayer, setBaseLayer] = useState<MarsTrekLayerId>('viking');
+  const [tileZoom, setTileZoom] = useState<number>(5);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lonE: number }>(MELAS_CENTER);
+  const [pointKind, setPointKind] = useState<'ISRU' | 'PELIGRO' | 'REFUGIO'>('ISRU');
+  const [customPoints, setCustomPoints] = useState<CustomMapPoint[]>([]);
+
+  const dragRef = useRef<{
+    active: boolean;
+    moved: boolean;
+    startX: number;
+    startY: number;
+    origCenterWx: number;
+    origCenterWy: number;
+  }>({ active: false, moved: false, startX: 0, startY: 0, origCenterWx: 0, origCenterWy: 0 });
+
+  useEffect(() => {
+    const el = visorRef.current;
+    if (!el) return;
+    const update = () => {
+      setVisorSize({
+        width: el.clientWidth || 900,
+        height: el.clientHeight || 430,
+      });
+    };
+    update();
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const centerWorld = latLonToWorldPx(mapCenter.lat, mapCenter.lonE, tileZoom);
+
+  const latLonToScreen = (lat: number, lonE: number) => {
+    const pt = latLonToWorldPx(lat, lonE, tileZoom);
+    const colsPx = Math.pow(2, tileZoom + 1) * TILE_SIZE;
+    let dx = pt.x - centerWorld.x;
+    if (dx > colsPx / 2) dx -= colsPx;
+    if (dx < -colsPx / 2) dx += colsPx;
+    return {
+      x: visorSize.width / 2 + dx,
+      y: visorSize.height / 2 + (pt.y - centerWorld.y),
+    };
+  };
+
+  const handleMapPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragRef.current = {
+      active: true,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      origCenterWx: centerWorld.x,
+      origCenterWy: centerWorld.y,
+    };
+  };
+
+  const handleMapPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (Math.hypot(dx, dy) > 5) {
+      dragRef.current.moved = true;
+    }
+    if (dragRef.current.moved) {
+      const nextWx = dragRef.current.origCenterWx - dx;
+      const nextWy = dragRef.current.origCenterWy - dy;
+      setMapCenter(worldPxToLatLon(nextWx, nextWy, tileZoom));
+    }
+  };
+
+  const handleMapPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const wasMoved = dragRef.current.moved;
+    dragRef.current.active = false;
+    if (wasMoved || (e.target as HTMLElement).closest('button')) return;
+
+    const el = visorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const clickWx = centerWorld.x + (e.clientX - rect.left - rect.width / 2);
+    const clickWy = centerWorld.y + (e.clientY - rect.top - rect.height / 2);
+    const { lat, lonE } = worldPxToLatLon(clickWx, clickWy, tileZoom);
+
+    const nextNum = customPoints.length + 1;
+    const newPt: CustomMapPoint = {
+      id: Date.now() + nextNum,
+      lat,
+      lonE,
+      label: `P${nextNum}`,
+      kind: pointKind,
+    };
+    setCustomPoints((prev) => [...prev, newPt]);
+    onNotify?.(
+      `Punto ${newPt.label} (${newPt.kind}) añadido`,
+      `${lat.toFixed(2)}°, ${lonE.toFixed(2)}°E · Arrastra para extender el mapa`,
+      newPt.kind === 'PELIGRO' ? 'red' : newPt.kind === 'REFUGIO' ? 'green' : 'cyan'
+    );
+  };
+
+  const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setTileZoom((z) => Math.max(3, Math.min(7, z + (e.deltaY < 0 ? 1 : -1))));
+  };
 
   const alertLevel = forceEmergency ? 'CRITICAL_EMERGENCY' : classifyEvaState(currentEvent);
   const isEmergency = alertLevel === 'CRITICAL_EMERGENCY';
@@ -70,31 +208,72 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const powerW = Math.round(currentEvent.values.metabolic_power_w);
   const o2Rate = currentEvent.values.o2_l_min;
 
+  // Compute visible Mars Trek WMTS tiles covering the current viewport
+  const cols = Math.pow(2, tileZoom + 1);
+  const rows = Math.pow(2, tileZoom);
+  const topLeftWx = centerWorld.x - visorSize.width / 2;
+  const topLeftWy = centerWorld.y - visorSize.height / 2;
+  const minTx = Math.floor(topLeftWx / TILE_SIZE);
+  const maxTx = Math.floor((topLeftWx + visorSize.width) / TILE_SIZE);
+  const minTy = Math.max(0, Math.floor(topLeftWy / TILE_SIZE));
+  const maxTy = Math.min(rows - 1, Math.floor((topLeftWy + visorSize.height) / TILE_SIZE));
+
+  const visibleTiles: Array<{ key: string; url: string; left: number; top: number }> = [];
+  if (baseLayer !== 'rover') {
+    for (let ty = minTy; ty <= maxTy; ty++) {
+      for (let tx = minTx; tx <= maxTx; tx++) {
+        const wrappedTx = ((tx % cols) + cols) % cols;
+        visibleTiles.push({
+          key: `${baseLayer}-${tileZoom}-${tx}-${ty}`,
+          url: getTrekTileUrl(baseLayer, tileZoom, wrappedTx, ty),
+          left: tx * TILE_SIZE - topLeftWx,
+          top: ty * TILE_SIZE - topLeftWy,
+        });
+      }
+    }
+  }
+
+  const baseOrigin = CANONICAL_WAYPOINTS[0];
+  const projectedWaypoints = CANONICAL_WAYPOINTS.map((wp) => ({
+    wp,
+    ...latLonToScreen(wp.lat, wp.lonE),
+  }));
+  const projectedCustom = customPoints.map((pt) => ({
+    pt,
+    ...latLonToScreen(pt.lat, pt.lonE),
+  }));
+
   return (
     <div className="space-y-4">
       {/* Interactive EVA-07 Timeline Scrubber (P1 eva07_events.json) */}
-      <div className="bg-[#111622] border border-[#1E2738] rounded-xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="space-y-1">
+      <div className="bg-[#111622] border border-[#1E2738] rounded-xl p-3.5 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="font-mono-tech text-[10px] text-[#00F5D4] font-bold uppercase tracking-wider">
-            CRONOLOGÍA EVA-07 EN VIVO (DATOS P1 · {EVA07_EVENTS.length} HITOS)
+            CRONOLOGÍA EVA-07 (DATOS P1 · {EVA07_EVENTS.length} HITOS)
           </div>
-          <div className="text-xs font-semibold text-slate-100">
-            T{currentEvent.t_min >= 0 ? `+${currentEvent.t_min}` : currentEvent.t_min} min ({currentEvent.lmst} LMST) — {currentEvent.title}
+          <div className="text-xs font-semibold text-slate-100 font-mono-tech tabular-nums truncate max-w-full">
+            T{currentEvent.t_min >= 0 ? `+${Math.round(currentEvent.t_min)}` : Math.round(currentEvent.t_min)}m ({currentEvent.lmst} LMST) — {currentEvent.title}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 bg-[#0B0E14] border border-[#1E2738] rounded-lg px-2.5 py-1">
-            <span className="font-mono-tech text-[10px] text-slate-400">T-45..+165</span>
+          <div
+            className="flex items-center gap-2.5 bg-[#0B0E14] border border-[#1E2738] rounded-lg px-3 py-1.5 shrink-0"
+            title="Desliza para fijar cualquier minuto de la misión EVA-07 (pausa EN VIVO automáticamente)"
+          >
+            <span className="font-mono-tech text-[10px] text-slate-400 shrink-0">TIEMPO MISIÓN</span>
             <input
               type="range"
               min={-45}
               max={165}
               step={1}
-              value={currentEvent.t_min}
+              value={Math.round(currentEvent.t_min)}
               onChange={(e) => onSelectTimeMin(Number(e.target.value))}
-              className="w-28 accent-[#00F5D4] cursor-pointer"
+              className="w-36 accent-[#00F5D4] cursor-pointer"
             />
+            <span className="font-mono-tech text-[10px] font-bold text-[#00F5D4] tabular-nums w-11 text-right shrink-0">
+              T{currentEvent.t_min >= 0 ? `+${Math.round(currentEvent.t_min)}` : Math.round(currentEvent.t_min)}m
+            </span>
           </div>
           {timelinePresets.map((p) => (
             <button
@@ -119,207 +298,389 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       <div
         className={`relative rounded-2xl border overflow-hidden transition-colors ${
           isEmergency
-            ? 'border-[#FF1744]/70 bg-gradient-to-b from-[#1a0b10] via-[#1c100d] to-[#0B0E14]'
-            : 'border-[#1E2738] bg-gradient-to-b from-[#1a1512] via-[#17120e] to-[#0B0E14]'
+            ? 'border-[#FF1744] bg-gradient-to-b from-[#2b090d] via-[#1b0c0e] to-[#0B0E14]'
+            : isCaution
+              ? 'border-[#FFE600]/60 bg-gradient-to-b from-[#1a180d] via-[#121318] to-[#0B0E14]'
+              : 'border-[#1E2738] bg-gradient-to-b from-[#131722] via-[#10141e] to-[#0B0E14]'
         }`}
       >
         {/* Top Visor Status Strip */}
-        <div
-          className={`px-4 py-2.5 border-b flex flex-wrap items-center justify-between gap-3 font-mono-tech text-[11px] ${
-            isEmergency
-              ? 'bg-[#FF1744]/20 border-[#FF1744]/40 text-white'
-              : 'bg-[#0B0E14]/90 border-[#1E2738] text-slate-200'
-          }`}
-        >
-          <div className="flex flex-wrap items-center gap-4">
-            <span className={`font-bold flex items-center gap-1.5 ${isEmergency ? 'text-[#FF1744]' : 'text-[#00FFA3]'}`}>
-              {isEmergency ? <AlertOctagon className="w-4 h-4" /> : <Compass className="w-4 h-4 text-[#00F5D4]" />}
-              {isEmergency
-                ? 'AUTÓNOMO EDGE (CANYON-TRN OFFLINE)'
-                : 'CANYON-TRN: LOCKED (RMS 0.04m)'}
-            </span>
-            <span>AZM: {isEmergency ? '285° OESTE' : '034° NNE'}</span>
-            <span>MET {currentEvent.lmst}</span>
-            <span>SOL 142</span>
-          </div>
+        <div className="border-b border-white/10 bg-[#0B0E14]/70 px-5 py-3 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 font-mono-tech text-xs">
+            <div className="flex items-center gap-3">
+              <span
+                className={`px-2.5 py-0.5 rounded font-bold flex items-center gap-1.5 ${
+                  isEmergency
+                    ? 'bg-[#FF1744] text-white animate-pulse'
+                    : isCaution
+                      ? 'bg-[#FFE600]/20 text-[#FFE600] border border-[#FFE600]/50'
+                      : 'bg-[#00FFA3]/20 text-[#00FFA3] border border-[#00FFA3]/50'
+                }`}
+              >
+                {isEmergency ? <AlertOctagon className="w-3.5 h-3.5" /> : <Compass className="w-3.5 h-3.5" />}
+                {isEmergency ? 'ALERTA CRÍTICA MULTI-AMENAZA' : isCaution ? 'PRECAUCIÓN // NLOS' : 'EVA-07 // NOMINAL'}
+              </span>
+              <span className="text-slate-300">
+                LMST <strong className="text-white">{currentEvent.lmst}</strong>
+              </span>
+              <span className="text-[#00F5D4]">
+                O₂ {o2Pct.toFixed(1)}% ({currentEvent.values.o2_remaining_g.toFixed(0)} g)
+              </span>
+            </div>
 
-          <div className="flex items-center gap-3">
-            {showArGrid && (
-              <g opacity="0.35">
-                {[120, 240, 360, 480, 600, 720].map((x) => (
-                  <line key={`vx-${x}`} x1={x} y1={90} x2={x} y2={320} stroke="#00F5D4" strokeWidth="0.7" strokeDasharray="4 4" />
-                ))}
-                {[150, 200, 250, 300].map((y) => (
-                  <line key={`hy-${y}`} x1={0} y1={y} x2={900} y2={y} stroke="#00F5D4" strokeWidth="0.7" strokeDasharray="4 4" />
-                ))}
-              </g>
-            )}
-            {isEmergency ? (
-              <>
-                <span className="text-[#FFE600] font-bold">
-                  SPE: {Math.max(8.0, currentEvent.values.spe_ext_rate_cal_msv_h).toFixed(1)} mSv/h · VENTANA: 15 MIN
-                </span>
-                <span className="px-2 py-0.5 rounded bg-[#FF1744] text-white font-bold text-[10px]">
-                  PROTOCOLO 07-ALPHA ACTIVO
-                </span>
-              </>
-            ) : (
-              <span className={`flex items-center gap-1.5 font-bold ${isCaution ? 'text-[#FFE600]' : 'text-[#00FFA3]'}`}>
-                <Radio className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-3">
+              <span className={doseMsv > 2 ? 'text-[#FF1744] font-bold' : 'text-[#00FFA3]'}>
+                RAD: {doseMsv.toFixed(2)} mSv
+              </span>
+              <span className="text-slate-600">|</span>
+              <span className="flex items-center gap-1 text-slate-300">
+                <Radio className="w-3.5 h-3.5 text-[#00F5D4]" />
                 ZENOH {currentEvent.values.radio_class} ({currentEvent.values.radio_rssi_dbm.toFixed(0)} dBm)
               </span>
-            )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 font-mono-tech text-[11px]">
+              {isEmergency ? (
+                <>
+                  <span className="px-2 py-0.5 rounded bg-[#FF1744]/20 border border-[#FF1744]/50 text-[#FF1744] line-through">
+                    RETORNO BASE ALPHA: INVIABLE
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded bg-[#00FFA3]/20 border border-[#00FFA3]/60 text-[#00FFA3] font-bold">
+                    RUTA ACTIVA: REFUGIO WP3 BASALTO
+                  </span>
+                </>
+              ) : (
+                <span className="text-slate-300">
+                  OBJETIVO ACTIVO: <strong className="text-[#00F5D4]">{currentEvent.values.viable_destination}</strong> ·{' '}
+                  {currentEvent.title}
+                </span>
+              )}
+            </div>
+
+            <div className="text-[11px] font-mono-tech text-slate-300">
+              Centro mapa: {mapCenter.lat.toFixed(2)}°, {mapCenter.lonE.toFixed(2)}°E · Zoom Z{tileZoom}
+            </div>
           </div>
         </div>
 
-        {/* Barra Superior "Walkback Limit Dual" (zero overlapping badges!) */}
-        <div className="px-4 py-3 bg-[#0B0E14]/85 border-b border-[#1E2738]">
-          {isEmergency ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="flex items-center justify-between bg-[#1a0d12] border border-[#FF1744]/50 rounded-xl px-4 py-2.5">
-                <div>
-                  <div className="font-mono-tech text-xs font-bold text-[#FF1744] line-through">
-                    RETORNO BASE ALPHA: INVIABLE
-                  </div>
-                  <div className="font-mono-tech text-[10px] text-slate-400">
-                    48 MIN · DOSIS PROYECTADA 6.4 mSv (&gt;2.0 mSv LÍMITE)
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded bg-[#FF1744]/20 text-[#FF1744] font-mono-tech text-[10px] font-bold">
-                  VETO RAD
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between bg-[#08261a] border border-[#00FFA3]/60 rounded-xl px-4 py-2.5">
-                <div>
-                  <div className="font-mono-tech text-xs font-bold text-[#00FFA3]">
-                    RUTA ACTIVA: REFUGIO WP3 BASALTO
-                  </div>
-                  <div className="font-mono-tech text-[10px] text-slate-200">
-                    VECTOR 344° / 285° · 600 m · TECHO &gt;5m (SVF 0.15)
-                  </div>
-                </div>
-                <div className="text-right font-mono-tech">
-                  <div className="text-lg font-extrabold text-[#00FFA3]">8 MIN</div>
-                  <div className="text-[9.5px] text-slate-300">MARGEN SEGURO</div>
-                </div>
-              </div>
+        {/* Center Extensible Mars Trek Map Viewport */}
+        <div
+          ref={visorRef}
+          onPointerDown={handleMapPointerDown}
+          onPointerMove={handleMapPointerMove}
+          onPointerUp={handleMapPointerUp}
+          onWheel={handleMapWheel}
+          className="relative min-h-[450px] flex flex-col items-center justify-between gap-4 p-4 overflow-hidden select-none cursor-grab active:cursor-grabbing bg-[#090C12]"
+        >
+          {/* NASA JPL Mars Trek Global WMTS Tile Layer (extends infinitely as you pan/zoom) */}
+          {baseLayer !== 'rover' ? (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              {visibleTiles.map((tile) => (
+                <img
+                  key={tile.key}
+                  src={tile.url}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    position: 'absolute',
+                    left: `${tile.left}px`,
+                    top: `${tile.top}px`,
+                    width: `${TILE_SIZE}px`,
+                    height: `${TILE_SIZE}px`,
+                  }}
+                  className={`max-w-none transition-opacity ${
+                    isEmergency ? 'opacity-65 sepia hue-rotate-[-20deg] brightness-75' : 'opacity-90 brightness-95'
+                  }`}
+                />
+              ))}
+              <div
+                className={`absolute inset-0 ${
+                  isEmergency
+                    ? 'bg-gradient-to-b from-[#2b090d]/60 via-transparent to-[#0B0E14]/80'
+                    : 'bg-gradient-to-b from-[#0B0E14]/45 via-transparent to-[#0B0E14]/75'
+                }`}
+              />
             </div>
           ) : (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 font-mono-tech text-xs">
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-400">CONSUMIBLES O₂ / PLSS:</span>
-                  <span className="text-lg font-extrabold text-[#00FFA3]">{o2Pct.toFixed(1)}%</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-[#00FFA3]/15 text-[#00FFA3]">
-                    DOSIS SPE: {doseMsv.toFixed(2)} / 2.00 mSv
-                  </span>
+            marsImage && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#06090f] px-6 py-14">
+                <div className="flex flex-col md:flex-row items-center gap-5 max-w-4xl w-full bg-[#0B0E14]/92 border border-[#1E2738] rounded-xl p-4 shadow-2xl">
+                  <div className="relative w-full md:w-[420px] h-[250px] bg-black rounded-lg overflow-hidden border border-[#1E2738] shrink-0 flex items-center justify-center">
+                    <img
+                      src={marsImage.proxyUrl}
+                      alt={marsImage.imageid}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                    {marsImages.length > 1 && onChangeImageIdx && (
+                      <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onChangeImageIdx((selectedImageIdx - 1 + marsImages.length) % marsImages.length)
+                          }
+                          className="p-1.5 rounded bg-[#0B0E14]/90 hover:bg-[#1E2738] border border-[#1E2738] text-white cursor-pointer"
+                          title="Imagen anterior NASA Mars 2020"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onChangeImageIdx((selectedImageIdx + 1) % marsImages.length)}
+                          className="p-1.5 rounded bg-[#0B0E14]/90 hover:bg-[#1E2738] border border-[#1E2738] text-white cursor-pointer"
+                          title="Siguiente imagen NASA Mars 2020"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 font-mono-tech text-xs space-y-2 text-slate-200 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2 py-0.5 rounded bg-[#FF9100]/20 text-[#FF9100] text-[10px] font-bold">
+                        NASA MARS 2020 PERSEVERANCE · #{selectedImageIdx + 1}/{marsImages.length || 1}
+                      </span>
+                      <span className="text-[10px] text-slate-400">{marsImage.credit}</span>
+                    </div>
+                    <div className="text-sm font-bold text-white truncate">{marsImage.title}</div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                      <div className="bg-[#111622] border border-[#1E2738] rounded px-2.5 py-1.5">
+                        <span className="text-slate-400 block text-[9.5px]">SOL / INSTRUMENTO</span>
+                        <strong className="text-[#00F5D4]">Sol {marsImage.sol} · {marsImage.instrument}</strong>
+                      </div>
+                      <div className="bg-[#111622] border border-[#1E2738] rounded px-2.5 py-1.5">
+                        <span className="text-slate-400 block text-[9.5px]">ORIENTACIÓN MÁSTIL</span>
+                        <strong className="text-white">Az {Number(marsImage.mastAz).toFixed(1)}° · El {Number(marsImage.mastEl).toFixed(1)}°</strong>
+                      </div>
+                      <div className="bg-[#111622] border border-[#1E2738] rounded px-2.5 py-1.5">
+                        <span className="text-slate-400 block text-[9.5px]">SITIO / DRIVE</span>
+                        <strong className="text-[#00FFA3]">Site {marsImage.site} · Drive {marsImage.drive}</strong>
+                      </div>
+                      <div className="bg-[#111622] border border-[#1E2738] rounded px-2.5 py-1.5">
+                        <span className="text-slate-400 block text-[9.5px]">FECHA UTC</span>
+                        <strong className="text-slate-200">{marsImage.dateTakenUtc ? marsImage.dateTakenUtc.slice(0, 19).replace('T', ' ') : marsImage.dateTakenMars}</strong>
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">ID: {marsImage.imageid}</div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-[11px]">
-                  <span className="text-[#FF9100] font-semibold">PNR RETORNO BASE: 48 MIN</span>
-                  <span className="text-[#00F5D4] font-semibold">ESCAPE WP3: 8 MIN (600m)</span>
-                </div>
               </div>
-              <div className="relative h-3 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  style={{ width: `${Math.min(100, o2Pct)}%` }}
-                  className="h-full bg-gradient-to-r from-[#00FFA3] to-[#00F5D4] transition-all"
-                />
-                {/* Marca 1: PNR Base */}
-                <div className="absolute top-0 bottom-0 left-[58%] w-0.5 bg-[#FF9100]" />
-                {/* Marca 2: Escape WP3 */}
-                <div className="absolute top-0 bottom-0 left-[82%] w-0.5 bg-[#00F5D4]" />
-              </div>
-              <div className="flex justify-between font-mono-tech text-[10px] text-slate-400">
-                <span>0% (Agotamiento)</span>
-                <span className="text-[#FF9100]">▲ Marca 1: Límite Retorno Base</span>
-                <span className="text-[#00F5D4]">▲ Marca 2: Margen Escape WP3 (+1.8h)</span>
-              </div>
-            </div>
+            )
           )}
-        </div>
 
-        {/* Center AR Visor Viewport */}
-        <div className="relative min-h-[430px] flex flex-col items-center justify-between gap-4 p-5 overflow-hidden">
-          {/* Real NASA Mars 2020 Raw Image Backdrop */}
-          {marsImage && (
-            <>
-              <img
-                src={marsImage.proxyUrl}
-                alt={marsImage.imageid}
-                className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-all ${
-                  isEmergency ? 'opacity-45 blur-[2px] sepia hue-rotate-[-20deg] brightness-75' : 'opacity-65 brightness-90'
-                }`}
-              />
-              <div
-                className={`absolute inset-0 pointer-events-none ${
-                  isEmergency
-                    ? 'bg-gradient-to-b from-[#2b090d]/70 via-[#3b150c]/45 to-[#0B0E14]/90'
-                    : 'bg-gradient-to-b from-[#0B0E14]/55 via-transparent to-[#0B0E14]/85'
-                }`}
-              />
-              <div className="pointer-events-none absolute top-2 right-3 z-10 font-mono-tech text-[9.5px] px-2 py-0.5 rounded bg-[#0B0E14]/75 border border-[#1E2738] text-slate-300">
-                NASA MARS 2020 · SOL {marsImage.sol} · {marsImage.instrument}
-              </div>
-            </>
-          )}
-          {/* Conformal AR Path Overlay (transparent over real NASA Mars 2020 image) */}
+          {/* Georeferenced SVG Overlay (AR Grid, Melas Chasma Survival Triangle, & Custom Points) */}
+          {baseLayer !== 'rover' && (
           <svg
-            viewBox="0 0 900 320"
-            preserveAspectRatio="none"
-            className="absolute inset-0 w-full h-full pointer-events-none"
+            width={visorSize.width}
+            height={visorSize.height}
+            viewBox={`0 0 ${visorSize.width} ${visorSize.height}`}
+            className="absolute inset-0 pointer-events-none"
           >
-            {!marsImage && (
-              <>
-                <path
-                  d="M0,140 L120,90 L240,125 L390,75 L520,115 L690,65 L820,105 L900,85 L900,320 L0,320 Z"
-                  fill={isEmergency ? '#2a120d' : '#261d17'}
-                  opacity="0.7"
-                />
-                <path
-                  d="M0,190 L220,175 L450,185 L700,170 L900,185 L900,320 L0,320 Z"
-                  fill={isEmergency ? '#1c0b08' : '#19130f'}
-                />
-              </>
+            {showArGrid && (
+              <g opacity="0.32">
+                {Array.from({ length: Math.ceil(visorSize.width / 100) }).map((_, i) => (
+                  <line
+                    key={`gx-${i}`}
+                    x1={i * 100}
+                    y1={0}
+                    x2={i * 100}
+                    y2={visorSize.height}
+                    stroke="#00F5D4"
+                    strokeWidth="0.7"
+                    strokeDasharray="4 4"
+                  />
+                ))}
+                {Array.from({ length: Math.ceil(visorSize.height / 80) }).map((_, i) => (
+                  <line
+                    key={`gy-${i}`}
+                    x1={0}
+                    y1={i * 80}
+                    x2={visorSize.width}
+                    y2={i * 80}
+                    stroke="#00F5D4"
+                    strokeWidth="0.7"
+                    strokeDasharray="4 4"
+                  />
+                ))}
+              </g>
             )}
 
-            {showArGrid && (
-              <g opacity="0.35">
-                {[120, 240, 360, 480, 600, 720].map((x) => (
-                  <line key={`vx-${x}`} x1={x} y1={90} x2={x} y2={320} stroke="#00F5D4" strokeWidth="0.7" strokeDasharray="4 4" />
-                ))}
-                {[150, 200, 250, 300].map((y) => (
-                  <line key={`hy-${y}`} x1={0} y1={y} x2={900} y2={y} stroke="#00F5D4" strokeWidth="0.7" strokeDasharray="4 4" />
-                ))}
+            {/* Canonical Melas Chasma Survival Triangle */}
+            {projectedWaypoints.length === 4 && (
+              <g>
+                <polygon
+                  points={projectedWaypoints.map((w) => `${w.x},${w.y}`).join(' ')}
+                  fill="rgba(0, 245, 212, 0.06)"
+                  stroke={isEmergency ? '#FF9100' : '#00F5D4'}
+                  strokeWidth="2"
+                  strokeDasharray="6 4"
+                />
+                {projectedWaypoints.map(({ wp, x, y }) => {
+                  const col =
+                    wp.id === 'WP3'
+                      ? '#00FFA3'
+                      : wp.id === 'WP2'
+                        ? '#FF9100'
+                        : wp.id === 'WP1'
+                          ? '#00F5D4'
+                          : '#e2e8f0';
+                  return (
+                    <g key={wp.id}>
+                      <circle cx={x} cy={y} r="6" fill={col} stroke="#0B0E14" strokeWidth="1.5" />
+                      <rect x={x + 8} y={y - 10} width="54" height="16" rx="3" fill="#0B0E14" fillOpacity="0.88" stroke={col} strokeWidth="0.8" />
+                      <text x={x + 12} y={y + 1} fill={col} fontSize="9.5" fontFamily="JetBrains Mono" fontWeight="700">
+                        {wp.id}
+                      </text>
+                    </g>
+                  );
+                })}
               </g>
             )}
-            {isEmergency ? (
-              /* Emergency AR Dynamic Amber/Red Chevrons guiding to WP3 */
+
+            {/* User-Placed Custom Route & Waypoints (georeferenced in Martian lat/lon) */}
+            {projectedCustom.length > 0 && (
               <g>
-                <polyline points="410,290 450,260 490,290" fill="none" stroke="#FF1744" strokeWidth="5" strokeLinecap="round" />
-                <polyline points="418,255 450,228 482,255" fill="none" stroke="#FF9100" strokeWidth="4.5" strokeLinecap="round" />
-                <polyline points="426,222 450,198 474,222" fill="none" stroke="#FFE600" strokeWidth="4" strokeLinecap="round" />
-              </g>
-            ) : (
-              /* Nominal Conformal AR Path in Electric Cyan (#00F5D4) */
-              <g>
-                <line
-                  x1="450"
-                  y1="315"
-                  x2="450"
-                  y2="125"
-                  stroke={isCaution ? '#FFE600' : '#00F5D4'}
-                  strokeWidth="4"
-                  strokeDasharray="12 8"
+                <polyline
+                  points={`${projectedWaypoints[0].x},${projectedWaypoints[0].y} ${projectedCustom.map((p) => `${p.x},${p.y}`).join(' ')}`}
+                  fill="none"
+                  stroke="#00F5D4"
+                  strokeWidth="2.5"
+                  strokeDasharray="7 5"
                 />
-                <circle cx="450" cy="125" r="7" fill={isCaution ? '#FFE600' : '#00F5D4'} />
+                {projectedCustom.map(({ pt, x, y }, i) => {
+                  const prevLat = i === 0 ? baseOrigin.lat : projectedCustom[i - 1].pt.lat;
+                  const prevLon = i === 0 ? baseOrigin.lonE : projectedCustom[i - 1].pt.lonE;
+                  const distKm = haversineMarsKm(prevLat, prevLon, pt.lat, pt.lonE);
+                  const distLabel = distKm < 1 ? `${Math.round(distKm * 1000)}m` : `${distKm.toFixed(1)}km`;
+                  const color =
+                    pt.kind === 'PELIGRO' ? '#FF1744' : pt.kind === 'REFUGIO' ? '#00FFA3' : '#00F5D4';
+                  return (
+                    <g key={pt.id}>
+                      <circle cx={x} cy={y} r="10" fill={color} fillOpacity="0.24" stroke={color} strokeWidth="2" />
+                      <circle cx={x} cy={y} r="4" fill={color} />
+                      <rect x={x + 10} y={y - 16} width="86" height="18" rx="4" fill="#0B0E14" fillOpacity="0.92" stroke={color} strokeWidth="1" />
+                      <text x={x + 15} y={y - 4} fill={color} fontSize="9.5" fontFamily="JetBrains Mono" fontWeight="700">
+                        {pt.label} · {distLabel}
+                      </text>
+                    </g>
+                  );
+                })}
               </g>
             )}
           </svg>
+          )}
+
+          {/* Interactive Map Controls Toolbar */}
+          <div className="relative z-10 w-full flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 bg-[#0B0E14]/90 border border-[#1E2738] rounded-lg px-2 py-1 font-mono-tech text-[10px]">
+              {/* Base Layer Switcher (NASA Mars Trek / Rover) */}
+              {(['viking', 'mola', 'rover'] as const).map((lid) => (
+                <button
+                  key={lid}
+                  type="button"
+                  onClick={() => setBaseLayer(lid)}
+                  className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                    baseLayer === lid
+                      ? 'bg-[#FF9100]/20 text-[#FF9100] border border-[#FF9100]/60'
+                      : 'text-slate-400 hover:text-white border border-transparent'
+                  }`}
+                >
+                  {MARS_TREK_LAYERS[lid].label}
+                </button>
+              ))}
+
+              <span className="text-slate-600">|</span>
+
+              {/* Custom Point Kind */}
+              <span className="flex items-center gap-1 text-slate-300">
+                <MapPin className="w-3 h-3 text-[#00F5D4]" />
+              </span>
+              {(['ISRU', 'PELIGRO', 'REFUGIO'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setPointKind(k)}
+                  className={`px-1.5 py-0.5 rounded font-bold transition cursor-pointer ${
+                    pointKind === k
+                      ? k === 'PELIGRO'
+                        ? 'bg-[#FF1744]/25 text-[#FF1744] border border-[#FF1744]'
+                        : k === 'REFUGIO'
+                          ? 'bg-[#00FFA3]/20 text-[#00FFA3] border border-[#00FFA3]'
+                          : 'bg-[#00F5D4]/20 text-[#00F5D4] border border-[#00F5D4]'
+                      : 'text-slate-400 hover:text-white border border-transparent'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+
+              <span className="text-slate-600">|</span>
+
+              {/* Zoom & Center Controls */}
+              <button
+                type="button"
+                onClick={() => setTileZoom((z) => Math.min(7, z + 1))}
+                className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
+                title="Acercar mapa (Z+1)"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTileZoom((z) => Math.max(3, z - 1))}
+                className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
+                title="Alejar mapa (Z-1)"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapCenter(MELAS_CENTER);
+                  setTileZoom(5);
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-300 cursor-pointer"
+                title="Centrar en Melas Chasma"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Melas (Z{tileZoom})</span>
+              </button>
+
+              {customPoints.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCustomPoints((prev) => prev.slice(0, -1))}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
+                    title="Deshacer último punto"
+                  >
+                    <Undo2 className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomPoints([]);
+                      onNotify?.('Puntos personalizados eliminados', 'Mapa restaurado', 'cyan');
+                    }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#FF1744]/15 hover:bg-[#FF1744]/25 border border-[#FF1744]/40 text-[#FF1744] cursor-pointer"
+                    title="Borrar todos los puntos"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Limpiar ({customPoints.length})</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="pointer-events-none font-mono-tech text-[9.5px] px-2 py-0.5 rounded bg-[#0B0E14]/80 border border-[#1E2738] text-slate-300">
+              {MARS_TREK_LAYERS[baseLayer].attribution}
+            </div>
+          </div>
 
           {/* Center Waypoint / Single-Alert Fusion Overlay */}
-          {isEmergency ? (
-            <div className="relative z-10 mt-4 mb-10 max-w-xl w-full bg-[#0B0E14]/92 border-2 border-[#FF1744] rounded-2xl px-5 py-4 text-center shadow-[0_0_40px_rgba(255,23,68,0.35)] space-y-2">
+          {isEmergency && (
+            <div className="relative z-10 my-2 max-w-xl w-full bg-[#0B0E14]/92 border-2 border-[#FF1744] rounded-2xl px-5 py-4 text-center shadow-[0_0_40px_rgba(255,23,68,0.35)] space-y-2 pointer-events-none">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FF1744]/20 text-[#FF1744] font-mono-tech text-xs font-bold">
                 <AlertTriangle className="w-4 h-4" />
                 TRIAJE DE ALERTA ÚNICA · ANTI-PÁNICO
@@ -339,24 +700,10 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 </span>
               </div>
             </div>
-          ) : (
-            <div className="relative z-10 mt-6 px-3.5 py-1.5 rounded-xl bg-[#0B0E14]/85 border border-[#00F5D4]/60 font-mono-tech text-xs text-[#00F5D4] font-bold">
-              WP1 // SULFATOS ISRU · 420 m · AZM 034° · CRISM ≥12% H₂O
-            </div>
           )}
 
           {/* Bottom Visor Corners */}
           <div className="relative z-10 w-full flex flex-wrap items-end justify-between gap-3">
-            {showArGrid && (
-              <g opacity="0.35">
-                {[120, 240, 360, 480, 600, 720].map((x) => (
-                  <line key={`vx-${x}`} x1={x} y1={90} x2={x} y2={320} stroke="#00F5D4" strokeWidth="0.7" strokeDasharray="4 4" />
-                ))}
-                {[150, 200, 250, 300].map((y) => (
-                  <line key={`hy-${y}`} x1={0} y1={y} x2={900} y2={y} stroke="#00F5D4" strokeWidth="0.7" strokeDasharray="4 4" />
-                ))}
-              </g>
-            )}
             {isEmergency ? (
               <>
                 <div className="bg-[#0B0E14]/90 border border-[#FF9100]/50 rounded-xl px-4 py-2.5 font-mono-tech">
@@ -389,7 +736,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               </>
             ) : (
               <>
-                <div className="bg-[#0B0E14]/85 border border-[#1E2738] rounded-xl px-4 py-2.5 font-mono-tech text-xs space-y-1">
+                <div className="bg-[#0B0E14]/88 border border-[#1E2738] rounded-xl px-4 py-2 font-mono-tech text-xs space-y-0.5 pointer-events-none">
                   <div className="text-[10px] text-[#00FFA3] font-bold flex items-center gap-1.5">
                     <Activity className="w-3.5 h-3.5" />
                     FISIOLOGÍA (PANDOLF-MARS)
@@ -401,12 +748,13 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-[#0B0E14]/85 border border-[#1E2738] rounded-xl px-4 py-2.5 font-mono-tech text-xs space-y-1 text-right">
-                  <div className="text-[10px] text-slate-400 font-bold">TERRENO &amp; CADENCIA</div>
-                  <div className="flex items-center gap-4">
+                <div className="bg-[#0B0E14]/88 border border-[#1E2738] rounded-xl px-4 py-2 font-mono-tech text-xs space-y-0.5 text-right pointer-events-none">
+                  <div className="text-[10px] text-slate-400 font-bold">
+                    {customPoints.length > 0 ? `RUTA PERSONALIZADA (${customPoints.length})` : 'CLIC: AÑADIR PUNTO · ARRASTRAR: EXPLORAR MARTE'}
+                  </div>
+                  <div className="flex items-center justify-end gap-4">
                     <span>PASO: <strong className="text-white">74 SPM</strong></span>
-                    <span>INCL: <strong className="text-[#00FFA3]">6.2°</strong></span>
-                    <span>TIU: <strong className="text-[#00F5D4]">410 (η 1.0)</strong></span>
+                    <span>TIU: <strong className="text-[#00F5D4]">410</strong></span>
                   </div>
                 </div>
               </>
@@ -415,7 +763,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
         </div>
       </div>
 
-      {/* Wrist Cuff Display Unit (7-inch Ruggedized Panel with Oversized Buttons for Pressurized Gloves) */}
+      {/* Streamlined, Logical Suit Controls (No Redundant Cuff Buttons) */}
       <div className="bg-[#111622] border border-[#1E2738] rounded-2xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -424,114 +772,80 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 xEMU-04 CUFF INTERFACE
               </span>
               <span className="px-2 py-0.5 rounded bg-[#1E2738] font-mono-tech text-[10px] text-slate-300">
-                7-INCH RUGGED MIL-SPEC PANEL
+                DRA. ELENA ROSTOVA · EVA-07
               </span>
-            </div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              Dra. Elena Rostova · Melas Chasma EVA-07 · Botones sobredimensionados (&gt;30 mm) para guantes RMG
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              const next = (dialPos === 3 ? 1 : dialPos + 1) as 1 | 2 | 3;
-              setDialPos(next);
-              if (next === 1) {
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
                 setShowArGrid((g) => !g);
-                onNotify?.('Dial Posición 1: HUD MODE', 'Malla AR h3o / pendientes alternada', 'cyan');
-              } else if (next === 2) {
-                onNotify?.('Dial Posición 2: WAYPOINT LOCK', 'Anclaje Canyon-TRN hacia WP1/WP2', 'cyan');
-              } else {
-                onNotify?.('Dial Posición 3: SOS EGRESS WP3', 'Activando evacuación autónoma a Refugio WP3', 'red');
-                onSelectTimeMin(105);
-              }
-            }}
-            className="flex items-center gap-2.5 bg-[#0B0E14] border border-[#1E2738] hover:border-[#00F5D4] rounded-xl px-3.5 py-2 cursor-pointer active:scale-[0.98]"
-          >
-            <RotateCw className="w-4 h-4 text-[#00F5D4]" />
-            <div className="text-left font-mono-tech">
-              <div className="text-[10px] text-slate-400">DIAL ROTATORIO MECÁNICO (14 N·cm)</div>
-              <div className="text-xs font-bold text-white">
-                POSICIÓN {dialPos} DE 3 ·{' '}
-                {dialPos === 1 ? 'HUD MODE' : dialPos === 2 ? 'WAYPOINT LOCK' : 'SOS EGRESS WP3'}
-              </div>
-            </div>
-          </button>
-        </div>
+                onNotify?.('Cuadrícula AR', showArGrid ? 'Oculta' : 'Visible sobre mapa Mars Trek', 'cyan');
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border font-mono-tech text-xs font-semibold transition cursor-pointer ${
+                showArGrid
+                  ? 'bg-[#00F5D4]/15 border-[#00F5D4] text-[#00F5D4]'
+                  : 'bg-[#0B0E14] border-[#1E2738] text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Cuadrícula AR</span>
+            </button>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            {
-              id: 1,
-              title: 'ZONA [01] CAPAS HUD',
-              sub: 'Malla h3o & Gradiente Pendiente',
-              icon: Layers,
-              danger: false,
-            },
-            {
-              id: 2,
-              title: `ZONA [02] REGISTRAR ISRU (${isruSamples})`,
-              sub: 'Espectro CRISM ≥12% H₂O',
-              icon: ShieldCheck,
-              danger: false,
-            },
-            {
-              id: 3,
-              title: 'ZONA [03] DIAGNÓSTICO',
-              sub: 'PLSS O₂ / LCVG SWME / Zenoh',
-              icon: Activity,
-              danger: false,
-            },
-            {
-              id: 4,
-              title: 'ZONA [04] EGRESO / ABORT',
-              sub: 'Dynamic Goal Switch -> WP3 (8m)',
-              icon: AlertTriangle,
-              danger: true,
-            },
-          ].map((btn) => {
-            const Icon = btn.icon;
-            const selected = activeCuffZone === btn.id;
-            return (
-              <button
-                key={btn.id}
-                type="button"
-                onClick={() => {
-                  setActiveCuffZone(btn.id);
-                  if (btn.id === 1) {
-                    setShowArGrid((g) => !g);
-                    onNotify?.('Capas HUD alternadas', showArGrid ? 'Malla AR oculta' : 'Malla AR h3o visible', 'cyan');
-                  } else if (btn.id === 2) {
-                    const nextN = isruSamples + 1;
-                    setIsruSamples(nextN);
-                    onNotify?.(`Muestra ISRU #${nextN} registrada`, 'Kieserita ≥12% H₂O · Guardada en log local', 'green');
-                  } else if (btn.id === 3) {
-                    setShowDiagnostics((d) => !d);
-                    onNotify?.('Diagnóstico xEMU-04', 'PLSS 29.6 kPa · SWME 4.5kg · Canyon-TRN 0.04m', 'cyan');
-                  } else if (btn.id === 4) {
-                    onNotify?.('Protocolo Egreso WP3 activado', 'Dynamic Goal Switching -> Refugio Basalto (8 min)', 'red');
-                    onSelectTimeMin(105);
-                  }
-                }}
-                className={`p-3.5 rounded-xl border text-left transition cursor-pointer active:scale-[0.98] flex flex-col justify-between min-h-[92px] ${
-                  btn.danger
-                    ? 'bg-[#FF1744]/20 border-[#FF1744]/70 hover:bg-[#FF1744]/30'
-                    : selected
-                      ? 'bg-[#00F5D4]/10 border-[#00F5D4]/60'
-                      : 'bg-[#0B0E14] border-[#1E2738] hover:border-slate-500'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`font-mono-tech text-xs font-bold ${btn.danger ? 'text-[#FF1744]' : 'text-white'}`}>
-                    {btn.title}
-                  </span>
-                  <Icon className={`w-4 h-4 ${btn.danger ? 'text-[#FF1744]' : 'text-[#00F5D4]'}`} />
+            <button
+              type="button"
+              onClick={() => setShowDiagnostics((d) => !d)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border font-mono-tech text-xs font-semibold transition cursor-pointer ${
+                showDiagnostics
+                  ? 'bg-[#00F5D4]/15 border-[#00F5D4] text-[#00F5D4]'
+                  : 'bg-[#0B0E14] border-[#1E2738] text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Diagnóstico Traje</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const nextN = isruSamples + 1;
+                setIsruSamples(nextN);
+                onNotify?.(`Muestra ISRU #${nextN} registrada`, 'Kieserita ≥12% H₂O · Guardada en log local', 'green');
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border bg-[#0B0E14] border-[#1E2738] hover:border-[#00FFA3] font-mono-tech text-xs font-semibold text-slate-200 transition cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#00FFA3]" />
+              <span>Registrar ISRU ({isruSamples})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const next = (dialPos === 3 ? 1 : dialPos + 1) as 1 | 2 | 3;
+                setDialPos(next);
+                if (next === 1) {
+                  setShowArGrid(false);
+                  onNotify?.('Dial Posición 1: HUD NOMINAL', 'Vista despejada sobre Mars Trek', 'cyan');
+                } else if (next === 2) {
+                  onNotify?.('Dial Posición 2: WAYPOINT LOCK', 'Anclaje Canyon-TRN hacia WP1/WP2', 'cyan');
+                } else {
+                  onNotify?.('Dial Posición 3: SOS EGRESS WP3', 'Activando evacuación autónoma a Refugio WP3', 'red');
+                  onSelectTimeMin(105);
+                }
+              }}
+              className="flex items-center gap-2 bg-[#0B0E14] border border-[#1E2738] hover:border-[#00F5D4] rounded-xl px-3 py-1.5 cursor-pointer active:scale-[0.98]"
+            >
+              <RotateCw className="w-4 h-4 text-[#00F5D4]" />
+              <div className="text-left font-mono-tech">
+                <div className="text-[9.5px] text-slate-400">DIAL (14 N·cm)</div>
+                <div className="text-[11px] font-bold text-white">
+                  {dialPos}/3 · {dialPos === 1 ? 'HUD' : dialPos === 2 ? 'WAYPOINT' : 'SOS WP3'}
                 </div>
-                <div className="text-[11px] text-slate-300 mt-2 leading-snug">{btn.sub}</div>
-              </button>
-            );
-          })}
+              </div>
+            </button>
+          </div>
         </div>
 
         {showDiagnostics && (

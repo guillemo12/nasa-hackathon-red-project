@@ -51,6 +51,7 @@ export function App() {
   const [marsImages, setMarsImages] = useState<MarsRawImage[]>([]);
   const [selectedImageIdx, setSelectedImageIdx] = useState<number>(0);
   const [isLive, setIsLive] = useState<boolean>(true);
+  const [telemetryFromApi, setTelemetryFromApi] = useState<boolean>(false);
   const [toast, setToast] = useState<{
     title: string;
     detail?: string;
@@ -104,8 +105,11 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    fetchEva07Event(tMin).then(({ event }) => {
-      if (active) setCurrentEvent(event);
+    fetchEva07Event(tMin).then(({ event, fromApi }) => {
+      if (active) {
+        setCurrentEvent(event);
+        setTelemetryFromApi(fromApi);
+      }
     });
     return () => {
       active = false;
@@ -123,14 +127,15 @@ export function App() {
   };
 
   const handleSelectView = (view: ConsoleView) => {
-    setActiveView(view);
-    const nextPath = VIEW_TO_PATH[view];
+    const resolvedView = view === 'eva-emergency' ? 'eva-hud-nominal' : view;
+    setActiveView(resolvedView);
+    const nextPath = VIEW_TO_PATH[resolvedView];
     if (window.location.pathname !== nextPath) {
       window.history.pushState(null, '', nextPath);
     }
-    if (view === 'eva-emergency' && tMin < 105) {
+    if (view === 'eva-emergency') {
       setTMin(105);
-    } else if (view === 'eva-hud-nominal' && tMin >= 105) {
+    } else if (view === 'eva-hud-nominal' && tMin >= 105 && tMin < 114) {
       setTMin(28);
     }
   };
@@ -143,6 +148,7 @@ export function App() {
       zenohSynced={zenohSynced}
       apiHealth={apiHealth}
       isLive={isLive}
+      telemetryFromApi={telemetryFromApi}
       onToggleLive={() => setIsLive((l) => !l)}
       toast={toast}
       onDismissToast={() => setToast(null)}
@@ -171,12 +177,13 @@ export function App() {
         <EvaHudView
           currentEvent={currentEvent}
           marsImage={marsImages[selectedImageIdx] ?? null}
+          marsImages={marsImages}
+          selectedImageIdx={selectedImageIdx}
+          onChangeImageIdx={setSelectedImageIdx}
           onNotify={notify}
           onSelectTimeMin={(nextT) => {
+            setIsLive(false);
             setTMin(nextT);
-            if (nextT >= 105 && nextT < 114) {
-              handleSelectView('eva-emergency');
-            }
           }}
         />
       )}

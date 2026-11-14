@@ -35,11 +35,42 @@ export default defineConfig({
         target: 'https://mars.nasa.gov',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/nasa-rss/, '/rss/api/'),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('origin');
+            proxyReq.removeHeader('referer');
+            proxyReq.removeHeader('sec-fetch-site');
+            proxyReq.removeHeader('sec-fetch-mode');
+            proxyReq.removeHeader('sec-fetch-dest');
+            proxyReq.removeHeader('sec-ch-ua');
+            proxyReq.removeHeader('sec-ch-ua-mobile');
+            proxyReq.removeHeader('sec-ch-ua-platform');
+            proxyReq.setHeader('user-agent', 'curl/8.4.0');
+          });
+        },
       },
       '/nasa-raw-img': {
         target: 'https://mars.nasa.gov',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/nasa-raw-img/, '/mars2020-raw-images'),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('origin');
+            proxyReq.removeHeader('referer');
+            proxyReq.removeHeader('sec-fetch-site');
+            proxyReq.removeHeader('sec-fetch-mode');
+            proxyReq.removeHeader('sec-fetch-dest');
+            proxyReq.removeHeader('sec-ch-ua');
+            proxyReq.removeHeader('sec-ch-ua-mobile');
+            proxyReq.removeHeader('sec-ch-ua-platform');
+            proxyReq.setHeader('user-agent', 'curl/8.4.0');
+          });
+        },
+      },
+      '/mars-trek': {
+        target: 'https://trek.nasa.gov',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/mars-trek/, '/tiles/Mars/EQ'),
       },
     },
     fs: {
