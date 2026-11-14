@@ -16,7 +16,7 @@
 use red_atlas_shared::{
     ActiveHazards, HexCellState64B, DUST_TAU_NOMINAL, DUST_TAU_STORM, EVA_SPE_DOSE_BUDGET_MSV,
     GCR_SURFACE_RATE_MSV_H, LOW_TIU_TRAP_THRESHOLD, NLOS_RSSI_THRESHOLD_DBM,
-    SPE_PEAK_ENVELOPE_MSV_H,
+    SPE_PEAK_ENVELOPE_MSV_H, is_no_data, or_assumed, SVF_NO_DATA_ASSUMED, TIU_NO_DATA_ASSUMED,
 };
 use serde::{Deserialize, Serialize};
 
@@ -166,6 +166,9 @@ impl MarkovHazardModel {
 
     /// Evaluates the Non-Homogeneous Spatial-Temporal Poisson onset rates ($\text{min}^{-1}$)
     /// for a given hexagonal cell, Mars solar hour, solar activity factor, and dust opacity $\tau$.
+    ///
+    /// No data (`CELL_NO_DATA`): a missing slope counts as 0 deg, a missing TIU as
+    /// `TIU_NO_DATA_ASSUMED` and a missing RSSI as obstructed (NLOS); rates are never NaN.
     pub fn compute_poisson_rates(
         cell: &HexCellState64B,
         mars_solar_hour: f64,
@@ -175,7 +178,9 @@ impl MarkovHazardModel {
         // 1. H1: Catabatic wind / dust storm peaks around 15.5h solar time & grows with slope gradient.
         let phase =
             2.0 * std::f64::consts::PI * (mars_solar_hour - PEAK_CATABATIC_SOLAR_HOUR) / MARS_SOL_HOURS;
-        let slope_clamped_deg = (cell.slope_deg as f64).clamp(0.0, 85.0);
+        let slope_deg = or_assumed(cell.slope_deg, 0.0) as f64;
+        let tiu = or_assumed(cell.thermal_inertia_tiu, TIU_NO_DATA_ASSUMED) as f64;
+        let slope_clamped_deg = slope_deg.clamp(0.0, 85.0);
         let grad_norm = slope_clamped_deg.to_radians().tan();
         let lambda1_dust =
             LAMBDA_1_BASE * (KAPPA_1_SOLAR_PEAK * phase.cos()).exp() * (1.0 + GAMMA_CANYON_SLOPE * grad_norm);
@@ -184,12 +189,14 @@ impl MarkovHazardModel {
         let lambda2_spe = LAMBDA_2_BASE * solar_activity_factor.max(0.0);
 
         // 3. H3: Regolith trap / landslide sigmoid product for low TIU (<150) and steep slope (>18 deg).
-        let sig_tiu = sigmoid(ALPHA_TIU * (TIU_TRAP_CENTER - cell.thermal_inertia_tiu as f64));
-        let sig_slope = sigmoid(ALPHA_SLOPE * ((cell.slope_deg as f64) - SLOPE_TRAP_CENTER_DEG));
+        let sig_tiu = sigmoid(ALPHA_TIU * (TIU_TRAP_CENTER - tiu));
+        let sig_slope = sigmoid(ALPHA_SLOPE * (slope_deg - SLOPE_TRAP_CENTER_DEG));
         let lambda3_regolith = LAMBDA_3_BASE * sig_tiu * sig_slope;
 
         // 4. H4: Topographic NLOS obstruction + UHF dust attenuation term.
-        let obstructed = if cell.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM {
+        let obstructed = if is_no_data(cell.los_base_rssi_dbm)
+            || cell.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM
+        {
             1.0
         } else {
             0.0
@@ -276,7 +283,9 @@ impl MarkovHazardModel {
             };
             let r3 = if (self.current_mask & MASK_H4_NLOS) == 0 {
                 rates.lambda4_nlos
-            } else if cell.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM {
+            } else if is_no_data(cell.los_base_rssi_dbm)
+                || cell.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM
+            {
                 GAMMA_4_RECOVER_NLOS
             } else {
                 GAMMA_4_RECOVER_LOS
@@ -330,10 +339,12 @@ impl MarkovHazardModel {
         self.current_spe_dose_rate_msv_h = if h2 { SPE_PEAK_ENVELOPE_MSV_H } else { GCR_SURFACE_RATE_MSV_H };
 
         let dust_atten_db = if h1 { 6.5 } else { 0.0 };
+        // No RSSI in the cell: report it as below the NLOS threshold, not as NaN.
+        let cell_rssi_dbm = or_assumed(cell.los_base_rssi_dbm, NLOS_RSSI_THRESHOLD_DBM - 6.0);
         let rssi_dbm = if h4 {
-            (cell.los_base_rssi_dbm - dust_atten_db).min(NLOS_RSSI_THRESHOLD_DBM - 6.0)
+            (cell_rssi_dbm - dust_atten_db).min(NLOS_RSSI_THRESHOLD_DBM - 6.0)
         } else {
-            cell.los_base_rssi_dbm - dust_atten_db
+            cell_rssi_dbm - dust_atten_db
         };
 
         ActiveHazards {
@@ -459,7 +470,8 @@ pub fn run_chaos_mode_monte_carlo(
                 * (if hazards.h3_regolith_slope { 1.35 } else { 1.0 });
             let step_o2_rate = base_o2_l_min * hazard_o2_mult;
 
-            let open_svf = (cell.sky_view_factor as f64).clamp(0.15, 1.0);
+            let open_svf =
+                (or_assumed(cell.sky_view_factor, SVF_NO_DATA_ASSUMED) as f64).clamp(0.15, 1.0);
             let step_rad_open = (hazards.spe_dose_rate_msv_h as f64) * open_svf * (DT_MIN / 60.0);
 
             // Travel speed degradation under dust storm & regolith trap.
@@ -613,6 +625,26 @@ mod tests {
             r_trap.lambda3_regolith
         );
         assert!(r_trap.lambda4_nlos > r_firm.lambda4_nlos);
+    }
+
+    #[test]
+    fn no_data_cells_give_finite_rates_and_hazards() {
+        use red_atlas_shared::CELL_NO_DATA;
+        let unknown = make_cell(CELL_NO_DATA, CELL_NO_DATA, CELL_NO_DATA, CELL_NO_DATA);
+        let r = MarkovHazardModel::compute_poisson_rates(&unknown, 15.5, 1.0, 2.4);
+        for rate in [r.lambda1_dust, r.lambda2_spe, r.lambda3_regolith, r.lambda4_nlos] {
+            assert!(rate.is_finite(), "rate must not be NaN: {r:?}");
+        }
+        // Missing TIU uses the mid-band assumption: no regolith trap rate beyond the firm case.
+        let mid = make_cell(0.0, TIU_NO_DATA_ASSUMED, 0.85, -80.0);
+        let r_mid = MarkovHazardModel::compute_poisson_rates(&mid, 15.5, 1.0, 2.4);
+        assert!((r.lambda3_regolith - r_mid.lambda3_regolith).abs() < 1e-12);
+        // Missing RSSI counts as obstructed (conservative for the radio link).
+        assert!(r.lambda4_nlos > r_mid.lambda4_nlos);
+
+        let mut model = MarkovHazardModel::with_mask(MASK_H1_DUST);
+        let hz = model.build_active_hazards(&unknown);
+        assert!(hz.rssi_dbm.is_finite() && hz.rssi_dbm < NLOS_RSSI_THRESHOLD_DBM);
     }
 
     #[test]

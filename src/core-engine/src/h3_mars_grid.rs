@@ -4,17 +4,29 @@
 //! and `src/shared/README.md`.
 //!
 //! Features:
-//! - Hexagonal axial coordinate system calibrated to the MOLA reference sphere (IAU_2015:49900,
-//!   R = 3,396.19 km, scale factor 0.5331x linear, 0.2842x area vs. Earth H3 at 6,371.0088 km).
-//! - Deterministic, reversible packing into 64-bit `h3_index` across Resolutions 7..=14.
-//! - Centered on the Base node of `red_atlas_shared::SURVIVAL_TRIANGLE_SITE` (SW basin of Melas
-//!   Chasma, ~9.90°S, 283.39°E / Valles Marineris).
-//! - 6-neighbor topology, k-ring radial neighborhoods, and Martian geodesic distance calculations.
-//! - `H3MarsGrid` spatial index with Melas Chasma survival corridor generation (Base, WP1, WP2, WP3).
+//! - Real H3 indices (crate `h3o`, the same cells as the `h3` 4.x library used by P1's pipeline).
+//!   H3 is a spherical grid; on Mars the topology is unchanged and every metric is rescaled to the
+//!   MOLA reference sphere (IAU_2015:49900, R = 3,396.19 km): lengths by `H3_MARS_LINEAR_SCALE`
+//!   (≈ 0.5331) and areas by `H3_MARS_AREA_SCALE` (≈ 0.2842). Geodesic distances are the
+//!   great-circle angle times the Mars radius, which is the same thing.
+//! - Public coordinates stay planetocentric latitude and **East longitude 0-360** (IAU/PDS, as in
+//!   `red_atlas_shared`); the conversion to H3's −180..180 longitude happens inside this module.
+//! - 6-neighbor topology (5 at pentagons), k-ring neighborhoods and Martian geodesic distances.
+//! - `H3MarsGrid` spatial index: P1 Parquet loader (`load_p1_parquet`) for the real terrain grid
+//!   (`data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet`) and the synthetic Melas Chasma
+//!   survival corridor (Base, WP1, WP2, WP3) used by the EVA-07 demo.
 //! - WebGPU/Three.js 3-sector Spyglass slice query (CRISM water, THEMIS trap, MOLA slope/SVF/RSSI).
+//!
+//! Indices that are not valid H3 cells (e.g. the hand-made ids of unit-test graphs) are tolerated:
+//! they have no neighbors, an empty k-ring, a `NaN` position and `NaN` distances.
 
 use std::collections::{HashMap, HashSet};
-use std::f64::consts::PI;
+use std::fmt;
+use std::path::Path;
+
+use h3o::{CellIndex, LatLng, Resolution};
+use parquet::file::reader::{FileReader, SerializedFileReader};
+use parquet::record::Field;
 
 pub use red_atlas_shared::{
     melas_chasma_survival_triangle, HexCellState64B, HAZARD_FLAG_ISRU_WATER, HAZARD_FLAG_NLOS,
@@ -23,14 +35,16 @@ pub use red_atlas_shared::{
     MARS_H3_REFERENCE_RADIUS_KM, NLOS_RSSI_THRESHOLD_DBM, SHELTER_SVF_MAX, SITE_REFERENCE_LAT_DEG,
     SITE_REFERENCE_LON_DEG, CRITICAL_SLOPE_DEG,
 };
-use red_atlas_shared::{uhf_link_rssi_dbm, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG};
+use red_atlas_shared::{
+    is_no_data, uhf_link_rssi_dbm, CELL_NO_DATA, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG,
+};
 use crate::metabolic_dstar::pandolf_mars_metabolic_watts;
 use serde::{Deserialize, Serialize};
 
-/// Reference latitude for the local grid projection in degrees North (Base node, from shared).
+/// Reference latitude of the site in degrees North (Base node, from shared).
 pub const MELAS_CENTER_LAT_DEG: f64 = SITE_REFERENCE_LAT_DEG;
 
-/// Reference Eastern longitude for the local grid projection in degrees (Base node, from shared).
+/// Reference Eastern longitude of the site in degrees 0-360 (Base node, from shared).
 pub const MELAS_CENTER_LON_DEG: f64 = SITE_REFERENCE_LON_DEG;
 
 /// Mars reference sphere radius in meters (3,396,190 m, MOLA / IAU_2015:49900).
@@ -46,36 +60,28 @@ const WP1_WATER_ZONE_M: f64 = 100.0;
 // 1. Mars Grid Resolution & Metrics
 // ============================================================================
 
-/// Metric properties of an H3 hexagonal grid cell calibrated to IAU Mars 2000.
+/// Metric properties of an H3 hexagonal grid cell rescaled to the Mars reference sphere.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MarsGridResolution {
     pub res: u8,
+    /// Global mean hexagon edge length on Mars (m).
     pub edge_len_m: f64,
+    /// Global mean hexagon area on Mars (m²). At the site (~10°S) cells are ~18% larger:
+    /// use `cell_area_m2` for a specific cell.
     pub area_m2: f64,
 }
 
-/// Returns calibrated edge length and area for a given H3 resolution (7..=14) on Mars.
-///
-/// Nominal table inspired by the Earth H3 scaling (`H3_MARS_LINEAR_SCALE` ≈ 0.5331,
-/// `H3_MARS_AREA_SCALE` ≈ 0.2842). Note: the values are hard-coded (650 m * 7^(-k/2)) and are
-/// not recomputed from those factors.
+/// Returns the mean edge length and area of an H3 resolution on Mars: the `h3o` (Earth) means
+/// times `H3_MARS_LINEAR_SCALE` and `H3_MARS_AREA_SCALE`. Resolution 12 gives 5.77 m / 87.3 m²,
+/// resolution 9 gives 107.0 m / 29,932 m², matching P1's `SCHEMA_HEXGRID.md` §2.
+/// Resolutions above 15 do not exist in H3 and return `NaN` metrics.
 pub fn resolution_metrics(res: u8) -> MarsGridResolution {
-    let (edge_len_m, area_m2) = match res {
-        7 => (650.0, 1.46e6),
-        8 => (245.68, 208_571.0),
-        9 => (92.86, 29_796.0),
-        10 => (35.10, 4_256.5),
-        11 => (13.26, 608.1),
-        12 => (5.01, 86.87),
-        13 => (1.895, 12.41),
-        14 => (0.716, 1.773),
-        _ => {
-            let diff = res as f64 - 7.0;
-            (
-                650.0 * 7.0_f64.powf(-diff / 2.0),
-                1.46e6 * 7.0_f64.powf(-diff),
-            )
-        }
+    let (edge_len_m, area_m2) = match Resolution::try_from(res) {
+        Ok(r) => (
+            r.edge_length_m() * H3_MARS_LINEAR_SCALE,
+            r.area_m2() * H3_MARS_AREA_SCALE,
+        ),
+        Err(_) => (f64::NAN, f64::NAN),
     };
     MarsGridResolution {
         res,
@@ -84,260 +90,130 @@ pub fn resolution_metrics(res: u8) -> MarsGridResolution {
     }
 }
 
+/// Exact area of one H3 cell on Mars (m²), or `NaN` for an invalid index.
+pub fn cell_area_m2(h3: u64) -> f64 {
+    to_cell(h3).map_or(f64::NAN, |c| c.area_m2() * H3_MARS_AREA_SCALE)
+}
+
 // ============================================================================
-// 2. Axial Hexagonal Coordinates & u64 H3 Index Packing
+// 2. H3 indexing (h3o)
 // ============================================================================
 
-/// Discrete axial hexagonal coordinate `(q, r)` at a specific resolution `res`.
-///
-/// Uses pointy-topped hexagonal orientation where:
-/// - `+q` extends East-South-East
-/// - `+r` extends South
-/// - Cube coordinate `z = -q - r`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AxialCoord {
-    pub q: i32,
-    pub r: i32,
-    pub res: u8,
-}
-
-impl AxialCoord {
-    /// Constructs a new axial coordinate.
-    pub const fn new(q: i32, r: i32, res: u8) -> Self {
-        Self { q, r, res }
-    }
-
-    /// Packs this axial coordinate into a deterministic 64-bit `H3Index`.
-    ///
-    /// Bit layout:
-    /// - Bits 56..64 (8 bits): Resolution (0..15)
-    /// - Bits 28..56 (28 bits): Signed `q` coordinate
-    /// - Bits  0..28 (28 bits): Signed `r` coordinate
-    pub fn to_h3_index(&self) -> u64 {
-        axial_to_h3(*self)
-    }
-
-    /// Unpacks an `AxialCoord` from a 64-bit `H3Index`.
-    pub fn from_h3_index(h3: u64) -> Self {
-        h3_to_axial(h3)
-    }
-
-    /// Converts this axial coordinate to Martian planetocentric `(lat_deg, lon_deg)`.
-    pub fn to_lat_lon(&self) -> (f64, f64) {
-        axial_to_lat_lon(*self)
-    }
-
-    /// Converts Martian planetocentric `(lat_deg, lon_deg)` to the nearest `AxialCoord`.
-    pub fn from_lat_lon(lat_deg: f64, lon_deg: f64, res: u8) -> Self {
-        lat_lon_to_axial(lat_deg, lon_deg, res)
-    }
-
-    /// Hexagonal distance in discrete steps to another axial coordinate at the same resolution.
-    pub fn distance_to(&self, other: &Self) -> u32 {
-        let dq = (self.q - other.q).abs();
-        let dr = (self.r - other.r).abs();
-        let ds = ((self.q + self.r) - (other.q + other.r)).abs();
-        ((dq + dr + ds) / 2) as u32
-    }
-
-    /// Returns the 6 adjacent axial neighbor coordinates.
-    pub fn neighbors(&self) -> [AxialCoord; 6] {
-        const DELTAS: [(i32, i32); 6] = [
-            (1, 0),   // East
-            (1, -1),  // North-East
-            (0, -1),  // North-West
-            (-1, 0),  // West
-            (-1, 1),  // South-West
-            (0, 1),   // South-East
-        ];
-        let mut out = [*self; 6];
-        for (i, (dq, dr)) in DELTAS.iter().enumerate() {
-            out[i] = AxialCoord {
-                q: self.q + dq,
-                r: self.r + dr,
-                res: self.res,
-            };
-        }
-        out
-    }
-}
-
-/// Packs an `AxialCoord` into a 64-bit integer index.
-pub fn axial_to_h3(coord: AxialCoord) -> u64 {
-    let q_u = (coord.q as i64 & 0x0FFF_FFFF) as u64;
-    let r_u = (coord.r as i64 & 0x0FFF_FFFF) as u64;
-    let res_u = (coord.res as u64) & 0xFF;
-    (res_u << 56) | (q_u << 28) | r_u
-}
-
-/// Decodes a 64-bit integer index back into an `AxialCoord`.
-pub fn h3_to_axial(h3: u64) -> AxialCoord {
-    let res = ((h3 >> 56) & 0xFF) as u8;
-    let mut q_raw = ((h3 >> 28) & 0x0FFF_FFFF) as i32;
-    if (q_raw & 0x0800_0000) != 0 {
-        q_raw |= !0x0FFF_FFFF;
-    }
-    let mut r_raw = (h3 & 0x0FFF_FFFF) as i32;
-    if (r_raw & 0x0800_0000) != 0 {
-        r_raw |= !0x0FFF_FFFF;
-    }
-    AxialCoord {
-        q: q_raw,
-        r: r_raw,
-        res,
-    }
-}
-
-/// Converts Martian latitude and Eastern longitude to the nearest `AxialCoord`.
-pub fn lat_lon_to_axial(lat_deg: f64, lon_deg: f64, res: u8) -> AxialCoord {
-    let metrics = resolution_metrics(res);
-    let s = metrics.edge_len_m;
-    let ref_lat_rad = MELAS_CENTER_LAT_DEG.to_radians();
-
-    let mut d_lon = lon_deg - MELAS_CENTER_LON_DEG;
-    while d_lon > 180.0 {
-        d_lon -= 360.0;
-    }
-    while d_lon < -180.0 {
-        d_lon += 360.0;
-    }
-
-    let d_lat = lat_deg - MELAS_CENTER_LAT_DEG;
-
-    let x = MARS_RADIUS_M * d_lon.to_radians() * ref_lat_rad.cos();
-    let y = MARS_RADIUS_M * d_lat.to_radians();
-
-    let sqrt3 = 3.0_f64.sqrt();
-    let q_f = (sqrt3 / 3.0 * x - (1.0 / 3.0) * y) / s;
-    let r_f = ((2.0 / 3.0) * y) / s;
-
-    let x_c = q_f;
-    let z_c = r_f;
-    let y_c = -x_c - z_c;
-
-    let mut rx = x_c.round();
-    let ry = y_c.round();
-    let mut rz = z_c.round();
-
-    let x_diff = (rx - x_c).abs();
-    let y_diff = (ry - y_c).abs();
-    let z_diff = (rz - z_c).abs();
-
-    if x_diff > y_diff && x_diff > z_diff {
-        rx = -ry - rz;
-    } else if !(y_diff > z_diff) {
-        rz = -rx - ry;
-    }
-
-    AxialCoord {
-        q: rx as i32,
-        r: rz as i32,
-        res,
-    }
-}
-
-/// Converts an `AxialCoord` to Martian planetocentric `(lat_deg, lon_deg)`.
-pub fn axial_to_lat_lon(coord: AxialCoord) -> (f64, f64) {
-    let metrics = resolution_metrics(coord.res);
-    let s = metrics.edge_len_m;
-    let sqrt3 = 3.0_f64.sqrt();
-
-    let q = coord.q as f64;
-    let r = coord.r as f64;
-
-    let x = s * (sqrt3 * q + (sqrt3 / 2.0) * r);
-    let y = s * (1.5 * r);
-
-    let ref_lat_rad = MELAS_CENTER_LAT_DEG.to_radians();
-    let d_lat = (y / MARS_RADIUS_M) * (180.0 / PI);
-    let d_lon = (x / (MARS_RADIUS_M * ref_lat_rad.cos())) * (180.0 / PI);
-
-    let lat = MELAS_CENTER_LAT_DEG + d_lat;
-    let mut lon = MELAS_CENTER_LON_DEG + d_lon;
-    while lon >= 360.0 {
+/// Converts an East longitude (0-360 or any wrap) to H3's −180..180 convention.
+pub fn lon_east_to_lon180(lon_deg: f64) -> f64 {
+    let mut lon = lon_deg.rem_euclid(360.0);
+    if lon > 180.0 {
         lon -= 360.0;
     }
-    while lon < 0.0 {
-        lon += 360.0;
-    }
-
-    (lat, lon)
+    lon
 }
 
-/// Converts Martian `(lat_deg, lon_deg, res)` directly to an H3 `u64` index.
+/// Converts a −180..180 longitude back to East 0-360.
+pub fn lon180_to_lon_east(lon_deg: f64) -> f64 {
+    lon_deg.rem_euclid(360.0)
+}
+
+/// Returns the `h3o` cell for a raw index, or `None` if it is not a valid H3 cell.
+pub fn to_cell(h3: u64) -> Option<CellIndex> {
+    CellIndex::try_from(h3).ok()
+}
+
+/// Resolution of a valid H3 cell index.
+pub fn h3_resolution(h3: u64) -> Option<u8> {
+    to_cell(h3).map(|c| u8::from(c.resolution()))
+}
+
+fn to_latlng(lat_deg: f64, lon_deg: f64) -> Option<LatLng> {
+    LatLng::new(lat_deg, lon_east_to_lon180(lon_deg)).ok()
+}
+
+/// Converts Martian planetocentric latitude and East longitude (0-360) to an H3 index.
+///
+/// Returns 0 (never a valid H3 cell) for non-finite coordinates or a resolution above 15.
 pub fn lat_lon_to_h3(lat_deg: f64, lon_deg: f64, res: u8) -> u64 {
-    axial_to_h3(lat_lon_to_axial(lat_deg, lon_deg, res))
+    match (to_latlng(lat_deg, lon_deg), Resolution::try_from(res)) {
+        (Some(ll), Ok(r)) => u64::from(ll.to_cell(r)),
+        _ => 0,
+    }
 }
 
-/// Converts an H3 `u64` index directly to Martian `(lat_deg, lon_deg)`.
+/// Converts an H3 index to the `(lat_deg, lon_east_deg 0-360)` of its center
+/// (`(NaN, NaN)` for an invalid index).
 pub fn h3_to_lat_lon(h3: u64) -> (f64, f64) {
-    axial_to_lat_lon(h3_to_axial(h3))
-}
-
-/// Returns the 6 adjacent H3 cell indices for the given cell index.
-pub fn neighbors(h3_index: u64) -> [u64; 6] {
-    let coord = h3_to_axial(h3_index);
-    let nbr_coords = coord.neighbors();
-    let mut result = [0u64; 6];
-    for (i, c) in nbr_coords.iter().enumerate() {
-        result[i] = axial_to_h3(*c);
-    }
-    result
-}
-
-/// Returns all H3 cell indices within a topological hexagonal radius (`k_ring`) of `center`.
-pub fn k_ring(center: u64, radius: u8) -> Vec<u64> {
-    let center_coord = h3_to_axial(center);
-    let r = radius as i32;
-    let capacity = (1 + 3 * r * (r + 1)) as usize;
-    let mut cells = Vec::with_capacity(capacity);
-
-    for dq in -r..=r {
-        let r_min = (-r).max(-dq - r);
-        let r_max = r.min(-dq + r);
-        for dr in r_min..=r_max {
-            let nbr_coord = AxialCoord {
-                q: center_coord.q + dq,
-                r: center_coord.r + dr,
-                res: center_coord.res,
-            };
-            cells.push(axial_to_h3(nbr_coord));
+    match to_cell(h3) {
+        Some(c) => {
+            let ll = LatLng::from(c);
+            (ll.lat(), lon180_to_lon_east(ll.lng()))
         }
+        None => (f64::NAN, f64::NAN),
     }
-    cells
 }
 
-/// Computes the great-circle geodesic distance in meters on Mars between two H3 cells.
+/// Returns the adjacent H3 cells (6, or 5 around a pentagon; empty for an invalid index).
+pub fn neighbors(h3_index: u64) -> Vec<u64> {
+    match to_cell(h3_index) {
+        Some(c) => c
+            .grid_disk::<Vec<_>>(1)
+            .into_iter()
+            .filter(|&n| n != c)
+            .map(u64::from)
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// Returns all H3 cells within `radius` grid steps of `center`, center included
+/// (empty for an invalid index).
+pub fn k_ring(center: u64, radius: u8) -> Vec<u64> {
+    match to_cell(center) {
+        Some(c) => c
+            .grid_disk::<Vec<_>>(u32::from(radius))
+            .into_iter()
+            .map(u64::from)
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// Great-circle distance in meters on the Mars sphere between two H3 cell centers
+/// (`NaN` if either index is invalid).
 pub fn geodesic_distance_m(a: u64, b: u64) -> f64 {
     if a == b {
-        return 0.0;
+        return if to_cell(a).is_some() { 0.0 } else { f64::NAN };
     }
-    let (lat1, lon1) = h3_to_lat_lon(a);
-    let (lat2, lon2) = h3_to_lat_lon(b);
-    haversine_dist_m(lat1, lon1, lat2, lon2)
+    match (to_cell(a), to_cell(b)) {
+        (Some(ca), Some(cb)) => LatLng::from(ca).distance_rads(LatLng::from(cb)) * MARS_RADIUS_M,
+        _ => f64::NAN,
+    }
 }
 
-/// Helper function to compute great-circle distance between two Martian coordinates in meters.
-fn haversine_dist_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
-    let phi1 = lat1.to_radians();
-    let phi2 = lat2.to_radians();
-    let delta_phi = (lat2 - lat1).to_radians();
-
-    let mut delta_lambda = (lon2 - lon1).to_radians();
-    while delta_lambda > PI {
-        delta_lambda -= 2.0 * PI;
+/// Great-circle distance between two Martian coordinates in meters (East longitudes 0-360).
+pub fn haversine_dist_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    match (to_latlng(lat1, lon1), to_latlng(lat2, lon2)) {
+        (Some(a), Some(b)) => a.distance_rads(b) * MARS_RADIUS_M,
+        _ => f64::NAN,
     }
-    while delta_lambda < -PI {
-        delta_lambda += 2.0 * PI;
+}
+
+/// Deterministic 32-bit horizon id for Canyon-TRN derived from the H3 index (FNV-1a over its
+/// little-endian bytes). P1 has no equivalent and ships 0; the engine fills it on load.
+pub fn horizon_hash_for_cell(h3: u64) -> u32 {
+    let mut hash: u32 = 0x811C_9DC5;
+    for byte in h3.to_le_bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(0x0100_0193);
     }
+    hash
+}
 
-    let sin_dphi = (delta_phi / 2.0).sin();
-    let sin_dlambda = (delta_lambda / 2.0).sin();
-
-    let a_val = sin_dphi * sin_dphi + phi1.cos() * phi2.cos() * sin_dlambda * sin_dlambda;
-    let c_val = 2.0 * a_val.sqrt().atan2((1.0 - a_val).max(0.0).sqrt());
-
-    MARS_RADIUS_M * c_val
+/// Cells on the H3 grid line between two cells (inclusive). Falls back to the two end cells if
+/// `h3o` cannot build a local IJ path (different base cells across a pentagon).
+fn grid_line(start: CellIndex, end: CellIndex) -> Vec<CellIndex> {
+    start
+        .grid_path_cells(end)
+        .ok()
+        .and_then(|it| it.collect::<Result<Vec<_>, _>>().ok())
+        .unwrap_or_else(|| vec![start, end])
 }
 
 // ============================================================================
@@ -350,6 +226,8 @@ fn haversine_dist_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 /// - North Sector (120°): `crism_water_cells` (H3, isru_h2o_pct)
 /// - Right Sector (120°): `themis_trap_cells` (H3, thermal_inertia_tiu)
 /// - Left Sector (120°): `mola_slope_svf_cells` (H3, slope_deg, sky_view_factor, los_base_rssi_dbm)
+///
+/// Values are copied as stored: `CELL_NO_DATA` (NaN) means P1 has no value for that cell.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpyglassTriSectorSlice {
     pub center_h3: u64,
@@ -359,7 +237,88 @@ pub struct SpyglassTriSectorSlice {
 }
 
 // ============================================================================
-// 4. H3 Mars Grid Engine & Melas Chasma Corridor
+// 4. P1 Parquet loader errors
+// ============================================================================
+
+/// Error while loading P1's `HexCellState64B` Parquet table.
+#[derive(Debug)]
+pub enum GridLoadError {
+    Io(std::io::Error),
+    Parquet(String),
+    /// Missing column or unexpected type / null in a non-nullable column.
+    Schema(String),
+    /// `h3_index` is not a valid H3 cell.
+    InvalidCell(u64),
+    /// The table mixes resolutions.
+    MixedResolution { expected: u8, found: u8, h3: u64 },
+    Empty,
+}
+
+impl fmt::Display for GridLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "I/O error: {e}"),
+            Self::Parquet(e) => write!(f, "Parquet error: {e}"),
+            Self::Schema(e) => write!(f, "schema error: {e}"),
+            Self::InvalidCell(h) => write!(f, "h3_index {h:#x} is not a valid H3 cell"),
+            Self::MixedResolution { expected, found, h3 } => write!(
+                f,
+                "cell {h3:#x} has resolution {found}, table resolution is {expected}"
+            ),
+            Self::Empty => write!(f, "table has no rows"),
+        }
+    }
+}
+
+impl std::error::Error for GridLoadError {}
+
+impl From<std::io::Error> for GridLoadError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
+impl From<parquet::errors::ParquetError> for GridLoadError {
+    fn from(e: parquet::errors::ParquetError) -> Self {
+        Self::Parquet(e.to_string())
+    }
+}
+
+/// Nullable `f32` column: Parquet `NULL` becomes `CELL_NO_DATA` explicitly.
+fn field_f32_or_no_data(name: &str, field: &Field) -> Result<f32, GridLoadError> {
+    match field {
+        Field::Null => Ok(CELL_NO_DATA),
+        Field::Float(v) => Ok(*v),
+        Field::Double(v) => Ok(*v as f32),
+        other => Err(GridLoadError::Schema(format!(
+            "column {name}: expected float or null, found {other:?}"
+        ))),
+    }
+}
+
+fn field_u64(name: &str, field: &Field) -> Result<u64, GridLoadError> {
+    match field {
+        Field::ULong(v) => Ok(*v),
+        Field::Long(v) => Ok(*v as u64),
+        other => Err(GridLoadError::Schema(format!(
+            "column {name}: expected uint64, found {other:?}"
+        ))),
+    }
+}
+
+fn field_u32(name: &str, field: &Field) -> Result<u32, GridLoadError> {
+    match field {
+        Field::UInt(v) => Ok(*v),
+        Field::UShort(v) => Ok(u32::from(*v)),
+        Field::Int(v) if *v >= 0 => Ok(*v as u32),
+        other => Err(GridLoadError::Schema(format!(
+            "column {name}: expected uint32, found {other:?}"
+        ))),
+    }
+}
+
+// ============================================================================
+// 5. H3 Mars Grid Engine & Melas Chasma Corridor
 // ============================================================================
 
 /// In-memory spatial index and graph of 64-byte Martian hexagonal cells.
@@ -409,20 +368,154 @@ impl H3MarsGrid {
         self.cells.values()
     }
 
-    /// Returns all valid adjacent neighbor cells and their edge distances in meters.
-    pub fn neighbor_edges(&self, h3: u64) -> Vec<(u64, f64)> {
-        let nbrs = neighbors(h3);
-        let mut edges = Vec::with_capacity(6);
-        for &n_h3 in &nbrs {
-            if self.cells.contains_key(&n_h3) {
-                let dist = geodesic_distance_m(h3, n_h3);
-                edges.push((n_h3, dist));
+    /// Loads P1's `HexCellState64B` table (`data/nasa-layers/hexgrid_route_res*_hexcell64b.parquet`).
+    ///
+    /// - `h3_index` must be a real H3 cell and all rows must share one resolution.
+    /// - Parquet `NULL` in the `f32` columns becomes `CELL_NO_DATA` (NaN), never 0.
+    /// - `hazard_bitmask` is kept as computed by P1 (P1 thresholds, NLOS from geometric LOS).
+    /// - Fields P1 cannot provide today (NULL / 0 in the table) are filled by the engine's own
+    ///   models; a non-null value from P1 is kept as is:
+    ///   `los_base_rssi_dbm` = `uhf_link_rssi_dbm(distance to the Base, LOS = !NLOS flag)`;
+    ///   `base_metabolic_cost` = level-ground cost at 1.0 m/s with the cell TIU (NaN TIU uses the
+    ///   documented `TIU_NO_DATA_ASSUMED`); `horizon_hash_id` = `horizon_hash_for_cell`.
+    ///   `roughness_hi` stays `CELL_NO_DATA` (no definition anywhere).
+    /// - `padding_crc` is resealed by `insert`.
+    pub fn load_p1_parquet(path: impl AsRef<Path>) -> Result<Self, GridLoadError> {
+        let file = std::fs::File::open(path.as_ref())?;
+        let reader = SerializedFileReader::new(file)?;
+        let n_rows = reader.metadata().file_metadata().num_rows().max(0) as usize;
+        let base = &SURVIVAL_TRIANGLE_SITE[0];
+
+        let mut grid: Option<Self> = None;
+        for row in reader.get_row_iter(None)? {
+            let row = row?;
+            let mut cell = HexCellState64B {
+                h3_index: 0,
+                elev_m: CELL_NO_DATA,
+                slope_deg: CELL_NO_DATA,
+                aspect_deg: CELL_NO_DATA,
+                thermal_inertia_tiu: CELL_NO_DATA,
+                roughness_hi: CELL_NO_DATA,
+                isru_h2o_pct: CELL_NO_DATA,
+                sky_view_factor: CELL_NO_DATA,
+                los_base_rssi_dbm: CELL_NO_DATA,
+                base_metabolic_cost: CELL_NO_DATA,
+                horizon_hash_id: 0,
+                hazard_bitmask: 0,
+                padding_crc: [0u8; 14],
+            };
+            let mut seen = 0u16;
+            for (name, field) in row.get_column_iter() {
+                let n = name.as_str();
+                match n {
+                    "h3_index" => cell.h3_index = field_u64(n, field)?,
+                    "elev_m" => cell.elev_m = field_f32_or_no_data(n, field)?,
+                    "slope_deg" => cell.slope_deg = field_f32_or_no_data(n, field)?,
+                    "aspect_deg" => cell.aspect_deg = field_f32_or_no_data(n, field)?,
+                    "thermal_inertia_tiu" => {
+                        cell.thermal_inertia_tiu = field_f32_or_no_data(n, field)?
+                    }
+                    "roughness_hi" => cell.roughness_hi = field_f32_or_no_data(n, field)?,
+                    "isru_h2o_pct" => cell.isru_h2o_pct = field_f32_or_no_data(n, field)?,
+                    "sky_view_factor" => cell.sky_view_factor = field_f32_or_no_data(n, field)?,
+                    // Today always NULL in P1 (geometric LOS only); filled below if missing.
+                    "los_base_rssi_dbm" => {
+                        cell.los_base_rssi_dbm = field_f32_or_no_data(n, field)?
+                    }
+                    // Today always NULL in P1 (depends on speed and slip); filled below if missing.
+                    "base_metabolic_cost" => {
+                        cell.base_metabolic_cost = field_f32_or_no_data(n, field)?
+                    }
+                    // Today always 0 in P1; filled below if 0.
+                    "horizon_hash_id" => cell.horizon_hash_id = field_u32(n, field)?,
+                    "hazard_bitmask" => {
+                        let v = field_u32(n, field)?;
+                        cell.hazard_bitmask = u16::try_from(v).map_err(|_| {
+                            GridLoadError::Schema(format!("hazard_bitmask {v} exceeds u16"))
+                        })?;
+                    }
+                    "padding_crc" => {}
+                    _ => continue,
+                }
+                seen += 1;
             }
+            if seen != 13 {
+                return Err(GridLoadError::Schema(format!(
+                    "expected the 13 HexCellState64B columns, found {seen}"
+                )));
+            }
+
+            let c = to_cell(cell.h3_index).ok_or(GridLoadError::InvalidCell(cell.h3_index))?;
+            let res = u8::from(c.resolution());
+            let g = grid.get_or_insert_with(|| {
+                let mut g = Self::new(res);
+                g.cells.reserve(n_rows);
+                g
+            });
+            if res != g.res {
+                return Err(GridLoadError::MixedResolution {
+                    expected: g.res,
+                    found: res,
+                    h3: cell.h3_index,
+                });
+            }
+
+            let ll = LatLng::from(c);
+            let d_base = haversine_dist_m(
+                ll.lat(),
+                lon180_to_lon_east(ll.lng()),
+                base.lat_deg,
+                base.lon_deg,
+            );
+            if is_no_data(cell.los_base_rssi_dbm) {
+                let los = cell.hazard_bitmask & HAZARD_FLAG_NLOS == 0;
+                cell.los_base_rssi_dbm = uhf_link_rssi_dbm(d_base, los);
+            }
+            if is_no_data(cell.base_metabolic_cost) {
+                cell.base_metabolic_cost =
+                    pandolf_mars_metabolic_watts(0.0, cell.thermal_inertia_tiu, 1.0, 0.0) as f32;
+            }
+            if cell.horizon_hash_id == 0 {
+                cell.horizon_hash_id = horizon_hash_for_cell(cell.h3_index);
+            }
+            g.insert(cell);
         }
-        edges
+        grid.ok_or(GridLoadError::Empty)
     }
 
-    /// Finds the nearest cell in the grid to the given planetary coordinates.
+    /// Returns all valid adjacent neighbor cells and their edge distances in meters.
+    pub fn neighbor_edges(&self, h3: u64) -> Vec<(u64, f64)> {
+        neighbors(h3)
+            .into_iter()
+            .filter(|n| self.cells.contains_key(n))
+            .map(|n| (n, geodesic_distance_m(h3, n)))
+            .collect()
+    }
+
+    /// Builds the dense index and adjacency lists used by `MetabolicDStarPlanner::new`.
+    /// Cell order is sorted by H3 index so planner runs are reproducible.
+    pub fn planner_graph(&self) -> (Vec<HexCellState64B>, Vec<Vec<(usize, f64)>>) {
+        let mut cells: Vec<HexCellState64B> = self.cells.values().copied().collect();
+        cells.sort_unstable_by_key(|c| c.h3_index);
+        let idx: HashMap<u64, usize> = cells
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.h3_index, i))
+            .collect();
+        let adj = cells
+            .iter()
+            .map(|c| {
+                self.neighbor_edges(c.h3_index)
+                    .into_iter()
+                    .filter_map(|(n, d)| idx.get(&n).map(|&j| (j, d)))
+                    .collect()
+            })
+            .collect();
+        (cells, adj)
+    }
+
+    /// Finds the grid cell containing the given coordinates (East longitude 0-360), or the
+    /// geodesically nearest cell if that cell is not in the grid.
     pub fn nearest_cell(&self, lat_deg: f64, lon_deg: f64) -> Option<&HexCellState64B> {
         if self.cells.is_empty() {
             return None;
@@ -431,19 +524,14 @@ impl H3MarsGrid {
         if let Some(cell) = self.cells.get(&target_h3) {
             return Some(cell);
         }
-
-        // Geodesic distance search across active cells
-        let mut best_cell = None;
-        let mut min_dist = f64::MAX;
-        for cell in self.cells.values() {
-            let (c_lat, c_lon) = h3_to_lat_lon(cell.h3_index);
-            let dist = haversine_dist_m(lat_deg, lon_deg, c_lat, c_lon);
-            if dist < min_dist {
-                min_dist = dist;
-                best_cell = Some(cell);
-            }
-        }
-        best_cell
+        let target = to_latlng(lat_deg, lon_deg)?;
+        self.cells
+            .values()
+            .filter_map(|cell| {
+                to_cell(cell.h3_index).map(|c| (cell, LatLng::from(c).distance_rads(target)))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(cell, _)| cell)
     }
 
     /// Queries the 3-sector Spyglass slice within a `k_radius` around `center_h3`.
@@ -474,7 +562,7 @@ impl H3MarsGrid {
         }
     }
 
-    /// Generates a realistic Melas Chasma survival exploration corridor.
+    /// Generates a synthetic Melas Chasma survival exploration corridor on real H3 cells.
     ///
     /// Covers the canonical "Survival Triangle":
     /// - **Base Habitat**: per-node values from `red_atlas_shared::SURVIVAL_TRIANGLE_SITE`
@@ -487,12 +575,16 @@ impl H3MarsGrid {
     ///
     /// Scenario zone radii follow P1 (`data/nasa-layers/SCHEMA_HEXGRID.md`): TIU discs of 100 m
     /// (Base, WP1), 150 m (WP2) and 40 m (WP3); water disc of 100 m (WP1); alcove disc of 40 m.
-    /// Cells outside every zone keep P3's synthetic background values.
+    /// Cells outside every zone keep P3's synthetic background values. For real terrain use
+    /// `load_p1_parquet`.
     ///
     /// Every generated cell is sealed with `seal_crc()` to enable SEU bit-flip detection.
     pub fn generate_melas_chasma_corridor(res: u8) -> Self {
         let mut grid = Self::new(res);
         let waypoints = melas_chasma_survival_triangle();
+        let Ok(resolution) = Resolution::try_from(res) else {
+            return grid;
+        };
 
         let base_wp = &waypoints[0];
         let wp1_wp = &waypoints[1];
@@ -500,64 +592,46 @@ impl H3MarsGrid {
         let wp3_wp = &waypoints[3];
         let [base_site, wp1_wp_site, wp2_site, wp3_site] = SURVIVAL_TRIANGLE_SITE;
 
-        let base_coord = lat_lon_to_axial(base_wp.lat_deg, base_wp.lon_deg, res);
-        let wp1_coord = lat_lon_to_axial(wp1_wp.lat_deg, wp1_wp.lon_deg, res);
-        let wp2_coord = lat_lon_to_axial(wp2_wp.lat_deg, wp2_wp.lon_deg, res);
-        let wp3_coord = lat_lon_to_axial(wp3_wp.lat_deg, wp3_wp.lon_deg, res);
-
-        // Interpolate paths connecting the Survival Triangle
-        let mut path_coords = HashSet::new();
-
-        let legs = [
-            (base_coord, wp1_coord),
-            (wp1_coord, wp2_coord),
-            (wp2_coord, wp3_coord),
-            (wp3_coord, base_coord),
-            (wp1_coord, wp3_coord),
-        ];
-
-        for (start, end) in legs {
-            for pt in axial_line(start, end) {
-                path_coords.insert(pt);
-            }
-        }
-
-        // Buffer corridor width around paths and waypoints
-        let buffer_r: u8 = if res <= 9 {
-            2
-        } else if res <= 11 {
-            2
-        } else {
-            1
+        let node_cell = |lat: f64, lon: f64| {
+            to_latlng(lat, lon)
+                .expect("survival triangle coordinates are finite")
+                .to_cell(resolution)
         };
+        let base_cell = node_cell(base_wp.lat_deg, base_wp.lon_deg);
+        let wp1_cell = node_cell(wp1_wp.lat_deg, wp1_wp.lon_deg);
+        let wp2_cell = node_cell(wp2_wp.lat_deg, wp2_wp.lon_deg);
+        let wp3_cell = node_cell(wp3_wp.lat_deg, wp3_wp.lon_deg);
 
-        let mut full_coords = HashSet::new();
-        for &pt in &path_coords {
-            let h3 = axial_to_h3(pt);
-            for nbr_h3 in k_ring(h3, buffer_r) {
-                full_coords.insert(h3_to_axial(nbr_h3));
-            }
+        // Grid lines connecting the Survival Triangle (plus the WP1-WP3 diagonal).
+        let legs = [
+            (base_cell, wp1_cell),
+            (wp1_cell, wp2_cell),
+            (wp2_cell, wp3_cell),
+            (wp3_cell, base_cell),
+            (wp1_cell, wp3_cell),
+        ];
+        let mut path_cells = HashSet::new();
+        for (start, end) in legs {
+            path_cells.extend(grid_line(start, end));
         }
 
-        // Expanded rings around critical waypoints
-        let wp_ring_r: u8 = if res <= 9 { 3 } else { 4 };
-        for wp_coord in [base_coord, wp1_coord, wp2_coord, wp3_coord] {
-            let h3 = axial_to_h3(wp_coord);
-            for nbr_h3 in k_ring(h3, wp_ring_r) {
-                full_coords.insert(h3_to_axial(nbr_h3));
-            }
+        // Buffer corridor width around paths and waypoints.
+        let buffer_r: u32 = if res <= 11 { 2 } else { 1 };
+        let mut full_cells: HashSet<CellIndex> = HashSet::new();
+        for &pt in &path_cells {
+            full_cells.extend(pt.grid_disk::<Vec<_>>(buffer_r));
         }
 
-        // Ensure key waypoints are explicitly included
-        full_coords.insert(base_coord);
-        full_coords.insert(wp1_coord);
-        full_coords.insert(wp2_coord);
-        full_coords.insert(wp3_coord);
+        // Expanded rings around critical waypoints.
+        let wp_ring_r: u32 = if res <= 9 { 3 } else { 4 };
+        for wp in [base_cell, wp1_cell, wp2_cell, wp3_cell] {
+            full_cells.extend(wp.grid_disk::<Vec<_>>(wp_ring_r));
+        }
 
-        // Generate physical properties for each cell in the corridor
-        for coord in full_coords {
-            let h3_index = axial_to_h3(coord);
-            let (lat, lon) = axial_to_lat_lon(coord);
+        // Generate physical properties for each cell in the corridor.
+        for c in full_cells {
+            let h3_index = u64::from(c);
+            let (lat, lon) = h3_to_lat_lon(h3_index);
 
             let d_base = haversine_dist_m(lat, lon, base_wp.lat_deg, base_wp.lon_deg);
             let d_wp1 = haversine_dist_m(lat, lon, wp1_wp.lat_deg, wp1_wp.lon_deg);
@@ -578,36 +652,36 @@ impl H3MarsGrid {
                 / sum_w) as f32;
 
             // 2. CRISM Structural Water ISRU (% by mass): P1 scenario disc of 100 m at WP1.
-            let isru_h2o_pct = if coord == wp1_coord || d_wp1 < WP1_WATER_ZONE_M {
+            let isru_h2o_pct = if c == wp1_cell || d_wp1 < WP1_WATER_ZONE_M {
                 wp1_wp_site.h2o_wt_pct
             } else {
                 1.2
             };
 
             // 3. Thermal Inertia Units (TIU): P1 scenario discs around the nodes.
-            let thermal_inertia_tiu = if coord == wp2_coord || d_wp2 < WP2_TIU_ZONE_M {
+            let thermal_inertia_tiu = if c == wp2_cell || d_wp2 < WP2_TIU_ZONE_M {
                 wp2_site.thermal_inertia_tiu
-            } else if coord == base_coord || d_base < BASE_WP1_TIU_ZONE_M {
+            } else if c == base_cell || d_base < BASE_WP1_TIU_ZONE_M {
                 base_site.thermal_inertia_tiu
-            } else if coord == wp1_coord || d_wp1 < BASE_WP1_TIU_ZONE_M {
+            } else if c == wp1_cell || d_wp1 < BASE_WP1_TIU_ZONE_M {
                 wp1_wp_site.thermal_inertia_tiu
-            } else if coord == wp3_coord || d_wp3 < WP3_ALCOVE_ZONE_M {
+            } else if c == wp3_cell || d_wp3 < WP3_ALCOVE_ZONE_M {
                 wp3_site.thermal_inertia_tiu
             } else {
                 360.0
             };
 
             // 4. Slope angle (degrees): DTM node slopes; WP2 carries the scenario ramp.
-            let slope_deg = if coord == wp2_coord {
+            let slope_deg = if c == wp2_cell {
                 WP2_RAMP_SLOPE_DEG
             } else if d_wp2 < 120.0 {
                 let factor = (d_wp2 / 120.0) as f32;
                 WP2_RAMP_SLOPE_DEG - factor * (WP2_RAMP_SLOPE_DEG - wp2_site.slope_dem_deg)
-            } else if coord == base_coord || d_base < 100.0 {
+            } else if c == base_cell || d_base < 100.0 {
                 base_site.slope_dem_deg
-            } else if coord == wp1_coord || d_wp1 < 120.0 {
+            } else if c == wp1_cell || d_wp1 < 120.0 {
                 wp1_wp_site.slope_dem_deg
-            } else if coord == wp3_coord || d_wp3 < 80.0 {
+            } else if c == wp3_cell || d_wp3 < 80.0 {
                 wp3_site.slope_dem_deg
             } else {
                 7.0
@@ -620,7 +694,7 @@ impl H3MarsGrid {
             let los_base_rssi_dbm = uhf_link_rssi_dbm(d_base, !nlos_zone);
 
             // 6. Sky View Factor (Psi_SVF): DTM node values; WP3 alcove scenario disc.
-            let sky_view_factor = if coord == wp3_coord || d_wp3 < WP3_ALCOVE_ZONE_M {
+            let sky_view_factor = if c == wp3_cell || d_wp3 < WP3_ALCOVE_ZONE_M {
                 wp3_site.sky_view_factor
             } else if d_wp2 < 150.0 {
                 wp2_site.sky_view_factor
@@ -640,9 +714,8 @@ impl H3MarsGrid {
             let base_metabolic_cost =
                 pandolf_mars_metabolic_watts(0.0, thermal_inertia_tiu, 1.0, 0.0) as f32;
 
-            // 10. Synthetic Horizon Hash ID for Canyon-TRN
-            let horizon_hash_id =
-                ((coord.q as u64 & 0xFFFF) << 16 | (coord.r as u64 & 0xFFFF)) as u32;
+            // 10. Horizon id for Canyon-TRN, derived from the H3 index
+            let horizon_hash_id = horizon_hash_for_cell(h3_index);
 
             // 11. Hazard Bitmask Flags
             let mut hazard_bitmask: u16 = 0;
@@ -662,7 +735,7 @@ impl H3MarsGrid {
                 hazard_bitmask |= HAZARD_FLAG_ISRU_WATER;
             }
 
-            let mut cell = HexCellState64B {
+            grid.insert(HexCellState64B {
                 h3_index,
                 elev_m,
                 slope_deg,
@@ -676,95 +749,45 @@ impl H3MarsGrid {
                 horizon_hash_id,
                 hazard_bitmask,
                 padding_crc: [0u8; 14],
-            };
-            cell.seal_crc();
-            grid.cells.insert(h3_index, cell);
+            });
         }
 
         grid
     }
 }
 
-/// Helper function to interpolate a discrete straight hex line between two axial coordinates.
-fn axial_line(start: AxialCoord, end: AxialCoord) -> Vec<AxialCoord> {
-    let q1 = start.q;
-    let r1 = start.r;
-    let q2 = end.q;
-    let r2 = end.r;
-
-    let dist = ((q1 - q2).abs() + (q1 + r1 - q2 - r2).abs() + (r1 - r2).abs()) / 2;
-    if dist == 0 {
-        return vec![start];
-    }
-
-    let mut line = Vec::with_capacity((dist + 1) as usize);
-    let n = dist as f64;
-    for i in 0..=dist {
-        let t = (i as f64) / n;
-        let q_f = (1.0 - t) * (q1 as f64) + t * (q2 as f64);
-        let r_f = (1.0 - t) * (r1 as f64) + t * (r2 as f64);
-
-        let x_c = q_f;
-        let z_c = r_f;
-        let y_c = -x_c - z_c;
-
-        let mut rx = x_c.round();
-        let ry = y_c.round();
-        let mut rz = z_c.round();
-
-        let x_diff = (rx - x_c).abs();
-        let y_diff = (ry - y_c).abs();
-        let z_diff = (rz - z_c).abs();
-
-        if x_diff > y_diff && x_diff > z_diff {
-            rx = -ry - rz;
-        } else if !(y_diff > z_diff) {
-            rz = -rx - ry;
-        }
-
-        line.push(AxialCoord {
-            q: rx as i32,
-            r: rz as i32,
-            res: start.res,
-        });
-    }
-    line
-}
-
 // ============================================================================
-// 5. Unit Tests
+// 6. Unit Tests
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// P1 `SCHEMA_HEXGRID.md` §7: node cells computed by the `h3` Python library.
+    const P1_NODE_CELLS_RES12: [u64; 4] =
+        [0x8c8f591152cb1ff, 0x8c8f5911c103dff, 0x8c8f5911eaabdff, 0x8c8f5911e823bff];
+    const P1_NODE_CELLS_RES9: [u64; 4] =
+        [0x898f591152fffff, 0x898f5911c13ffff, 0x898f5911eabffff, 0x898f5911e83ffff];
+
     #[test]
     fn test_mars_resolution_metrics_scaling() {
-        let r7 = resolution_metrics(7);
-        assert_eq!(r7.res, 7);
-        assert!((r7.edge_len_m - 650.0).abs() < 1e-3);
-        assert!((r7.area_m2 - 1.46e6).abs() < 1e-3);
+        // Mean metrics of h3o rescaled to Mars (P1 SCHEMA_HEXGRID.md §2: 5.77 m / 87.3 m² at
+        // res 12, 107.03 m / 29,932 m² at res 9).
+        let r12 = resolution_metrics(12);
+        assert_eq!(r12.res, 12);
+        assert!((r12.edge_len_m - 5.77).abs() < 0.01, "{}", r12.edge_len_m);
+        assert!((r12.area_m2 - 87.3).abs() < 0.1, "{}", r12.area_m2);
 
         let r9 = resolution_metrics(9);
-        assert_eq!(r9.res, 9);
-        assert!((r9.edge_len_m - 92.86).abs() < 0.1);
-        assert!((r9.area_m2 - 29_796.0).abs() < 10.0);
+        assert!((r9.edge_len_m - 107.03).abs() < 0.05, "{}", r9.edge_len_m);
+        assert!((r9.area_m2 - 29_932.0).abs() < 5.0, "{}", r9.area_m2);
 
+        // Aperture-7 hierarchy: each resolution step divides the area by ~7.
         let r11 = resolution_metrics(11);
-        assert_eq!(r11.res, 11);
-        assert!((r11.edge_len_m - 13.26).abs() < 0.1);
-        assert!((r11.area_m2 - 608.1).abs() < 1.0);
+        assert!((r11.area_m2 / r12.area_m2 - 7.0).abs() < 0.1);
 
-        let r13 = resolution_metrics(13);
-        assert_eq!(r13.res, 13);
-        assert!((r13.edge_len_m - 1.895).abs() < 0.05);
-        assert!((r13.area_m2 - 12.41).abs() < 0.1);
-
-        let r14 = resolution_metrics(14);
-        assert_eq!(r14.res, 14);
-        assert!((r14.edge_len_m - 0.716).abs() < 0.05);
-        assert!((r14.area_m2 - 1.773).abs() < 0.05);
+        assert!(resolution_metrics(16).edge_len_m.is_nan());
 
         // Verify scaling constants match specifications
         assert!((H3_MARS_LINEAR_SCALE - 0.5331).abs() < 1e-4);
@@ -772,31 +795,43 @@ mod tests {
     }
 
     #[test]
-    fn test_axial_h3_packing_roundtrip() {
-        let test_cases = [
-            (0, 0, 7),
-            (15, -42, 9),
-            (-128, 256, 11),
-            (3500, -8400, 13),
-            (-12345, -67890, 14),
-        ];
-
-        for (q, r, res) in test_cases {
-            let coord = AxialCoord::new(q, r, res);
-            let h3 = coord.to_h3_index();
-            let recovered = AxialCoord::from_h3_index(h3);
-            assert_eq!(coord, recovered, "Failed for ({q}, {r}, {res})");
+    fn test_real_h3_indices_match_p1() {
+        for (i, site) in SURVIVAL_TRIANGLE_SITE.iter().enumerate() {
+            assert_eq!(
+                lat_lon_to_h3(site.lat_deg, site.lon_deg, 12),
+                P1_NODE_CELLS_RES12[i],
+                "{} res 12",
+                site.id
+            );
+            assert_eq!(
+                lat_lon_to_h3(site.lat_deg, site.lon_deg, 9),
+                P1_NODE_CELLS_RES9[i],
+                "{} res 9",
+                site.id
+            );
+            // East 0-360 and −180..180 inputs index the same cell.
+            assert_eq!(
+                lat_lon_to_h3(site.lat_deg, site.lon_deg - 360.0, 12),
+                P1_NODE_CELLS_RES12[i]
+            );
         }
+        // The res-12 cell lies inside its res-9 parent.
+        let parent = to_cell(P1_NODE_CELLS_RES12[0])
+            .unwrap()
+            .parent(Resolution::Nine)
+            .unwrap();
+        assert_eq!(u64::from(parent), P1_NODE_CELLS_RES9[0]);
     }
 
     #[test]
-    fn test_lat_lon_axial_roundtrip() {
+    fn test_lat_lon_h3_roundtrip() {
         let res = 11;
-        let lat = red_atlas_shared::SURVIVAL_TRIANGLE_SITE[1].lat_deg;
-        let lon = red_atlas_shared::SURVIVAL_TRIANGLE_SITE[1].lon_deg;
+        let lat = SURVIVAL_TRIANGLE_SITE[1].lat_deg;
+        let lon = SURVIVAL_TRIANGLE_SITE[1].lon_deg;
 
-        let coord = lat_lon_to_axial(lat, lon, res);
-        let (recovered_lat, recovered_lon) = axial_to_lat_lon(coord);
+        let h3 = lat_lon_to_h3(lat, lon, res);
+        let (recovered_lat, recovered_lon) = h3_to_lat_lon(h3);
+        assert!(recovered_lon > 180.0, "East longitude 0-360 expected, got {recovered_lon}");
 
         let dist = haversine_dist_m(lat, lon, recovered_lat, recovered_lon);
         let metrics = resolution_metrics(res);
@@ -813,13 +848,17 @@ mod tests {
         let nbrs = neighbors(center);
         assert_eq!(nbrs.len(), 6);
 
-        // Neighbors must all be unique and distinct from center
+        // Neighbors must all be unique and distinct from center; spacing ≈ √3 · edge.
+        let spacing = 3f64.sqrt() * resolution_metrics(11).edge_len_m;
         let mut unique = HashSet::new();
         unique.insert(center);
         for n in nbrs {
             assert!(unique.insert(n), "Duplicate neighbor found");
             let d = geodesic_distance_m(center, n);
-            assert!(d > 0.0 && d < 35.0, "Neighbor distance unexpected: {d} m");
+            assert!(
+                d > 0.8 * spacing && d < 1.3 * spacing,
+                "Neighbor distance unexpected: {d} m (spacing {spacing} m)"
+            );
         }
 
         // k-ring sizes: 1, 7, 19, 37
@@ -830,17 +869,35 @@ mod tests {
     }
 
     #[test]
+    fn test_invalid_index_is_tolerated() {
+        for bogus in [0u64, 1, 42, u64::MAX] {
+            assert!(to_cell(bogus).is_none());
+            assert!(neighbors(bogus).is_empty());
+            assert!(k_ring(bogus, 2).is_empty());
+            let (lat, lon) = h3_to_lat_lon(bogus);
+            assert!(lat.is_nan() && lon.is_nan());
+            assert!(geodesic_distance_m(bogus, P1_NODE_CELLS_RES12[0]).is_nan());
+            assert!(geodesic_distance_m(bogus, bogus).is_nan());
+        }
+        assert_eq!(lat_lon_to_h3(f64::NAN, 283.0, 12), 0);
+        assert_eq!(lat_lon_to_h3(-9.9, 283.0, 16), 0);
+        let grid = H3MarsGrid::generate_melas_chasma_corridor(11);
+        assert!(grid.neighbor_edges(42).is_empty());
+    }
+
+    #[test]
     fn test_corridor_generation_and_crc_verification() {
         let grid = H3MarsGrid::generate_melas_chasma_corridor(11);
         assert!(grid.len() > 50, "Corridor should have substantial cells");
 
-        // Verify CRC on every cell
+        // Verify CRC on every cell and that every index is a real H3 cell at res 11
         for cell in grid.all_cells() {
             assert!(
                 cell.verify_crc(),
                 "Cell {} failed CRC verification",
                 cell.h3_index
             );
+            assert_eq!(h3_resolution(cell.h3_index), Some(11));
         }
 
         // Test SEU bit-flip detection
@@ -983,13 +1040,19 @@ mod tests {
     #[test]
     fn test_neighbor_edges_in_corridor() {
         let grid = H3MarsGrid::generate_melas_chasma_corridor(11);
-        let cell = grid.all_cells().next().unwrap();
-        let edges = grid.neighbor_edges(cell.h3_index);
-        // Interior corridor cells have at least one neighbor in the grid
+        let mut sorted: Vec<_> = grid.all_cells().map(|c| c.h3_index).collect();
+        sorted.sort_unstable();
+        let edges = grid.neighbor_edges(sorted[sorted.len() / 2]);
+        // Corridor cells have at least one neighbor in the grid
         assert!(!edges.is_empty());
         for (nbr, dist) in edges {
             assert!(grid.get_cell(nbr).is_some());
             assert!(dist > 0.0);
         }
+
+        let (cells, adj) = grid.planner_graph();
+        assert_eq!(cells.len(), grid.len());
+        assert!(cells.windows(2).all(|w| w[0].h3_index < w[1].h3_index));
+        assert!(adj.iter().all(|a| a.len() <= 6));
     }
 }
