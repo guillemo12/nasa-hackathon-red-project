@@ -1,0 +1,293 @@
+{
+  "type": "FeatureCollection",
+  "name": "triangulo_supervivencia_melas_eva07",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "IAU_2015:49900",
+      "note": "Mars (2015) esferico, ocentrico, longitud Este positiva 0-360. Radio 3396190 m. Orden de coordenadas GeoJSON: [lon_E, lat, elev_MOLA_m]"
+    }
+  },
+  "metadata": {
+    "mission": "EVA-07",
+    "region": "Valles Marineris - Melas Chasma (cuenca SW)",
+    "perimeter_m": 4900,
+    "h3_suggested_res": {
+      "nav": 12,
+      "themis": 9
+    },
+    "units": {
+      "distance": "m",
+      "elev": "m sobre areoide MOLA",
+      "ti": "J m-2 K-1 s-1/2"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "BASE",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.6,
+          -9.8,
+          -1905
+        ]
+      },
+      "properties": {
+        "node_id": "BASE",
+        "name": "Nodo 0 - Base / Habitat",
+        "role": "habitat",
+        "lat_pc_deg": -9.8,
+        "lon_e_deg": 283.6,
+        "lon_w_deg": 76.4,
+        "elev_mola_m": -1905,
+        "slope_local_deg": 1.5,
+        "thermal_inertia_tiu": 320,
+        "sky_view_factor": 0.92,
+        "radio_los_base": true,
+        "h2o_wt_pct": null,
+        "hazards": [],
+        "geology": "Terraza aluvial (abanico distal) sobre el piso de la cuenca SW de Melas",
+        "provenance": "escenario_de_diseno (E): validar con CTX/HiRISE DTM y THEMIS antes de uso operativo"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WP1",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.62327,
+          -9.81069,
+          -1878
+        ]
+      },
+      "properties": {
+        "node_id": "WP1",
+        "name": "Waypoint 1 - ISRU Agua",
+        "role": "isru_water",
+        "lat_pc_deg": -9.81069,
+        "lon_e_deg": 283.62327,
+        "lon_w_deg": 76.37673,
+        "elev_mola_m": -1878,
+        "slope_local_deg": 6.0,
+        "thermal_inertia_tiu": 410,
+        "sky_view_factor": 0.9,
+        "radio_los_base": true,
+        "h2o_wt_pct": 12.0,
+        "hazards": [],
+        "geology": "Deposito estratificado claro con sulfatos polihidratados interestratificados con monohidratados",
+        "provenance": "escenario_de_diseno (E): validar con CTX/HiRISE DTM y THEMIS antes de uso operativo"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WP2",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.61971,
+          -9.83063,
+          -1820
+        ]
+      },
+      "properties": {
+        "node_id": "WP2",
+        "name": "Waypoint 2 - Geologia / Alto Riesgo",
+        "role": "science_hazard",
+        "lat_pc_deg": -9.83063,
+        "lon_e_deg": 283.61971,
+        "lon_w_deg": 76.38029,
+        "elev_mola_m": -1820,
+        "slope_local_deg": 22.0,
+        "thermal_inertia_tiu": 110,
+        "sky_view_factor": 0.78,
+        "radio_los_base": false,
+        "h2o_wt_pct": null,
+        "hazards": [
+          "H3_regolith_trap",
+          "H4_radio_shadow"
+        ],
+        "geology": "Contacto entre lobulo de deslizamiento, traza de falla normal y bancos de polvo fino",
+        "provenance": "escenario_de_diseno (E): validar con CTX/HiRISE DTM y THEMIS antes de uso operativo"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WP3",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          283.61156,
+          -9.82447,
+          -1790
+        ]
+      },
+      "properties": {
+        "node_id": "WP3",
+        "name": "Waypoint 3 - Refugio Topografico",
+        "role": "shelter",
+        "lat_pc_deg": -9.82447,
+        "lon_e_deg": 283.61156,
+        "lon_w_deg": 76.38844,
+        "elev_mola_m": -1790,
+        "slope_local_deg": 9.0,
+        "thermal_inertia_tiu": 620,
+        "sky_view_factor": 0.15,
+        "radio_los_base": false,
+        "h2o_wt_pct": null,
+        "hazards": [
+          "H4_radio_shadow"
+        ],
+        "geology": "Alcoba bajo cornisa en la base de un escarpe de coladas basalticas estratificadas",
+        "provenance": "escenario_de_diseno (E): validar con CTX/HiRISE DTM y THEMIS antes de uso operativo"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L1",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.6,
+            -9.8,
+            -1905
+          ],
+          [
+            283.62327,
+            -9.81069,
+            -1878
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L1",
+        "from": "BASE",
+        "to": "WP1",
+        "kind": "planned",
+        "distance_m": 1500,
+        "delta_elev_m": 27,
+        "bearing_deg": 115,
+        "risk": "bajo"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L2",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.62327,
+            -9.81069,
+            -1878
+          ],
+          [
+            283.61971,
+            -9.83063,
+            -1820
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L2",
+        "from": "WP1",
+        "to": "WP2",
+        "kind": "planned",
+        "distance_m": 1200,
+        "delta_elev_m": 58,
+        "bearing_deg": 190,
+        "risk": "alto: rampas 18-26 grados, <150 TIU, sombra de radio"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L3",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.61971,
+            -9.83063,
+            -1820
+          ],
+          [
+            283.61156,
+            -9.82447,
+            -1790
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L3",
+        "from": "WP2",
+        "to": "WP3",
+        "kind": "planned",
+        "distance_m": 600,
+        "delta_elev_m": 30,
+        "bearing_deg": 307,
+        "risk": "medio: ruta de escape, 8 min a marcha urgente"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "L4",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.61156,
+            -9.82447,
+            -1790
+          ],
+          [
+            283.6,
+            -9.8,
+            -1905
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "L4",
+        "from": "WP3",
+        "to": "BASE",
+        "kind": "planned",
+        "distance_m": 1600,
+        "delta_elev_m": -115,
+        "bearing_deg": 335,
+        "risk": "bajo-medio: descenso, recupera LOS a ~400 m del escarpe"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "R1",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            283.61971,
+            -9.83063,
+            -1820
+          ],
+          [
+            283.6,
+            -9.8,
+            -1905
+          ]
+        ]
+      },
+      "properties": {
+        "leg_id": "R1",
+        "from": "WP2",
+        "to": "BASE",
+        "kind": "contingency",
+        "distance_m": 2150,
+        "delta_elev_m": -85,
+        "bearing_deg": 328,
+        "risk": "retorno directo: 2150 m en linea recta, 2500 m por ruta segura D* Lite (rodeo 1.16)"
+      }
+    }
+  ]
+}

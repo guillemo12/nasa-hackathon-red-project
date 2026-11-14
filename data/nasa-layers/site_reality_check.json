@@ -1,0 +1,815 @@
+{
+  "schema_version": "1.0",
+  "owner": "Persona 1",
+  "generator": "uv run python -m red_atlas_p1.terrain",
+  "site": {
+    "lat_pc_deg": -9.89646,
+    "lon_e_deg": 283.3892,
+    "lon_w_deg": 76.6108
+  },
+  "dems_used": {
+    "ctx_20m": "P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W",
+    "hrsc_mola_200m": "Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2",
+    "mola_463m": "Mars_MGS_MOLA_DEM_mosaic_global_463m"
+  },
+  "vertical_uncertainty_note": "Los pares CTX están alineados a MOLA; su desviación típica frente a los disparos MOLA es de 14-41 m en toda la escena y la dispersión entre pares en los nodos es de unos 10 m. Diferencias con el escenario menores de ~15 m no son significativas.",
+  "nodes": {
+    "BASE": {
+      "lon_e_deg": 283.3892,
+      "lat_pc_deg": -9.89646,
+      "elevation_m": {
+        "scenario": -1660,
+        "ctx_20m": -1659.9,
+        "ctx_pairs_min_max": [
+          -1659.62,
+          -1632.56
+        ],
+        "ctx_pairs_n": 5,
+        "hrsc_mola_200m": -1658.0,
+        "mola_463m": -1677.0,
+        "real_minus_scenario_m": 0.1
+      },
+      "slope_deg": {
+        "scenario": 2.8,
+        "ctx_20m": 2.8,
+        "hrsc_mola_200m": 4.4,
+        "mola_463m": 3.3
+      },
+      "local_100m": {
+        "radius_m": 100.0,
+        "relief_m": 7.9,
+        "slope_max_deg": 4.6,
+        "slope_median_deg": 2.5
+      },
+      "local_300m": {
+        "radius_m": 300.0,
+        "relief_m": 37.2,
+        "slope_max_deg": 10.1,
+        "slope_median_deg": 3.4
+      },
+      "sky_view_factor": {
+        "scenario": 0.85,
+        "derived_ctx_20m": 0.853
+      },
+      "horizon": {
+        "max_deg": 19.0,
+        "azimuth_of_max_deg": 190.0,
+        "mean_deg": 8.5
+      },
+      "radio_los_base": {
+        "scenario": true,
+        "derived_ctx_20m": true,
+        "margin_m": null
+      }
+    },
+    "WP1": {
+      "lon_e_deg": 283.401259,
+      "lat_pc_deg": -9.918797,
+      "elevation_m": {
+        "scenario": -1582,
+        "ctx_20m": -1582.3,
+        "ctx_pairs_min_max": [
+          -1582.8,
+          -1571.64
+        ],
+        "ctx_pairs_n": 5,
+        "hrsc_mola_200m": -1604.0,
+        "mola_463m": -1602.0,
+        "real_minus_scenario_m": -0.3
+      },
+      "slope_deg": {
+        "scenario": 6.7,
+        "ctx_20m": 6.7,
+        "hrsc_mola_200m": 7.9,
+        "mola_463m": 5.8
+      },
+      "local_100m": {
+        "radius_m": 100.0,
+        "relief_m": 20.3,
+        "slope_max_deg": 10.0,
+        "slope_median_deg": 6.8
+      },
+      "local_300m": {
+        "radius_m": 300.0,
+        "relief_m": 83.6,
+        "slope_max_deg": 12.9,
+        "slope_median_deg": 8.0
+      },
+      "sky_view_factor": {
+        "scenario": 0.85,
+        "derived_ctx_20m": 0.848
+      },
+      "horizon": {
+        "max_deg": 20.1,
+        "azimuth_of_max_deg": 200.0,
+        "mean_deg": 8.8
+      },
+      "radio_los_base": {
+        "scenario": true,
+        "derived_ctx_20m": true,
+        "margin_m": 0.6
+      }
+    },
+    "WP2": {
+      "lon_e_deg": 283.386234,
+      "lat_pc_deg": -9.932611,
+      "elevation_m": {
+        "scenario": -1464,
+        "ctx_20m": -1464.2,
+        "ctx_pairs_min_max": [
+          -1468.25,
+          -1456.43
+        ],
+        "ctx_pairs_n": 5,
+        "hrsc_mola_200m": -1503.0,
+        "mola_463m": -1494.0,
+        "real_minus_scenario_m": -0.2
+      },
+      "slope_deg": {
+        "scenario": 19.4,
+        "ctx_20m": 19.4,
+        "hrsc_mola_200m": 4.8,
+        "mola_463m": 9.3
+      },
+      "local_100m": {
+        "radius_m": 100.0,
+        "relief_m": 61.3,
+        "slope_max_deg": 20.0,
+        "slope_median_deg": 18.1
+      },
+      "local_300m": {
+        "radius_m": 300.0,
+        "relief_m": 175.0,
+        "slope_max_deg": 23.9,
+        "slope_median_deg": 17.2
+      },
+      "sky_view_factor": {
+        "scenario": 0.84,
+        "derived_ctx_20m": 0.84
+      },
+      "horizon": {
+        "max_deg": 22.3,
+        "azimuth_of_max_deg": 170.0,
+        "mean_deg": 9.3
+      },
+      "radio_los_base": {
+        "scenario": false,
+        "derived_ctx_20m": false,
+        "margin_m": -24.7
+      }
+    },
+    "WP3": {
+      "lon_e_deg": 283.383486,
+      "lat_pc_deg": -9.922858,
+      "elevation_m": {
+        "scenario": -1520,
+        "ctx_20m": -1519.5,
+        "ctx_pairs_min_max": [
+          -1523.51,
+          -1513.08
+        ],
+        "ctx_pairs_n": 5,
+        "hrsc_mola_200m": -1517.0,
+        "mola_463m": -1540.0,
+        "real_minus_scenario_m": 0.5
+      },
+      "slope_deg": {
+        "scenario": 20.1,
+        "ctx_20m": 20.1,
+        "hrsc_mola_200m": 6.3,
+        "mola_463m": 5.4
+      },
+      "local_100m": {
+        "radius_m": 100.0,
+        "relief_m": 57.9,
+        "slope_max_deg": 24.1,
+        "slope_median_deg": 18.7
+      },
+      "local_300m": {
+        "radius_m": 300.0,
+        "relief_m": 77.9,
+        "slope_max_deg": 24.9,
+        "slope_median_deg": 11.3
+      },
+      "sky_view_factor": {
+        "scenario": 0.15,
+        "derived_ctx_20m": 0.763
+      },
+      "horizon": {
+        "max_deg": 20.7,
+        "azimuth_of_max_deg": 220.0,
+        "mean_deg": 13.7
+      },
+      "radio_los_base": {
+        "scenario": false,
+        "derived_ctx_20m": false,
+        "margin_m": -28.2
+      }
+    }
+  },
+  "legs": {
+    "L1": {
+      "from": "BASE",
+      "to": "WP1",
+      "distance_m": {
+        "scenario": 1500,
+        "real": 1500.0
+      },
+      "bearing_deg": {
+        "scenario": 152,
+        "real": 152.0
+      },
+      "delta_elev_m": {
+        "scenario": 78,
+        "real_ctx_20m": 77.6
+      },
+      "mean_slope_deg": 2.96,
+      "slope_along_leg_deg": {
+        "median": 4.4,
+        "p90": 6.7,
+        "max": 8.0
+      },
+      "fully_covered": true,
+      "profile_min_max_m": [
+        -1659.9,
+        -1582.3
+      ]
+    },
+    "L2": {
+      "from": "WP1",
+      "to": "WP2",
+      "distance_m": {
+        "scenario": 1200,
+        "real": 1200.0
+      },
+      "bearing_deg": {
+        "scenario": 227,
+        "real": 227.0
+      },
+      "delta_elev_m": {
+        "scenario": 118,
+        "real_ctx_20m": 118.0
+      },
+      "mean_slope_deg": 5.62,
+      "slope_along_leg_deg": {
+        "median": 10.1,
+        "p90": 17.9,
+        "max": 19.9
+      },
+      "fully_covered": true,
+      "profile_min_max_m": [
+        -1582.3,
+        -1464.2
+      ]
+    },
+    "L3": {
+      "from": "WP2",
+      "to": "WP3",
+      "distance_m": {
+        "scenario": 600,
+        "real": 600.0
+      },
+      "bearing_deg": {
+        "scenario": 344,
+        "real": 344.0
+      },
+      "delta_elev_m": {
+        "scenario": -56,
+        "real_ctx_20m": -55.2
+      },
+      "mean_slope_deg": -5.26,
+      "slope_along_leg_deg": {
+        "median": 14.7,
+        "p90": 20.3,
+        "max": 22.5
+      },
+      "fully_covered": true,
+      "profile_min_max_m": [
+        -1554.3,
+        -1464.2
+      ]
+    },
+    "L4": {
+      "from": "WP3",
+      "to": "BASE",
+      "distance_m": {
+        "scenario": 1600,
+        "real": 1600.0
+      },
+      "bearing_deg": {
+        "scenario": 12,
+        "real": 12.0
+      },
+      "delta_elev_m": {
+        "scenario": -140,
+        "real_ctx_20m": -140.4
+      },
+      "mean_slope_deg": -5.02,
+      "slope_along_leg_deg": {
+        "median": 5.5,
+        "p90": 15.1,
+        "max": 20.1
+      },
+      "fully_covered": true,
+      "profile_min_max_m": [
+        -1659.9,
+        -1499.1
+      ]
+    },
+    "R1": {
+      "from": "WP2",
+      "to": "BASE",
+      "distance_m": {
+        "scenario": 2150,
+        "real": 2150.0
+      },
+      "bearing_deg": {
+        "scenario": 5,
+        "real": 5.0
+      },
+      "delta_elev_m": {
+        "scenario": -196,
+        "real_ctx_20m": -195.6
+      },
+      "mean_slope_deg": -5.2,
+      "slope_along_leg_deg": {
+        "median": 7.4,
+        "p90": 16.2,
+        "max": 21.4
+      },
+      "fully_covered": true,
+      "profile_min_max_m": [
+        -1659.9,
+        -1464.2
+      ]
+    }
+  },
+  "route_aoi": {
+    "dem": "DTM CTX 20 m",
+    "elevation_min_max_m": [
+      -1742.3,
+      -1027.0
+    ],
+    "relief_m": 715.3,
+    "slope_deg": {
+      "median": 7.2,
+      "p95": 23.9,
+      "p99": 27.9,
+      "max": 36.4
+    },
+    "fraction_slope_over_10deg": 0.3702,
+    "fraction_slope_over_20deg": 0.1429,
+    "svf_min_max": [
+      0.541,
+      0.861
+    ],
+    "fraction_without_los_to_base": 0.6576,
+    "fraction_los_margin_within_5m": 0.4418,
+    "los_margin_p05_p50_p95_m": [
+      -37.1,
+      -3.3,
+      6.6
+    ]
+  },
+  "scarps": {
+    "definition": "Celda más cercana a la Base con cota ≥ cota_Base + 1000 m (subida) o ≤ cota_Base − 1000 m (bajada). «Anchura de rampa» = tramo final del perfil recto en el que se gana el 90 % de ese desnivel.",
+    "up_hrsc_mola_200m": {
+      "threshold_m": -660.0,
+      "distance_km": 4.62,
+      "bearing_deg": 171.0,
+      "elevation_m": -651.0,
+      "lon_e": 283.4016,
+      "lat": -9.9735,
+      "ramp_width_km": 3.22,
+      "ramp_mean_slope_deg": 15.6
+    },
+    "up_mola_463m": {
+      "threshold_m": -660.0,
+      "distance_km": 5.04,
+      "bearing_deg": 172.0,
+      "elevation_m": -607.0,
+      "lon_e": 283.4007,
+      "lat": -9.9807,
+      "ramp_width_km": 3.53,
+      "ramp_mean_slope_deg": 14.3
+    },
+    "down_hrsc_mola_200m": {
+      "threshold_m": -2660.0,
+      "distance_km": 28.55,
+      "bearing_deg": 25.0,
+      "elevation_m": -2664.0,
+      "lon_e": 283.5973,
+      "lat": -9.4606,
+      "ramp_width_km": 4.19,
+      "ramp_mean_slope_deg": 12.1
+    },
+    "down_mola_463m": {
+      "threshold_m": -2660.0,
+      "distance_km": 28.9,
+      "bearing_deg": 26.0,
+      "elevation_m": -2661.0,
+      "lon_e": 283.6038,
+      "lat": -9.4572,
+      "ramp_width_km": 4.66,
+      "ramp_mean_slope_deg": 10.9
+    },
+    "up_from_WP3_hrsc_mola_200m": {
+      "threshold_m": -520.0,
+      "distance_km": 3.63,
+      "bearing_deg": 160.0,
+      "elevation_m": -499.0,
+      "lon_e": 283.405,
+      "lat": -9.9803,
+      "ramp_width_km": 2.62,
+      "ramp_mean_slope_deg": 19.0
+    }
+  },
+  "steep_slopes": {
+    "definition": "Celda más cercana con pendiente ≥ umbral; busca dónde hay de verdad una rampa (WP2) o un escarpe (WP3).",
+    "from_WP2_ctx_20m_15deg": {
+      "threshold_deg": 15.0,
+      "found": true,
+      "distance_km": 0.0,
+      "bearing_deg": 139.0,
+      "slope_deg": 19.4,
+      "lon_e": 283.3863,
+      "lat": -9.9327
+    },
+    "from_WP2_ctx_20m_20deg": {
+      "threshold_deg": 20.0,
+      "found": true,
+      "distance_km": 0.06,
+      "bearing_deg": 92.0,
+      "slope_deg": 20.0,
+      "lon_e": 283.3873,
+      "lat": -9.9327
+    },
+    "from_WP3_ctx_20m_30deg": {
+      "threshold_deg": 30.0,
+      "found": true,
+      "distance_km": 1.76,
+      "bearing_deg": 150.0,
+      "slope_deg": 30.1,
+      "lon_e": 283.3984,
+      "lat": -9.9485
+    },
+    "from_WP3_hrsc_mola_200m_20deg": {
+      "threshold_deg": 20.0,
+      "found": true,
+      "distance_km": 1.01,
+      "bearing_deg": 176.0,
+      "slope_deg": 21.6,
+      "lon_e": 283.3847,
+      "lat": -9.9398
+    },
+    "from_WP3_hrsc_mola_200m_30deg": {
+      "threshold_deg": 30.0,
+      "found": true,
+      "distance_km": 2.71,
+      "bearing_deg": 152.0,
+      "slope_deg": 30.6,
+      "lon_e": 283.405,
+      "lat": -9.9634
+    }
+  },
+  "plateau": {
+    "definition": "Celda más cercana a la Base con cota ≥ +3.000 m MOLA (borde de meseta).",
+    "nearest_mola_463m": {
+      "threshold_m": 3000.0,
+      "distance_km": 14.21,
+      "bearing_deg": 194.0,
+      "elevation_m": 3013.0,
+      "lon_e": 283.3304,
+      "lat": -10.1291,
+      "ramp_width_km": 10.9,
+      "ramp_mean_slope_deg": 21.1
+    },
+    "relief_by_radius_mola_463m": [
+      {
+        "radius_km": 5,
+        "max_elevation_m": -699.0,
+        "max_bearing_deg": 178.0,
+        "min_elevation_m": -1816.0,
+        "min_bearing_deg": 38.0,
+        "relief_above_point_m": 961.0,
+        "relief_below_point_m": 156.0,
+        "total_relief_m": 1117.0
+      },
+      {
+        "radius_km": 10,
+        "max_elevation_m": 1411.0,
+        "max_bearing_deg": 176.0,
+        "min_elevation_m": -1923.0,
+        "min_bearing_deg": 57.0,
+        "relief_above_point_m": 3071.0,
+        "relief_below_point_m": 263.0,
+        "total_relief_m": 3334.0
+      },
+      {
+        "radius_km": 25,
+        "max_elevation_m": 3811.0,
+        "max_bearing_deg": 211.0,
+        "min_elevation_m": -2050.0,
+        "min_bearing_deg": 14.0,
+        "relief_above_point_m": 5471.0,
+        "relief_below_point_m": 390.0,
+        "total_relief_m": 5861.0
+      },
+      {
+        "radius_km": 50,
+        "max_elevation_m": 4062.0,
+        "max_bearing_deg": 133.0,
+        "min_elevation_m": -3037.0,
+        "min_bearing_deg": 334.0,
+        "relief_above_point_m": 5722.0,
+        "relief_below_point_m": 1377.0,
+        "total_relief_m": 7099.0
+      },
+      {
+        "radius_km": 100,
+        "max_elevation_m": 4097.0,
+        "max_bearing_deg": 138.0,
+        "min_elevation_m": -4144.0,
+        "min_bearing_deg": 318.0,
+        "relief_above_point_m": 5757.0,
+        "relief_below_point_m": 2484.0,
+        "total_relief_m": 8241.0
+      },
+      {
+        "radius_km": 150,
+        "max_elevation_m": 4457.0,
+        "max_bearing_deg": 9.0,
+        "min_elevation_m": -4200.0,
+        "min_bearing_deg": 300.0,
+        "relief_above_point_m": 6117.0,
+        "relief_below_point_m": 2540.0,
+        "total_relief_m": 8657.0
+      }
+    ],
+    "relief_by_radius_hrsc_mola_200m": [
+      {
+        "radius_km": 5,
+        "max_elevation_m": -576.0,
+        "max_bearing_deg": 174.0,
+        "min_elevation_m": -1823.0,
+        "min_bearing_deg": 39.0,
+        "relief_above_point_m": 1084.0,
+        "relief_below_point_m": 163.0,
+        "total_relief_m": 1247.0
+      },
+      {
+        "radius_km": 10,
+        "max_elevation_m": 1641.0,
+        "max_bearing_deg": 214.0,
+        "min_elevation_m": -1938.0,
+        "min_bearing_deg": 51.0,
+        "relief_above_point_m": 3301.0,
+        "relief_below_point_m": 278.0,
+        "total_relief_m": 3579.0
+      },
+      {
+        "radius_km": 25,
+        "max_elevation_m": 3842.0,
+        "max_bearing_deg": 154.0,
+        "min_elevation_m": -2054.0,
+        "min_bearing_deg": 16.0,
+        "relief_above_point_m": 5502.0,
+        "relief_below_point_m": 394.0,
+        "total_relief_m": 5896.0
+      },
+      {
+        "radius_km": 50,
+        "max_elevation_m": 4139.0,
+        "max_bearing_deg": 117.0,
+        "min_elevation_m": -3042.0,
+        "min_bearing_deg": 333.0,
+        "relief_above_point_m": 5799.0,
+        "relief_below_point_m": 1382.0,
+        "total_relief_m": 7181.0
+      }
+    ]
+  },
+  "closed_basin": {
+    "method": "Relleno de depresiones por prioridad desde el borde de la ventana: cota de desbordamiento = mínima cota a la que el agua vertida en el punto alcanza el borde. «Estanque» = celdas conectadas que comparten esa cota.",
+    "claim_checked": "Depresión cerrada colgada ~1 km sobre el piso, siguiendo la curva de −1.800 m",
+    "mola_463m_regional": {
+      "dem_pixel_m": 459.5,
+      "window": {
+        "lon_e_min": 280.3889,
+        "lon_e_max": 286.3969,
+        "lat_min": -12.9222,
+        "lat_max": -6.9064
+      },
+      "point_elevation_m": -1677.0,
+      "spill_elevation_m": -1168.0,
+      "depth_below_spill_m": 509.0,
+      "inside_closed_depression": true,
+      "pond_area_km2": 689.8,
+      "pond_extent_km": {
+        "east_west": 45.6,
+        "north_south": 24.1
+      },
+      "pond_min_elevation_m": -1923.0,
+      "pond_min_location": {
+        "lon_e": 283.5335,
+        "lat": -9.801
+      },
+      "pond_max_depth_m": 755.0,
+      "pond_touches_window_edge": false,
+      "spill_point": {
+        "lon_e": 283.1429,
+        "lat": -9.5822,
+        "distance_km": 23.5,
+        "bearing_deg": 322.0
+      }
+    },
+    "hrsc_mola_200m_horizon": {
+      "dem_pixel_m": 198.5,
+      "window": {
+        "lon_e_min": 282.5969,
+        "lon_e_max": 284.203,
+        "lat_min": -10.7006,
+        "lat_max": -9.0979
+      },
+      "point_elevation_m": -1658.0,
+      "spill_elevation_m": -1170.0,
+      "depth_below_spill_m": 488.0,
+      "inside_closed_depression": true,
+      "pond_area_km2": 693.8,
+      "pond_extent_km": {
+        "east_west": 47.3,
+        "north_south": 25.4
+      },
+      "pond_min_elevation_m": -1938.0,
+      "pond_min_location": {
+        "lon_e": 283.5163,
+        "lat": -9.7947
+      },
+      "pond_max_depth_m": 768.0,
+      "pond_touches_window_edge": false,
+      "spill_point": {
+        "lon_e": 283.1081,
+        "lat": -9.5652,
+        "distance_km": 25.6,
+        "bearing_deg": 320.0
+      }
+    },
+    "contour_minus_1800_mola_463m": {
+      "level_m": -1800.0,
+      "point_below_level": false
+    },
+    "contour_minus_1800_hrsc_mola_200m": {
+      "level_m": -1800.0,
+      "point_below_level": false
+    }
+  },
+  "site_identity": {
+    "hirise_dtm_id": null,
+    "hirise_dtm_stac_description": null,
+    "hirise_dtm_route_coverage": null,
+    "alternative_coordinates_in_5_2": {
+      "lat": -12.2,
+      "lon_e": 290.0,
+      "distance_from_site_km": 399.0,
+      "inside_regional_window": false
+    }
+  },
+  "horizon_truncation": {
+    "note": "Horizonte en la Base con los rayos cortados en AOI_HORIZON frente al mismo cálculo prolongado sobre MOLA 463 m hasta 170 km.",
+    "max_increase_deg": 0.95,
+    "azimuth_of_max_increase_deg": 290.0,
+    "svf_truncated": 0.8535,
+    "svf_extended": 0.853
+  },
+  "route_aoi_bounds": {
+    "lat_min": -9.95,
+    "lat_max": -9.88,
+    "lon_e_min": 283.36,
+    "lon_e_max": 283.42
+  },
+  "relocation": {
+    "original_base": {
+      "lat_pc_deg": -9.8,
+      "lon_e_deg": 283.6
+    },
+    "new_base": {
+      "lat_pc_deg": -9.89646,
+      "lon_e_deg": 283.3892
+    },
+    "displacement_km": 13.57,
+    "bearing_deg": 245.0,
+    "inside_original_basin": true
+  },
+  "atmosphere": {
+    "formula": "P = 610 Pa · exp(−z / 11,1 km); columna de CO₂ = P / g. Es la fórmula que reproduce los valores canónicos del proyecto (724 Pa y 19,5 g/cm² a −1.905 m).",
+    "base_elevation_m": -1660.0,
+    "surface_pressure_pa": 708.0,
+    "co2_column_g_cm2": 19.04,
+    "original_site": {
+      "elevation_m": -1905,
+      "surface_pressure_pa": 724.0,
+      "co2_column_g_cm2": 19.46
+    },
+    "per_node": {
+      "BASE": {
+        "surface_pressure_pa": 708.0,
+        "co2_column_g_cm2": 19.04
+      },
+      "WP1": {
+        "surface_pressure_pa": 703.0,
+        "co2_column_g_cm2": 18.91
+      },
+      "WP2": {
+        "surface_pressure_pa": 696.0,
+        "co2_column_g_cm2": 18.71
+      },
+      "WP3": {
+        "surface_pressure_pa": 699.0,
+        "co2_column_g_cm2": 18.8
+      }
+    },
+    "water_triple_point_pa": 611.66,
+    "above_triple_point": true,
+    "gale_co2_column_g_cm2": 23.0
+  },
+  "placement_conditions": {
+    "a_cobertura_ctx": {
+      "ok": true,
+      "route_valid_fraction": 0.9987,
+      "near_valid_fraction": 0.9586
+    },
+    "b_base_llana_segura": {
+      "ok": true,
+      "slope_deg": 2.8,
+      "max_slope_within_60m_deg": 3.8,
+      "limits": "<3° y <5° a 60 m"
+    },
+    "c_wp2_18_26": {
+      "ok": true,
+      "slope_deg": 19.4,
+      "max_slope_within_100m_deg": 20.0
+    },
+    "d_wp3_horizonte_svf": {
+      "svf_dem": 0.763,
+      "horizon_max_deg": 20.7,
+      "horizon_mean_deg": 13.7,
+      "route_svf_min": 0.541,
+      "route_svf_percentile_of_wp3": 0.9,
+      "base_svf_dem": 0.853,
+      "wp3_slope_deg": 20.1,
+      "route_svf_min_cell": {
+        "svf": 0.72,
+        "lon_e": 283.3812,
+        "lat": -9.92217,
+        "slope_deg": 24.8,
+        "elevation_m": -1536.0,
+        "distance_from_wp3_m": 140.0,
+        "bearing_from_wp3_deg": 287.0,
+        "fraction_of_route_aoi_with_svf_below_0_70": 0.0,
+        "route_svf_p01": 0.768,
+        "raw_min_including_dtm_edge_artifacts": 0.54
+      },
+      "note": "Condición de optimización, no de umbral: se usó como desempate tras a, b, c, e, f y g. Es la condición más débil de la colocación."
+    },
+    "e_wp1_menor_8": {
+      "ok": true,
+      "slope_deg": 6.7
+    },
+    "f_radio": {
+      "ok": true,
+      "margin_m": {
+        "WP1": 0.6,
+        "WP2": -24.7,
+        "WP3": -28.2
+      },
+      "limits": "WP1 > 0 m; WP2 y WP3 ≤ −10 m (ruido del DTM ~5 m)"
+    },
+    "g_tramos_transitables": {
+      "ok": true,
+      "max_slope_deg": {
+        "L1": 8.0,
+        "L2": 19.9,
+        "L3": 22.5,
+        "L4": 20.1,
+        "R1": 21.4
+      },
+      "limits": "L1 y L4 sin celdas por encima de 25°"
+    }
+  },
+  "generated_utc": "2026-11-14T21:25:22Z",
+  "verdict": {
+    "conditions_ok": {
+      "a_cobertura_ctx": true,
+      "b_base_llana_segura": true,
+      "c_wp2_18_26": true,
+      "e_wp1_menor_8": true,
+      "f_radio": true,
+      "g_tramos_transitables": true
+    },
+    "all_threshold_conditions_met": true,
+    "failed_conditions": [],
+    "site_inside_closed_basin": true,
+    "wp3_above_wp2": false,
+    "summary": "El triángulo se ha reubicado 13,6 km al suroeste (rumbo 245°), al pie de la pared suroeste de la misma cuenca cerrada, manteniendo rígida la figura. En el DTM CTX de 20 m la Base queda a −1.660 m con 2,8° de pendiente; el WP2 está sobre una ladera real de 19,4°; el WP3 ve un horizonte de hasta 20,7° y tiene un SVF real de 0,76; y no hay línea de vista de radio desde la Base al WP2 ni al WP3 (márgenes de −24,7 y −28,2 m, fuera del ruido), pero sí al WP1 (+0,6 m). En el par CTX de trabajo se cumplen las condiciones con umbral (a, b, c, e, f, g). Matices: solo se cumplen todas en 2 de los 4 pares CTX que cubren la colocación; la (c) está en el límite inferior y no es robusta (WP2 entre 14,0° y 19,4° según el par, y el par de trabajo da el valor más alto); la línea de vista al WP1 (entre +0,8 y +3,5 m) está dentro del ruido de ±5 m del DTM, es decir, es indeterminada; y la (d) es la condición débil: el WP3 está en un talud, no al pie de un escarpe. Presión en la Base: 708 Pa; columna de CO₂: 19,0 g/cm². Siguen siendo escenario la inercia térmica y la alcoba con cornisa del WP3 (SVF 0,15), y el WP3 sigue quedando por debajo del WP2."
+  }
+}

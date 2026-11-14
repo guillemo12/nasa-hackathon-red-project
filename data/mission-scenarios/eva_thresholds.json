@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0",
+  "owner": "Persona 1",
+  "note": "Umbrales Verde/Ambar/Rojo para la maquina de estados determinista del traje. Verde = nominal; Ambar = precaucion; Rojo = aborto / cambio de destino. Procedencia: M = medido o publicado, D = derivado, E = supuesto de escenario.",
+  "constants": {
+    "g_mars_m_s2": 3.72076,
+    "suited_mass_kg": 170,
+    "o2_energy_equiv_w_per_l_min": 335,
+    "o2_density_g_per_l_stpd": 1.429,
+    "surface_pressure_pa_site": 708,
+    "co2_column_g_cm2_site": 19.0
+  },
+  "thresholds": [
+    {
+      "id": "slope_deg",
+      "unit": "deg",
+      "green": "<10",
+      "amber": "10-20",
+      "red": ">20",
+      "prov": "D"
+    },
+    {
+      "id": "metabolic_rate_w",
+      "unit": "W",
+      "green": "<450",
+      "amber": "450-585",
+      "red": ">585 sostenido; pico 1072",
+      "prov": "D"
+    },
+    {
+      "id": "o2_consumption_l_min",
+      "unit": "L/min STPD",
+      "green": "<1.35",
+      "amber": "1.35-1.75",
+      "red": ">1.75 sostenido; pico 3.2",
+      "prov": "D"
+    },
+    {
+      "id": "thermal_inertia_tiu",
+      "unit": "J m-2 K-1 s-1/2",
+      "green": ">400",
+      "amber": "150-400",
+      "red": "<150",
+      "prov": "M/E"
+    },
+    {
+      "id": "terrain_factor_eta",
+      "unit": "-",
+      "green": "1.0",
+      "amber": "1.3-1.6",
+      "red": "2.1",
+      "prov": "D"
+    },
+    {
+      "id": "slip_fraction",
+      "unit": "-",
+      "green": "<0.05",
+      "amber": "0.05-0.20",
+      "red": ">0.20",
+      "prov": "E"
+    },
+    {
+      "id": "dust_tau_880nm",
+      "unit": "-",
+      "green": "<1.0",
+      "amber": "1.0-2.0",
+      "red": ">2.0",
+      "prov": "M/E"
+    },
+    {
+      "id": "wind_speed_m_s",
+      "unit": "m/s",
+      "green": "<10",
+      "amber": "10-20",
+      "red": ">20",
+      "prov": "D/E"
+    },
+    {
+      "id": "dose_rate_msv_h",
+      "unit": "mSv/h",
+      "green": "<0.05",
+      "amber": "0.05-1.0",
+      "red": ">1.0",
+      "prov": "M/E"
+    },
+    {
+      "id": "eva_spe_dose_budget_msv",
+      "unit": "mSv",
+      "green": "<0.5",
+      "amber": "0.5-2.0",
+      "red": ">2.0",
+      "prov": "E"
+    },
+    {
+      "id": "radio_rssi_dbm",
+      "unit": "dBm",
+      "green": ">-85",
+      "amber": "-85 a -100",
+      "red": "<-100 o NLOS >60 s",
+      "prov": "D/E"
+    },
+    {
+      "id": "suit_pressure_kpa",
+      "unit": "kPa",
+      "green": "28.0-30.5",
+      "amber": "24.0-28.0",
+      "red": "<24.0",
+      "prov": "M/E"
+    },
+    {
+      "id": "o2_primary_pct",
+      "unit": "%",
+      "green": ">50",
+      "amber": "30-50",
+      "red": "<30",
+      "prov": "E"
+    },
+    {
+      "id": "cooling_water_pct",
+      "unit": "%",
+      "green": ">40",
+      "amber": "20-40",
+      "red": "<20",
+      "prov": "E"
+    },
+    {
+      "id": "battery_pct",
+      "unit": "%",
+      "green": ">40",
+      "amber": "25-40",
+      "red": "<25",
+      "prov": "E"
+    },
+    {
+      "id": "walkback_margin_min",
+      "unit": "min",
+      "green": ">30",
+      "amber": "10-30",
+      "red": "<10",
+      "prov": "E"
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "owner": "Persona 1",
+  "aoi": {
+    "lat_min": -9.95,
+    "lat_max": -9.88,
+    "lon_e_min": 283.36,
+    "lon_e_max": 283.42
+  },
+  "crs": "IAU_2015:49900",
+  "layers": [
+    {
+      "layer_id": "MOLA_HRSC_DEM",
+      "name": "Topografia, pendientes y horizonte",
+      "sources": [
+        "MGS MOLA",
+        "Mars Express HRSC",
+        "MRO CTX (estereo)",
+        "MRO HiRISE (estereo)"
+      ],
+      "pds_product_types": [
+        "MGS-M-MOLA-5-MEGDR-L3-V1.0",
+        "MEX-M-HRSC-5-REFDR-DTM-V1.0",
+        "Mezcla HRSC+MOLA 200 m (USGS Astrogeology)",
+        "MRO-M-HIRISE-5-DTM-V1.0"
+      ],
+      "native_resolution": "463 m (MEGDR 128 px/grado), 200 m (mezcla), 50-100 m (HRSC), ~20 m (CTX), 1 m (HiRISE)",
+      "processed_format": "COG float32 + Parquet por celda H3",
+      "unit": "m; grados; SVF 0-1",
+      "spyglass": "Sector izquierda: pendiente y SVF",
+      "caveat": "La cobertura HiRISE DTM del punto exacto no esta confirmada",
+      "scene_ids": "por confirmar en PDS ODE / Mars Trek para la huella 9.78-9.84S, 283.58-283.64E"
+    },
+    {
+      "layer_id": "HiRISE_CTX_ORTHO",
+      "name": "Ortoimagen optica de obstaculos y rocas",
+      "sources": [
+        "MRO HiRISE",
+        "MRO CTX"
+      ],
+      "pds_product_types": [
+        "MRO-M-HIRISE-3-RDR-V1.1",
+        "MRO-M-CTX-2-EDR-L0-V1.0",
+        "Mosaico global CTX 5 m (Murray Lab, Caltech)"
+      ],
+      "native_resolution": "0.25-0.50 m (HiRISE), 5-6 m (CTX)",
+      "processed_format": "COG uint8/uint16 con overviews; Parquet de abundancia de rocas",
+      "unit": "reflectancia I/F; fraccion de area rocosa",
+      "spyglass": "Textura base 3D y sector izquierda (rocas)",
+      "caveat": "HiRISE resuelve rocas de mas de ~0.75-1 m",
+      "scene_ids": "por confirmar en PDS ODE / Mars Trek para la huella 9.78-9.84S, 283.58-283.64E"
+    },
+    {
+      "layer_id": "THEMIS_THERMAL_INERTIA",
+      "name": "Inercia termica y trampas de regolito",
+      "sources": [
+        "Mars Odyssey THEMIS IR",
+        "MGS TES (contexto)"
+      ],
+      "pds_product_types": [
+        "ODY-M-THM-3-IRBTR-V1.0",
+        "Mosaicos THEMIS IR dia/noche 100 m y mapa de inercia termica (USGS/ASU)",
+        "TES thermal inertia (Putzig et al.)"
+      ],
+      "native_resolution": "100 m (THEMIS), ~3 km (TES)",
+      "processed_format": "COG float32 + Parquet",
+      "unit": "J m-2 K-1 s-1/2 (TIU)",
+      "spyglass": "Sector derecha: <150 TIU en magenta/naranja",
+      "caveat": "Incertidumbre ~20 %; solo sondea los cm superiores",
+      "scene_ids": "por confirmar en PDS ODE / Mars Trek para la huella 9.78-9.84S, 283.58-283.64E"
+    },
+    {
+      "layer_id": "CRISM_SHARAD_ISRU",
+      "name": "Mineralogia hidratada e ISRU",
+      "sources": [
+        "MRO CRISM",
+        "MRO SHARAD",
+        "Mars Express OMEGA (contexto)"
+      ],
+      "pds_product_types": [
+        "MRO-M-CRISM-3-RDR-TARGETED-V1.0",
+        "MRO-M-CRISM-5-RDR-MPTARGETED-V1.0",
+        "MRO-M-SHARAD-4-RDR-V1.0"
+      ],
+      "native_resolution": "18 m (FRT), 36 m (HRL/HRS), ~200 m (MSP); SHARAD 0.3-1 km x 3-6 km, 15 m vertical",
+      "processed_format": "COG float32 de parametros espectrales + Parquet",
+      "unit": "profundidad de banda (adim.); % peso H2O estimado",
+      "spyglass": "Sector norte: sulfatos hidratados en azul electrico",
+      "caveat": "SHARAD sufre clutter de paredes en Valles Marineris: solo contexto regional",
+      "scene_ids": "por confirmar en PDS ODE / Mars Trek para la huella 9.78-9.84S, 283.58-283.64E"
+    },
+    {
+      "layer_id": "MCS_MEDA_WEATHER",
+      "name": "Dinamica atmosferica, polvo y vientos de canon",
+      "sources": [
+        "MRO MCS",
+        "TGO NOMAD",
+        "Mars Express OMEGA",
+        "Mars 2020 MEDA (analogo en Jezero)",
+        "Modelo mesoescalar"
+      ],
+      "pds_product_types": [
+        "MRO-M-MCS-5-DDR-V1.0",
+        "urn:nasa:pds:mars2020_meda",
+        "Mars Climate Database / modelo mesoescalar"
+      ],
+      "native_resolution": "perfiles con ~5 km vertical (MCS); malla mesoescalar 1-2 km",
+      "processed_format": "Parquet (series temporales) + COG de campos de viento",
+      "unit": "tau; m/s; K; Pa",
+      "spyglass": "Modo Rayos X de 1 capa",
+      "caveat": "No hay estacion meteorologica en Melas: los vientos son modelados",
+      "scene_ids": "por confirmar en PDS ODE / Mars Trek para la huella 9.78-9.84S, 283.58-283.64E"
+    },
+    {
+      "layer_id": "MSL_RAD_DOSIMETRY",
+      "name": "Radiacion y Sky View Factor",
+      "sources": [
+        "MSL RAD (analogo en Gale)",
+        "SVF derivado del DEM"
+      ],
+      "pds_product_types": [
+        "MSL-M-RAD-3-RDR-V1.0",
+        "SVF calculado con GDAL sobre la Capa 1"
+      ],
+      "native_resolution": "puntual (RAD); 1-20 m (SVF)",
+      "processed_format": "Parquet (dosis) + COG float32 (SVF)",
+      "unit": "mSv/h; uGy/dia; SVF 0-1",
+      "spyglass": "Sector izquierda: blindaje y sombra de radio",
+      "caveat": "La columna de CO2 del sitio (~19.5 g/cm2) es MENOR que la de Gale (~23 g/cm2)",
+      "scene_ids": "por confirmar en PDS ODE / Mars Trek para la huella 9.78-9.84S, 283.58-283.64E"
+    }
+  ]
+}

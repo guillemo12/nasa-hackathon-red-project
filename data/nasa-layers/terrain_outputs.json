@@ -1,0 +1,923 @@
+{
+  "schema_version": "1.0",
+  "owner": "Persona 1",
+  "generated_utc": "2026-11-14T21:25:22Z",
+  "regenerate_with": "cd data/pipeline && uv run python -m red_atlas_p1.terrain",
+  "paths_relative_to": "data/pipeline",
+  "rasters_versioned": false,
+  "rasters_note": "Los COG son salidas de compilación (build/ está en .gitignore).",
+  "crs": "IAU_2015:49900",
+  "crs_proj4": "+proj=longlat +R=3396190 +no_defs",
+  "grid_conventions": {
+    "longitude": "Este positiva 0-360 en todos los ficheros; aplicar config.lon180() antes de indexar en H3, CesiumJS o DuckDB Spatial.",
+    "latitude": "planetocéntrica",
+    "pixel": "área; la geotransformación da la esquina superior izquierda",
+    "metric": "Paso N-S = R·Δφ; paso E-O = R·Δλ·cos φ; R = 3.396.190 m. No usar las funciones métricas de H3 sin H3_LENGTH_SCALE.",
+    "nodata_float32": -9999.0
+  },
+  "aois": {
+    "route": {
+      "lat_min": -9.95,
+      "lat_max": -9.88,
+      "lon_e_min": 283.36,
+      "lon_e_max": 283.42
+    },
+    "near": {
+      "lat_min": -10.05,
+      "lat_max": -9.78,
+      "lon_e_min": 283.26,
+      "lon_e_max": 283.52
+    },
+    "horizon": {
+      "lat_min": -10.7,
+      "lat_max": -9.1,
+      "lon_e_min": 282.6,
+      "lon_e_max": 284.2
+    },
+    "regional": {
+      "lat_min": -12.92,
+      "lat_max": -6.91,
+      "lon_e_min": 280.39,
+      "lon_e_max": 286.39
+    }
+  },
+  "reference_grid": {
+    "file": "build/cog/dem_ctx_20m_route.tif",
+    "note": "Todos los ficheros con aoi = route comparten esta malla píxel a píxel, salvo las ortoimágenes y el DTM HiRISE, que conservan su resolución nativa."
+  },
+  "provenance_codes": {
+    "0": "sin_dato",
+    "1": "medido",
+    "2": "derivado",
+    "3": "escenario"
+  },
+  "working_dem": "P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W",
+  "h3_guidance": {
+    "res_12_nav": "Arista ~5 m: más fina que el DTM de 20 m. Cada píxel CTX contiene varias celdas; asignar el valor del píxel sin interpolar y conservar la resolución de la fuente como atributo.",
+    "res_9_themis": "Arista ~93 m: agregar ~20-25 píxeles CTX por celda (media y máximo de pendiente, mínimo de SVF, fracción sin LOS)."
+  },
+  "files": [
+    {
+      "path": "build/cog/dem_ctx_20m_near.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 770,
+      "height": 799,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.25998631,
+        "lon_e_max": 283.52033035,
+        "lat_min": -10.05014468,
+        "lat_max": -9.77999548
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "elevation_m",
+          "unit": "m"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "dem",
+      "aoi": "near",
+      "provenance": "medido",
+      "source": {
+        "id": "P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W",
+        "url": "https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/ctx/controlled/usgs/P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W/P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W_dtm.tif",
+        "mission": "Mars Reconnaissance Orbiter (MRO)",
+        "instrument": "Context Camera (CTX)",
+        "native_resolution_m": 20.041,
+        "license": "CC0-1.0"
+      },
+      "aoi_coverage": 0.9586,
+      "valid_fraction": 0.9586,
+      "value_scale_offset": [
+        1.0,
+        0.0
+      ],
+      "note": "Cota sobre el areoide MOLA."
+    },
+    {
+      "path": "build/cog/dem_ctx_20m_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 179,
+      "height": 208,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.35972851,
+        "lon_e_max": 283.42025004,
+        "lat_min": -9.95006437,
+        "lat_max": -9.87973767
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "elevation_m",
+          "unit": "m"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "dem",
+      "aoi": "route",
+      "provenance": "medido",
+      "source": {
+        "id": "P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W",
+        "url": "https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/ctx/controlled/usgs/P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W/P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W_dtm.tif",
+        "mission": "Mars Reconnaissance Orbiter (MRO)",
+        "instrument": "Context Camera (CTX)",
+        "native_resolution_m": 20.041,
+        "license": "CC0-1.0"
+      },
+      "valid_fraction": 0.9987,
+      "note": "Malla de referencia de todos los derivados de ruta."
+    },
+    {
+      "path": "build/cog/dem_hrsc_mola_200m_horizon.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 476,
+      "height": 475,
+      "pixel_size_deg": [
+        0.003374120830641,
+        0.003374120830641
+      ],
+      "pixel_size_m": [
+        197.016,
+        200.0
+      ],
+      "bounds": {
+        "lon_e_min": 282.5968921,
+        "lon_e_max": 284.20297361,
+        "lat_min": -10.70063619,
+        "lat_max": -9.0979288
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "elevation_m",
+          "unit": "m"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "dem",
+      "aoi": "horizon",
+      "provenance": "medido",
+      "source": {
+        "id": "Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2",
+        "url": "https://planetarymaps.usgs.gov/mosaic/Mars/HRSC_MOLA_Blend/Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2.tif",
+        "mission": "Mars Express + Mars Global Surveyor",
+        "instrument": "HRSC + MOLA",
+        "native_resolution_m": 200.0,
+        "license": "Dominio público (USGS); datos HRSC de ESA/DLR/FU Berlin"
+      },
+      "aoi_coverage": 1.0,
+      "valid_fraction": 1.0,
+      "value_scale_offset": [
+        1.0,
+        0.0
+      ],
+      "note": "Cota sobre el areoide MOLA."
+    },
+    {
+      "path": "build/cog/dem_mola_463m_regional.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 769,
+      "height": 770,
+      "pixel_size_deg": [
+        0.007812668151841468,
+        0.007812668151841468
+      ],
+      "pixel_size_m": [
+        455.968,
+        463.094
+      ],
+      "bounds": {
+        "lon_e_min": 280.38891153,
+        "lon_e_max": 286.39685334,
+        "lat_min": -12.92215312,
+        "lat_max": -6.90639865
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "elevation_m",
+          "unit": "m"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "dem",
+      "aoi": "regional",
+      "provenance": "medido",
+      "source": {
+        "id": "Mars_MGS_MOLA_DEM_mosaic_global_463m",
+        "url": "https://planetarymaps.usgs.gov/mosaic/Mars_MGS_MOLA_DEM_mosaic_global_463m.tif",
+        "mission": "Mars Global Surveyor",
+        "instrument": "MOLA",
+        "native_resolution_m": 463.09,
+        "license": "Dominio público (NASA/USGS)"
+      },
+      "aoi_coverage": 1.0,
+      "valid_fraction": 1.0,
+      "value_scale_offset": [
+        1.0,
+        0.0
+      ],
+      "note": "Cota sobre el areoide MOLA."
+    },
+    {
+      "path": "build/cog/ortho_ctx_6m_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "int16",
+      "nodata": -32768.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 594,
+      "height": 693,
+      "pixel_size_deg": [
+        0.0001012236291486913,
+        0.0001012236291486913
+      ],
+      "pixel_size_m": [
+        5.91,
+        6.0
+      ],
+      "bounds": {
+        "lon_e_min": 283.35994632,
+        "lon_e_max": 283.42007316,
+        "lat_min": -9.9500803,
+        "lat_max": -9.87993232
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "ctx_dn",
+          "unit": "DN int16; I/F = DN·VALUE_SCALE + VALUE_OFFSET"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "ortho",
+      "aoi": "route",
+      "provenance": "medido",
+      "source": {
+        "id": "MC18_6mpp.16bit",
+        "url": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/Mars_MRO_CTX_Equi_Mosaics_Robbins/6mpp/MC18_6mpp.16bit.tif",
+        "mission": "Mars Reconnaissance Orbiter",
+        "instrument": "CTX",
+        "native_resolution_m": 6.0,
+        "license": "Dominio público (USGS)"
+      },
+      "aoi_coverage": 1.0,
+      "valid_fraction": 1.0,
+      "value_scale_offset": [
+        0.0069518240391603,
+        228.40873942368
+      ],
+      "note": ""
+    },
+    {
+      "path": "build/cog/ortho_hirise_1m_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "uint16",
+      "nodata": 0.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 3555,
+      "height": 4148,
+      "pixel_size_deg": [
+        1.6878895565320213e-05,
+        1.6876691446312562e-05
+      ],
+      "pixel_size_m": [
+        0.986,
+        1.0
+      ],
+      "bounds": {
+        "lon_e_min": 283.35999818,
+        "lon_e_max": 283.42000265,
+        "lat_min": -9.95000088,
+        "lat_max": -9.87999636
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "hirise_red_dn",
+          "unit": "DN uint16; I/F = DN·VALUE_SCALE + VALUE_OFFSET"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "ortho",
+      "aoi": "route",
+      "provenance": "medido",
+      "source": {
+        "id": "PSP_008735_1700_RED",
+        "url": "https://astrogeo-ard.s3-us-west-2.amazonaws.com/mars/mro/hirise/uncontrolled/PSP_008735_1700_RED/PSP_008735_1700_RED.tif",
+        "mission": "Mars Reconnaissance Orbiter (MRO)",
+        "instrument": "High Resolution Imaging Science Experiment",
+        "native_resolution_m": 0.25,
+        "license": "CC0-1.0"
+      },
+      "aoi_coverage": 0.9663,
+      "valid_fraction": 0.9663,
+      "value_scale_offset": [
+        0.000113436103104334,
+        0.050393066742195
+      ],
+      "note": "Observación sin control: error de posición de ~100 m respecto al DTM CTX. Cubre el 97 % de la AOI."
+    },
+    {
+      "path": "build/cog/themis_day_ir_100m_horizon.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "uint8",
+      "nodata": 0.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 950,
+      "height": 950,
+      "pixel_size_deg": [
+        0.0016870604858115234,
+        0.0016870604858115234
+      ],
+      "pixel_size_m": [
+        98.508,
+        100.0
+      ],
+      "bounds": {
+        "lon_e_min": 282.59858344,
+        "lon_e_max": 284.20129091,
+        "lat_min": -10.70102466,
+        "lat_max": -9.0983172
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "themis_day_ir_dn",
+          "unit": "DN uint8"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "thermal_qualitative",
+      "aoi": "horizon",
+      "provenance": "medido",
+      "source": {
+        "id": "mc18_coprates_dir",
+        "url": "https://astrogeo-ard.s3.us-west-2.amazonaws.com/mars/mo/themis/controlled_mosaics/mc18_coprates_dir/mc18_coprates_dir.tif",
+        "mission": "2001 Mars Odyssey",
+        "instrument": "THEMIS IR (diurno)",
+        "native_resolution_m": 100.0,
+        "license": "CC0-1.0"
+      },
+      "aoi_coverage": 1.0,
+      "valid_fraction": 1.0,
+      "value_scale_offset": [
+        1.0,
+        0.0
+      ],
+      "note": "DN cualitativo de 8 bits: NO es temperatura ni inercia térmica."
+    },
+    {
+      "path": "build/cog/themis_night_ir_100m_horizon.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "uint8",
+      "nodata": 0.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 950,
+      "height": 950,
+      "pixel_size_deg": [
+        0.0016870604858115234,
+        0.0016870604858115234
+      ],
+      "pixel_size_m": [
+        98.508,
+        100.0
+      ],
+      "bounds": {
+        "lon_e_min": 282.59858344,
+        "lon_e_max": 284.20129091,
+        "lat_min": -10.70102466,
+        "lat_max": -9.0983172
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "themis_night_ir_dn",
+          "unit": "DN uint8"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "thermal_qualitative",
+      "aoi": "horizon",
+      "provenance": "medido",
+      "source": {
+        "id": "mc18_coprates_nir",
+        "url": "https://astrogeo-ard.s3.us-west-2.amazonaws.com/mars/mo/themis/controlled_mosaics/mc18_coprates_nir/mc18_coprates_nir.tif",
+        "mission": "2001 Mars Odyssey",
+        "instrument": "THEMIS IR (nocturno)",
+        "native_resolution_m": 100.0,
+        "license": "CC0-1.0"
+      },
+      "aoi_coverage": 1.0,
+      "valid_fraction": 1.0,
+      "value_scale_offset": [
+        1.0,
+        0.0
+      ],
+      "note": "DN cualitativo de 8 bits: NO es temperatura ni inercia térmica."
+    },
+    {
+      "path": "build/cog/slope_aspect_ctx_20m_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 179,
+      "height": 208,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.35972851,
+        "lon_e_max": 283.42025004,
+        "lat_min": -9.95006437,
+        "lat_max": -9.87973767
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "slope_deg",
+          "unit": "grados"
+        },
+        {
+          "index": 2,
+          "name": "aspect_deg",
+          "unit": "grados desde el norte, horario"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "slope",
+      "aoi": "route",
+      "provenance": "derivado",
+      "source_resolution": "DTM CTX de 19.9 m (P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W)",
+      "method": "Horn 3×3 en metros reales: dy = R·Δφ, dx = R·Δλ·cos φ, R = 3.396.190 m. La orientación es el acimut hacia el que baja la ladera.",
+      "inputs": [
+        "build/cog/dem_ctx_20m_near.tif"
+      ],
+      "valid_fraction": 0.9976,
+      "note": "Pendiente sobre una base de 40 m (3 píxeles de 20 m): no resuelve rampas, bloques ni escalones menores de ~40-60 m. Ruido vertical del DTM de varios metros."
+    },
+    {
+      "path": "build/cog/horizon_ctx20_hrscmola200_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 179,
+      "height": 208,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.35972851,
+        "lon_e_max": 283.42025004,
+        "lat_min": -9.95006437,
+        "lat_max": -9.87973767
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "horizon_deg_az000",
+          "unit": "grados"
+        },
+        {
+          "index": 2,
+          "name": "horizon_deg_az010",
+          "unit": "grados"
+        },
+        {
+          "index": 3,
+          "name": "horizon_deg_az020",
+          "unit": "grados"
+        },
+        {
+          "index": 4,
+          "name": "horizon_deg_az030",
+          "unit": "grados"
+        },
+        {
+          "index": 5,
+          "name": "horizon_deg_az040",
+          "unit": "grados"
+        },
+        {
+          "index": 6,
+          "name": "horizon_deg_az050",
+          "unit": "grados"
+        },
+        {
+          "index": 7,
+          "name": "horizon_deg_az060",
+          "unit": "grados"
+        },
+        {
+          "index": 8,
+          "name": "horizon_deg_az070",
+          "unit": "grados"
+        },
+        {
+          "index": 9,
+          "name": "horizon_deg_az080",
+          "unit": "grados"
+        },
+        {
+          "index": 10,
+          "name": "horizon_deg_az090",
+          "unit": "grados"
+        },
+        {
+          "index": 11,
+          "name": "horizon_deg_az100",
+          "unit": "grados"
+        },
+        {
+          "index": 12,
+          "name": "horizon_deg_az110",
+          "unit": "grados"
+        },
+        {
+          "index": 13,
+          "name": "horizon_deg_az120",
+          "unit": "grados"
+        },
+        {
+          "index": 14,
+          "name": "horizon_deg_az130",
+          "unit": "grados"
+        },
+        {
+          "index": 15,
+          "name": "horizon_deg_az140",
+          "unit": "grados"
+        },
+        {
+          "index": 16,
+          "name": "horizon_deg_az150",
+          "unit": "grados"
+        },
+        {
+          "index": 17,
+          "name": "horizon_deg_az160",
+          "unit": "grados"
+        },
+        {
+          "index": 18,
+          "name": "horizon_deg_az170",
+          "unit": "grados"
+        },
+        {
+          "index": 19,
+          "name": "horizon_deg_az180",
+          "unit": "grados"
+        },
+        {
+          "index": 20,
+          "name": "horizon_deg_az190",
+          "unit": "grados"
+        },
+        {
+          "index": 21,
+          "name": "horizon_deg_az200",
+          "unit": "grados"
+        },
+        {
+          "index": 22,
+          "name": "horizon_deg_az210",
+          "unit": "grados"
+        },
+        {
+          "index": 23,
+          "name": "horizon_deg_az220",
+          "unit": "grados"
+        },
+        {
+          "index": 24,
+          "name": "horizon_deg_az230",
+          "unit": "grados"
+        },
+        {
+          "index": 25,
+          "name": "horizon_deg_az240",
+          "unit": "grados"
+        },
+        {
+          "index": 26,
+          "name": "horizon_deg_az250",
+          "unit": "grados"
+        },
+        {
+          "index": 27,
+          "name": "horizon_deg_az260",
+          "unit": "grados"
+        },
+        {
+          "index": 28,
+          "name": "horizon_deg_az270",
+          "unit": "grados"
+        },
+        {
+          "index": 29,
+          "name": "horizon_deg_az280",
+          "unit": "grados"
+        },
+        {
+          "index": 30,
+          "name": "horizon_deg_az290",
+          "unit": "grados"
+        },
+        {
+          "index": 31,
+          "name": "horizon_deg_az300",
+          "unit": "grados"
+        },
+        {
+          "index": 32,
+          "name": "horizon_deg_az310",
+          "unit": "grados"
+        },
+        {
+          "index": 33,
+          "name": "horizon_deg_az320",
+          "unit": "grados"
+        },
+        {
+          "index": 34,
+          "name": "horizon_deg_az330",
+          "unit": "grados"
+        },
+        {
+          "index": 35,
+          "name": "horizon_deg_az340",
+          "unit": "grados"
+        },
+        {
+          "index": 36,
+          "name": "horizon_deg_az350",
+          "unit": "grados"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "horizon",
+      "aoi": "route",
+      "provenance": "derivado",
+      "source_resolution": "DTM CTX de 19.9 m (P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W) + mezcla HRSC+MOLA de 200 m",
+      "method": "Rayo por acimut cada 10°: pasos de 20 m sobre el DTM CTX hasta 6 km y de 200 m sobre la mezcla HRSC+MOLA hasta salir de AOI_HORIZON (~47 km). Ángulo de elevación con curvatura (R = 3.396.190 m), observador a ras de suelo.",
+      "inputs": [
+        "build/cog/dem_ctx_20m_near.tif",
+        "build/cog/dem_hrsc_mola_200m_horizon.tif"
+      ],
+      "valid_fraction": 0.9987,
+      "note": "Campo cercano a 20 m y lejano a 200 m. Un DEM 2,5D no representa cornisas ni alcobas. El horizonte se trunca en el borde de AOI_HORIZON."
+    },
+    {
+      "path": "build/cog/svf_ctx20_hrscmola200_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 179,
+      "height": 208,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.35972851,
+        "lon_e_max": 283.42025004,
+        "lat_min": -9.95006437,
+        "lat_max": -9.87973767
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "sky_view_factor",
+          "unit": "adimensional 0-1"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "svf",
+      "aoi": "route",
+      "provenance": "derivado",
+      "source_resolution": "DTM CTX de 19.9 m (P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W) + mezcla HRSC+MOLA de 200 m",
+      "method": "SVF = 1 − media_acimut(sen θ_h), θ_h ≥ 0: fracción de ángulo sólido de cielo visible (campo isótropo). Rayo por acimut cada 10°: pasos de 20 m sobre el DTM CTX hasta 6 km y de 200 m sobre la mezcla HRSC+MOLA hasta salir de AOI_HORIZON (~47 km). Ángulo de elevación con curvatura (R = 3.396.190 m), observador a ras de suelo.",
+      "inputs": [
+        "build/cog/horizon_ctx20_hrscmola200_route.tif"
+      ],
+      "valid_fraction": 0.9987,
+      "note": "Campo cercano a 20 m y lejano a 200 m. Un DEM 2,5D no representa cornisas ni alcobas. El horizonte se trunca en el borde de AOI_HORIZON."
+    },
+    {
+      "path": "build/cog/radio_los_base_ctx_20m_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 179,
+      "height": 208,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.35972851,
+        "lon_e_max": 283.42025004,
+        "lat_min": -9.95006437,
+        "lat_max": -9.87973767
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "radio_los_base",
+          "unit": "booleano 0/1"
+        },
+        {
+          "index": 2,
+          "name": "los_margin_m",
+          "unit": "m"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "radio_los",
+      "aoi": "route",
+      "provenance": "derivado",
+      "source_resolution": "DTM CTX de 19.9 m (P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W)",
+      "method": "Línea de vista geométrica desde la Base (antena a 3 m sobre el suelo) hasta cada celda (antena a 2 m), perfil muestreado cada 20 m con curvatura. Banda 2: separación mínima rayo-terreno (negativa = obstruido; sin dato a menos de 40 m de la Base).",
+      "inputs": [
+        "build/cog/dem_ctx_20m_near.tif"
+      ],
+      "valid_fraction": 0.9987,
+      "note": "Solo línea de vista geométrica sobre un DTM de 20 m con ruido de varios metros: márgenes de |m| < ~5 m son indeterminados. No incluye zona de Fresnel ni difracción; no resuelve espolones menores de ~40 m."
+    },
+    {
+      "path": "build/cog/scenario_overlay_route.tif",
+      "format": "COG (GeoTIFF, deflate, teselas 512)",
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "crs": "IAU_2015:49900",
+      "lon_convention": "Este 0-360 (usar config.lon180 para H3, CesiumJS y DuckDB Spatial)",
+      "width": 179,
+      "height": 208,
+      "pixel_size_deg": [
+        0.0003381091347308497,
+        0.0003381091347308497
+      ],
+      "pixel_size_m": [
+        19.742,
+        20.041
+      ],
+      "bounds": {
+        "lon_e_min": 283.35972851,
+        "lon_e_max": 283.42025004,
+        "lat_min": -9.95006437,
+        "lat_max": -9.87973767
+      },
+      "bands": [
+        {
+          "index": 1,
+          "name": "slope_deg_escenario",
+          "unit": "grados"
+        },
+        {
+          "index": 2,
+          "name": "slope_procedencia",
+          "unit": "codigo 0-3"
+        },
+        {
+          "index": 3,
+          "name": "svf_escenario",
+          "unit": "adimensional 0-1"
+        },
+        {
+          "index": 4,
+          "name": "svf_procedencia",
+          "unit": "codigo 0-3"
+        },
+        {
+          "index": 5,
+          "name": "radio_los_base_escenario",
+          "unit": "booleano 0/1"
+        },
+        {
+          "index": 6,
+          "name": "radio_los_procedencia",
+          "unit": "codigo 0-3"
+        },
+        {
+          "index": 7,
+          "name": "thermal_inertia_tiu_escenario",
+          "unit": "J m-2 K-1 s-1/2"
+        },
+        {
+          "index": 8,
+          "name": "thermal_inertia_procedencia",
+          "unit": "codigo 0-3"
+        }
+      ],
+      "cog_valid": true,
+      "cog_warnings": [],
+      "layer": "scenario_overlay",
+      "aoi": "route",
+      "provenance": "escenario (mixto, ver bandas de procedencia)",
+      "source_resolution": "DTM CTX de 19.9 m (P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W); zonas de escenario vectoriales rasterizadas a 20 m",
+      "method": "Valores derivados de los datos reales, sustituidos por los de diseño dentro de las zonas de escenario. Cada variable lleva una banda de procedencia: 0 = sin dato, 1 = medido, 2 = derivado, 3 = escenario.",
+      "inputs": [
+        "build/cog/slope_aspect_ctx_20m_route.tif",
+        "build/cog/svf_ctx20_hrscmola200_route.tif",
+        "build/cog/radio_los_base_ctx_20m_route.tif",
+        "../mission-scenarios/triangulo_supervivencia.geojson"
+      ],
+      "valid_fraction": 0.9976,
+      "note": "Capa de diseño: no usar como dato medido. La inercia térmica solo existe como escenario; fuera de las zonas no hay dato."
+    }
+  ],
+  "vectors": [
+    {
+      "path": "../nasa-layers/scenario_overlay.geojson",
+      "layer": "scenario_overlay",
+      "provenance": "escenario",
+      "content": "Nodos con valor de escenario junto al medido o derivado, y polígonos de las zonas de diseño (pendiente, SVF, sombra de radio, inercia térmica)."
+    }
+  ],
+  "companion_documents": {
+    "sources_manifest": "../nasa-layers/sources_manifest.json",
+    "site_reality_check": "../nasa-layers/site_reality_check.json",
+    "site_reality_summary": "../nasa-layers/SITE_REALITY_CHECK.md"
+  },
+  "not_available": [
+    "themis_thermal_inertia_quantitative",
+    "hrsc_dtm_single_strip",
+    "murray_lab_ctx_5m",
+    "crism_sharad"
+  ],
+  "reality_verdict": "El triángulo se ha reubicado 13,6 km al suroeste (rumbo 245°), al pie de la pared suroeste de la misma cuenca cerrada, manteniendo rígida la figura. En el DTM CTX de 20 m la Base queda a −1.660 m con 2,8° de pendiente; el WP2 está sobre una ladera real de 19,4°; el WP3 ve un horizonte de hasta 20,7° y tiene un SVF real de 0,76; y no hay línea de vista de radio desde la Base al WP2 ni al WP3 (márgenes de −24,7 y −28,2 m, fuera del ruido), pero sí al WP1 (+0,6 m). En el par CTX de trabajo se cumplen las condiciones con umbral (a, b, c, e, f, g). Matices: solo se cumplen todas en 2 de los 4 pares CTX que cubren la colocación; la (c) está en el límite inferior y no es robusta (WP2 entre 14,0° y 19,4° según el par, y el par de trabajo da el valor más alto); la línea de vista al WP1 (entre +0,8 y +3,5 m) está dentro del ruido de ±5 m del DTM, es decir, es indeterminada; y la (d) es la condición débil: el WP3 está en un talud, no al pie de un escarpe. Presión en la Base: 708 Pa; columna de CO₂: 19,0 g/cm². Siguen siendo escenario la inercia térmica y la alcoba con cornisa del WP3 (SVF 0,15), y el WP3 sigue quedando por debajo del WP2."
+}
