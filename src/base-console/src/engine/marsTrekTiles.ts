@@ -1,8 +1,8 @@
-export type MarsTrekLayerId = 'viking' | 'mola' | 'rover';
+export type MarsTrekLayerId = 'viking' | 'mola';
 
 export const MARS_TREK_LAYERS: Record<
   MarsTrekLayerId,
-  { label: string; trekLayer?: string; attribution: string }
+  { label: string; trekLayer: string; attribution: string }
 > = {
   viking: {
     label: 'VIKING 232m',
@@ -13,10 +13,6 @@ export const MARS_TREK_LAYERS: Record<
     label: 'MOLA 463m',
     trekLayer: 'Mars_MGS_MOLA_ClrShade_merge_global_463m',
     attribution: 'NASA JPL Mars Trek · MGS MOLA Hillshade',
-  },
-  rover: {
-    label: 'ROVER CAM',
-    attribution: 'NASA Mars 2020 Perseverance Raw',
   },
 };
 

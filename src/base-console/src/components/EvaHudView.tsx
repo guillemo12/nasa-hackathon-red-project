@@ -3,8 +3,6 @@ import {
   Activity,
   AlertOctagon,
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
   Compass,
   Layers,
   MapPin,
@@ -20,7 +18,6 @@ import {
   Volume2,
 } from 'lucide-react';
 import { CANONICAL_WAYPOINTS, EVA07_EVENTS } from '@/data/missionData';
-import type { MarsRawImage } from '@/engine/apiClient';
 import {
   MARS_TREK_LAYERS,
   MELAS_CENTER,
@@ -37,10 +34,6 @@ import type { Eva07Event } from '@/types/mission';
 interface EvaHudViewProps {
   forceEmergency?: boolean;
   currentEvent: Eva07Event;
-  marsImage?: MarsRawImage | null;
-  marsImages?: MarsRawImage[];
-  selectedImageIdx?: number;
-  onChangeImageIdx?: (idx: number) => void;
   onSelectTimeMin: (tMin: number) => void;
   onNotify?: (title: string, detail?: string, tone?: 'cyan' | 'green' | 'amber' | 'red') => void;
 }
@@ -56,10 +49,6 @@ interface CustomMapPoint {
 export const EvaHudView: React.FC<EvaHudViewProps> = ({
   forceEmergency = false,
   currentEvent,
-  marsImage = null,
-  marsImages = [],
-  selectedImageIdx = 0,
-  onChangeImageIdx,
   onSelectTimeMin,
   onNotify,
 }) => {
@@ -117,7 +106,6 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   };
 
   const handleMapPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (baseLayer === 'rover') return;
     if ((e.target as HTMLElement).closest('button')) return;
     dragRef.current = {
       active: true,
@@ -173,7 +161,6 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   };
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (baseLayer === 'rover') return;
     e.preventDefault();
     setTileZoom((z) => Math.max(3, Math.min(7, z + (e.deltaY < 0 ? 1 : -1))));
   };
@@ -221,17 +208,15 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const maxTy = Math.min(rows - 1, Math.floor((topLeftWy + visorSize.height) / TILE_SIZE));
 
   const visibleTiles: Array<{ key: string; url: string; left: number; top: number }> = [];
-  if (baseLayer !== 'rover') {
-    for (let ty = minTy; ty <= maxTy; ty++) {
-      for (let tx = minTx; tx <= maxTx; tx++) {
-        const wrappedTx = ((tx % cols) + cols) % cols;
-        visibleTiles.push({
-          key: `${baseLayer}-${tileZoom}-${tx}-${ty}`,
-          url: getTrekTileUrl(baseLayer, tileZoom, wrappedTx, ty),
-          left: tx * TILE_SIZE - topLeftWx,
-          top: ty * TILE_SIZE - topLeftWy,
-        });
-      }
+  for (let ty = minTy; ty <= maxTy; ty++) {
+    for (let tx = minTx; tx <= maxTx; tx++) {
+      const wrappedTx = ((tx % cols) + cols) % cols;
+      visibleTiles.push({
+        key: `${baseLayer}-${tileZoom}-${tx}-${ty}`,
+        url: getTrekTileUrl(baseLayer, tileZoom, wrappedTx, ty),
+        left: tx * TILE_SIZE - topLeftWx,
+        top: ty * TILE_SIZE - topLeftWy,
+      });
     }
   }
 
@@ -374,56 +359,38 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
           onPointerMove={handleMapPointerMove}
           onPointerUp={handleMapPointerUp}
           onWheel={handleMapWheel}
-          className={`relative min-h-[450px] flex flex-col items-center justify-between gap-4 p-4 overflow-hidden select-none bg-[#090C12] ${
-            baseLayer === 'rover' ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
-          }`}
+          className="relative min-h-[450px] flex flex-col items-center justify-between gap-4 p-4 overflow-hidden select-none bg-[#090C12] cursor-grab active:cursor-grabbing"
         >
           {/* NASA JPL Mars Trek Global WMTS Tile Layer (extends infinitely as you pan/zoom) */}
-          {baseLayer !== 'rover' ? (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              {visibleTiles.map((tile) => (
-                <img
-                  key={tile.key}
-                  src={tile.url}
-                  alt=""
-                  draggable={false}
-                  style={{
-                    position: 'absolute',
-                    left: `${tile.left}px`,
-                    top: `${tile.top}px`,
-                    width: `${TILE_SIZE}px`,
-                    height: `${TILE_SIZE}px`,
-                  }}
-                  className={`max-w-none transition-opacity ${
-                    isEmergency ? 'opacity-65 sepia hue-rotate-[-20deg] brightness-75' : 'opacity-90 brightness-95'
-                  }`}
-                />
-              ))}
-              <div
-                className={`absolute inset-0 ${
-                  isEmergency
-                    ? 'bg-gradient-to-b from-[#2b090d]/60 via-transparent to-[#0B0E14]/80'
-                    : 'bg-gradient-to-b from-[#0B0E14]/45 via-transparent to-[#0B0E14]/75'
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {visibleTiles.map((tile) => (
+              <img
+                key={tile.key}
+                src={tile.url}
+                alt=""
+                draggable={false}
+                style={{
+                  position: 'absolute',
+                  left: `${tile.left}px`,
+                  top: `${tile.top}px`,
+                  width: `${TILE_SIZE}px`,
+                  height: `${TILE_SIZE}px`,
+                }}
+                className={`max-w-none transition-opacity ${
+                  isEmergency ? 'opacity-65 sepia hue-rotate-[-20deg] brightness-75' : 'opacity-90 brightness-95'
                 }`}
               />
-            </div>
-          ) : (
-            marsImage && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden bg-black">
-                <img
-                  src={marsImage.proxyUrl}
-                  alt={marsImage.imageid}
-                  className={`w-full h-full object-cover transition-all ${
-                    isEmergency ? 'opacity-65 sepia hue-rotate-[-20deg] brightness-75' : 'opacity-95'
-                  }`}
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-[#0B0E14]/55 via-transparent to-[#0B0E14]/85" />
-              </div>
-            )
-          )}
+            ))}
+            <div
+              className={`absolute inset-0 ${
+                isEmergency
+                  ? 'bg-gradient-to-b from-[#2b090d]/60 via-transparent to-[#0B0E14]/80'
+                  : 'bg-gradient-to-b from-[#0B0E14]/45 via-transparent to-[#0B0E14]/75'
+              }`}
+            />
+          </div>
 
           {/* Georeferenced SVG Overlay (AR Grid, Melas Chasma Survival Triangle, & Custom Points) */}
-          {baseLayer !== 'rover' && (
           <svg
             width={visorSize.width}
             height={visorSize.height}
@@ -522,13 +489,12 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               </g>
             )}
           </svg>
-          )}
 
           {/* Interactive Map Controls Toolbar */}
           <div className="relative z-10 w-full flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5 bg-[#0B0E14]/90 border border-[#1E2738] rounded-lg px-2 py-1 font-mono-tech text-[10px]">
-              {/* Base Layer Switcher (NASA Mars Trek / Rover) */}
-              {(['viking', 'mola', 'rover'] as const).map((lid) => (
+              {/* Base Layer Switcher (NASA Mars Trek) */}
+              {(['viking', 'mola'] as const).map((lid) => (
                 <button
                   key={lid}
                   type="button"
@@ -543,119 +509,86 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 </button>
               ))}
 
-              {baseLayer !== 'rover' ? (
+              <span className="text-slate-600">|</span>
+
+              {/* Custom Point Kind */}
+              <span className="flex items-center gap-1 text-slate-300">
+                <MapPin className="w-3 h-3 text-[#00F5D4]" />
+              </span>
+              {(['ISRU', 'PELIGRO', 'REFUGIO'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setPointKind(k)}
+                  className={`px-1.5 py-0.5 rounded font-bold transition cursor-pointer ${
+                    pointKind === k
+                      ? k === 'PELIGRO'
+                        ? 'bg-[#FF1744]/25 text-[#FF1744] border border-[#FF1744]'
+                        : k === 'REFUGIO'
+                          ? 'bg-[#00FFA3]/20 text-[#00FFA3] border border-[#00FFA3]'
+                          : 'bg-[#00F5D4]/20 text-[#00F5D4] border border-[#00F5D4]'
+                      : 'text-slate-400 hover:text-white border border-transparent'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+
+              <span className="text-slate-600">|</span>
+
+              {/* Zoom & Center Controls */}
+              <button
+                type="button"
+                onClick={() => setTileZoom((z) => Math.min(7, z + 1))}
+                className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
+                title="Acercar mapa (Z+1)"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTileZoom((z) => Math.max(3, z - 1))}
+                className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
+                title="Alejar mapa (Z-1)"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapCenter(MELAS_CENTER);
+                  setTileZoom(5);
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-300 cursor-pointer"
+                title="Centrar en Melas Chasma"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Melas (Z{tileZoom})</span>
+              </button>
+
+              {customPoints.length > 0 && (
                 <>
-                  <span className="text-slate-600">|</span>
-
-                  {/* Custom Point Kind */}
-                  <span className="flex items-center gap-1 text-slate-300">
-                    <MapPin className="w-3 h-3 text-[#00F5D4]" />
-                  </span>
-                  {(['ISRU', 'PELIGRO', 'REFUGIO'] as const).map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setPointKind(k)}
-                      className={`px-1.5 py-0.5 rounded font-bold transition cursor-pointer ${
-                        pointKind === k
-                          ? k === 'PELIGRO'
-                            ? 'bg-[#FF1744]/25 text-[#FF1744] border border-[#FF1744]'
-                            : k === 'REFUGIO'
-                              ? 'bg-[#00FFA3]/20 text-[#00FFA3] border border-[#00FFA3]'
-                              : 'bg-[#00F5D4]/20 text-[#00F5D4] border border-[#00F5D4]'
-                          : 'text-slate-400 hover:text-white border border-transparent'
-                      }`}
-                    >
-                      {k}
-                    </button>
-                  ))}
-
-                  <span className="text-slate-600">|</span>
-
-                  {/* Zoom & Center Controls */}
                   <button
                     type="button"
-                    onClick={() => setTileZoom((z) => Math.min(7, z + 1))}
-                    className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
-                    title="Acercar mapa (Z+1)"
+                    onClick={() => setCustomPoints((prev) => prev.slice(0, -1))}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
+                    title="Deshacer último punto"
                   >
-                    <Plus className="w-3 h-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTileZoom((z) => Math.max(3, z - 1))}
-                    className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
-                    title="Alejar mapa (Z-1)"
-                  >
-                    <Minus className="w-3 h-3" />
+                    <Undo2 className="w-3 h-3" />
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setMapCenter(MELAS_CENTER);
-                      setTileZoom(5);
+                      setCustomPoints([]);
+                      onNotify?.('Puntos personalizados eliminados', 'Mapa restaurado', 'cyan');
                     }}
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-300 cursor-pointer"
-                    title="Centrar en Melas Chasma"
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#FF1744]/15 hover:bg-[#FF1744]/25 border border-[#FF1744]/40 text-[#FF1744] cursor-pointer"
+                    title="Borrar todos los puntos"
                   >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Melas (Z{tileZoom})</span>
+                    <Trash2 className="w-3 h-3" />
+                    <span>Limpiar ({customPoints.length})</span>
                   </button>
-
-                  {customPoints.length > 0 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setCustomPoints((prev) => prev.slice(0, -1))}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
-                        title="Deshacer último punto"
-                      >
-                        <Undo2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomPoints([]);
-                          onNotify?.('Puntos personalizados eliminados', 'Mapa restaurado', 'cyan');
-                        }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#FF1744]/15 hover:bg-[#FF1744]/25 border border-[#FF1744]/40 text-[#FF1744] cursor-pointer"
-                        title="Borrar todos los puntos"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Limpiar ({customPoints.length})</span>
-                      </button>
-                    </>
-                  )}
                 </>
-              ) : (
-                marsImage &&
-                marsImages.length > 0 &&
-                onChangeImageIdx && (
-                  <>
-                    <span className="text-slate-600">|</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onChangeImageIdx((selectedImageIdx - 1 + marsImages.length) % marsImages.length)
-                      }
-                      className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
-                      title="Imagen anterior NASA Mars 2020"
-                    >
-                      <ChevronLeft className="w-3 h-3" />
-                    </button>
-                    <span className="text-[#00F5D4] font-bold px-1">
-                      #{selectedImageIdx + 1}/{marsImages.length} · {marsImage.instrument} · Sol {marsImage.sol}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onChangeImageIdx((selectedImageIdx + 1) % marsImages.length)}
-                      className="p-1 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] text-slate-200 cursor-pointer"
-                      title="Siguiente imagen NASA Mars 2020"
-                    >
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
-                  </>
-                )
               )}
             </div>
 
@@ -734,43 +667,14 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-[#0B0E14]/90 border border-[#1E2738] rounded-xl px-4 py-2 font-mono-tech text-xs space-y-1 text-right pointer-events-auto">
-                  {baseLayer === 'rover' && marsImage ? (
-                    <>
-                      <div className="flex items-center justify-end gap-2 text-[10px] text-[#FF9100] font-bold">
-                        <span>PERSEVERANCE · {marsImage.instrument} · SOL {marsImage.sol}</span>
-                        <a
-                          href={marsImage.link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[#00F5D4] hover:underline"
-                        >
-                          NASA ↗
-                        </a>
-                      </div>
-                      <div className="flex items-center justify-end gap-3 text-[11px]">
-                        <span>SITE <strong className="text-white">{marsImage.site}</strong></span>
-                        <span>DRIVE <strong className="text-white">{marsImage.drive}</strong></span>
-                        <span>AZ <strong className="text-[#00F5D4]">{Number(marsImage.mastAz).toFixed(1)}°</strong></span>
-                        <span>EL <strong className="text-[#00FFA3]">{Number(marsImage.mastEl).toFixed(1)}°</strong></span>
-                      </div>
-                      {marsImage.dateTakenUtc && (
-                        <div className="text-[10px] text-slate-400">
-                          {marsImage.dateTakenUtc.slice(0, 19).replace('T', ' ')} UTC · {marsImage.credit}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-[10px] text-slate-400 font-bold">
-                        {customPoints.length > 0 ? `RUTA PERSONALIZADA (${customPoints.length})` : 'CLIC: AÑADIR PUNTO · ARRASTRAR: EXPLORAR MARTE'}
-                      </div>
-                      <div className="flex items-center justify-end gap-4">
-                        <span>PASO: <strong className="text-white">74 SPM</strong></span>
-                        <span>TIU: <strong className="text-[#00F5D4]">410</strong></span>
-                      </div>
-                    </>
-                  )}
+                <div className="bg-[#0B0E14]/88 border border-[#1E2738] rounded-xl px-4 py-2 font-mono-tech text-xs space-y-0.5 text-right pointer-events-none">
+                  <div className="text-[10px] text-slate-400 font-bold">
+                    {customPoints.length > 0 ? `RUTA PERSONALIZADA (${customPoints.length})` : 'CLIC: AÑADIR PUNTO · ARRASTRAR: EXPLORAR MARTE'}
+                  </div>
+                  <div className="flex items-center justify-end gap-4">
+                    <span>PASO: <strong className="text-white">74 SPM</strong></span>
+                    <span>TIU: <strong className="text-[#00F5D4]">410</strong></span>
+                  </div>
                 </div>
               </>
             )}

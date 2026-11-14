@@ -176,10 +176,6 @@ export function App() {
       {activeView === 'eva-hud-nominal' && (
         <EvaHudView
           currentEvent={currentEvent}
-          marsImage={marsImages[selectedImageIdx] ?? null}
-          marsImages={marsImages}
-          selectedImageIdx={selectedImageIdx}
-          onChangeImageIdx={setSelectedImageIdx}
           onNotify={notify}
           onSelectTimeMin={(nextT) => {
             setIsLive(false);
@@ -192,7 +188,6 @@ export function App() {
         <EvaHudView
           forceEmergency
           currentEvent={currentEvent}
-          marsImage={marsImages[selectedImageIdx] ?? null}
           onNotify={notify}
           onSelectTimeMin={(nextT) => {
             setTMin(nextT);
