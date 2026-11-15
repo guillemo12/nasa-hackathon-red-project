@@ -234,11 +234,80 @@ def load_all() -> dict[str, Layer]:
         "thermal_inertia_tiu_scenario", "thermal_inertia_tiu_escenario",
         "thermal_inertia_procedencia")
     L["h2o_wt_pct_scenario"] = hydration_layer(L["elev_m"])
+    L["roughness_m"] = roughness_layer(L["elev_m"])
+    L.update(rssi_layers(L["elev_m"]))
     _check_same_grid(L, ["elev_m", "slope_deg", "aspect_deg", "horizon_max_deg",
                          "sky_view_factor", "radio_los_base", "los_margin_m",
                          "slope_deg_scenario", "sky_view_factor_scenario",
                          "radio_los_base_scenario", "thermal_inertia_tiu_scenario"])
     return L
+
+
+def planar_residual_std(z: np.ndarray) -> np.ndarray:
+    """Rugosidad: desviación típica (m) de los residuos de la cota respecto al plano de
+    mínimos cuadrados ajustado en la ventana 3×3 de cada píxel.
+
+    Se quita la pendiente local: un plano inclinado liso da 0. Con los 9 puntos de la ventana
+    (x, y ∈ {−1, 0, 1} en pasos de píxel) y 3 parámetros del plano:
+    SSR = Σz² − 9·z̄² − (Σx·z)²/6 − (Σy·z)²/6 y σ = √(SSR / 6). El resultado no depende del
+    tamaño del píxel. NaN si falta algún píxel de la ventana (bordes y huecos del DTM).
+    """
+    from scipy.ndimage import correlate
+
+    z = np.asarray(z, dtype=np.float64)
+    zc = z - np.nanmean(z)                      # resta global: mejora el redondeo
+    nan = ~np.isfinite(zc)
+    zf = np.where(nan, 0.0, zc)
+    ones = np.ones((3, 3))
+    kx = np.array([[-1, 0, 1]] * 3, dtype=np.float64)
+    ky = kx.T
+    kw = {"mode": "constant", "cval": np.nan}
+    s1 = correlate(zf, ones, **kw)
+    s2 = correlate(zf * zf, ones, **kw)
+    sx = correlate(zf, kx, **kw)
+    sy = correlate(zf, ky, **kw)
+    bad = correlate(nan.astype(np.float64), ones, mode="constant", cval=1.0) > 0
+    ssr = s2 - s1 * s1 / 9.0 - sx * sx / 6.0 - sy * sy / 6.0
+    out = np.sqrt(np.clip(ssr, 0.0, None) / 6.0)
+    return np.where(bad, np.nan, out)
+
+
+F_DEM_NEAR = "build/cog/dem_ctx_20m_near.tif"
+
+
+def _near_on_ref(values_near: np.ndarray, near_t: Affine, ref: Layer) -> np.ndarray:
+    """Recorta una matriz de la malla «near» a la malla de referencia (alineadas)."""
+    c0 = (ref.transform.c - near_t.c) / near_t.a
+    r0 = (ref.transform.f - near_t.f) / near_t.e
+    if abs(c0 - round(c0)) > 1e-6 or abs(r0 - round(r0)) > 1e-6:
+        raise ValueError("Las mallas near y route no están alineadas píxel a píxel")
+    r0, c0 = round(r0), round(c0)
+    rows, cols = ref.shape
+    return values_near[r0:r0 + rows, c0:c0 + cols]
+
+
+def roughness_layer(ref: Layer) -> Layer:
+    """Rugosidad sobre el DTM «near» (así la ventana 3×3 no se corta en el borde de la ruta)."""
+    z, t, spec = _read_band(F_DEM_NEAR, "elevation_m")
+    rough = _near_on_ref(planar_residual_std(z), t, ref)
+    return Layer("roughness_m", rough, ref.transform, _src_res(spec), PROV_DERIVED,
+                 f"{F_DEM_NEAR}#elevation_m: σ de residuos al plano 3×3 (60 m)",
+                 "Rugosidad a escala de 20-60 m; no ve bloques ni rocas métricas.")
+
+
+def rssi_layers(ref: Layer) -> dict[str, Layer]:
+    """Nivel recibido desde la Base en cada centro de píxel (ver hexgrid/radio.py)."""
+    from . import radio
+
+    lat, lon = ref.pixel_centers()
+    g = radio.rssi_grid(lat, lon)
+    src = (f"{F_DEM_NEAR} + scenario/radio.py (banda S 2,4 GHz y baliza UHF 435 MHz, 1 W, "
+           "espacio libre) + arista en filo de cuchillo ITU-R P.526")
+    out = {}
+    for k in ("rssi_dbm", "rssi_dbm_low", "rssi_dbm_high", "diffraction_db", "rssi_uhf_dbm",
+              "diffraction_uhf_db"):
+        out[k] = Layer(k, g[k], ref.transform, ref.src_res_m, PROV_DERIVED, src)
+    return out
 
 
 def _check_same_grid(L: dict[str, Layer], names: list[str]) -> None:

@@ -16,7 +16,7 @@ En un cañón marciano de **7 a 9 km de profundidad**, un fallo de software en e
 | Criterio de Ingeniería Espacial (NASA NPR 7150.2) | Limitación en Otros Ecosistemas | Ventaja Determinista de **Rust** en **R.E.D. ATLAS** |
 | :--- | :--- | :--- |
 | **Seguridad de Memoria (*Memory Safety*)** | C/C++ exponen a *buffer overflows*, punteros colgantes y *use-after-free* (~70% de vulnerabilidades críticas). | El *borrow checker* garantiza en tiempo de compilación ausencia total de corrupción de memoria sin necesidad de un entorno gestionado pesado. |
-| **Determinismo Temporal (*Zero-GC*)** | Python, Java o Go sufren pausas impredecibles del *Garbage Collector* (GC) e intérpretes lentos. | **Ausencia absoluta de GC:** el bucle crítico de supervivencia (`Safety Guardrail` a 100 Hz y recálculo `D* Lite`) opera con latencia acotada **$< 5\text{ ms}$** y cero asignaciones dinámicas en ejecución (*zero-allocation hot loop*). |
+| **Determinismo Temporal (*Zero-GC*)** | Python, Java o Go sufren pausas impredecibles del *Garbage Collector* (GC) e intérpretes lentos. | **Ausencia absoluta de GC:** el bucle crítico de supervivencia (`Safety Guardrail` a 100 Hz y recálculo `D* Lite`) opera con latencia acotada (replanificación del cambio de destino sobre la malla real: **$17\text{ ms}$ medidos**, mediana; p95 $17.6\text{ ms}$) y búferes de búsqueda pre-asignados (el suavizado final del camino sí asigna memoria). |
 | **Concurrencia sin *Data Races*** | Los hilos paralelos de sensores (IMU a 400 Hz + LiDAR + radio + dosímetro) sufren condiciones de carrera sutiles. | El sistema de tipos (`Send` / `Sync`) prohíbe en compilación cualquier acceso concurrente inseguro al vector de estado del astronauta. |
 | **Tolerancia a Fallos Explícita** | Excepciones no capturadas en vuelo provocan reinicios del sistema en mitad de una EVA. | Uso obligatorio de tipos algebraicos (`Result` / `Option`) y prohibición de `panic!` en rutas de vuelo (*zero-panic policy*). |
 | **Portabilidad Dual (*Single-Source-of-Truth*)** | Mantener dos motores distintos (uno para servidor web y otro para el traje) genera divergencias de cálculo. | **Un único código fuente en Rust** compila tanto a binario nativo **ARM64/RISC-V** para el traje EVA como a **WebAssembly (`WASM`)** para correr el simulador *"Chaos Mode"* en la Consola 3D del Hábitat (`React + CesiumJS`). |
@@ -49,7 +49,7 @@ flowchart TB
     end
 
     subgraph LINK["📡 Enlace Táctico Marciano"]
-        ZENOH_LOS["Con Línea de Visión (LOS)\nEclipse Zenoh sobre UHF / Wi-Fi 6E (<= 12 kbps)"]
+        ZENOH_LOS["Con Línea de Visión (LOS)\nEclipse Zenoh sobre banda S 2,4 GHz (enlace primario; baliza UHF 435 MHz)"]
         NLOS["Sombra de Radio (NLOS tras muros de 7 km)\nConmutación < 5 ms a Modo 100% Autónomo Offline"]
     end
 
@@ -184,11 +184,14 @@ El sistema utiliza el *crate* **`h3o`** (implementación segura en Rust puro de 
 
 | Resolución `h3o` | Longitud Media del Lado (Marte) | Área del Hexágono (Marte) | Dominio de Uso en **R.E.D. ATLAS** |
 | :--- | :--- | :--- | :--- |
-| **Resolución 7** | $\approx 650\text{ m}$ | $\approx 1.46\text{ km}^2$ | Campos climáticos mesoescalares (`MCS` / `MEDA`), frentes de tormenta de polvo y cálculo regional de eventos SPE. |
-| **Resolución 9** | $\approx 93\text{ m}$ | $\approx 0.030\text{ km}^2$ | Zonificación térmica (`THEMIS`) y mapas de abundancia mineralógica ISRU (`CRISM` / `SHARAD`). |
-| **Resolución 11** | $\approx 13\text{ m}$ | $\approx 608\text{ m}^2$ | Planificación inicial **A\*** en Consola Base y caché macro de visibilidad radio (`LOS/NLOS`). |
-| **Resolución 13** | $\approx 1.9\text{ m}$ | $\approx 12.4\text{ m}^2$ | Navegación táctica estándar EVA, cálculo de gradientes de pendiente local y *Skyline Matching*. |
-| **Resolución 14** | $\approx 0.72\text{ m}$ | $\approx 1.77\text{ m}^2$ | **Celda elemental de paso humano ("Boot-Step Grid"):** detección de bloques HiRISE ($0.25\text{ m/px}$), grietas y bordes de trampa de regolito para **`D* Lite Metabólico`**. |
+| **Resolución 7** | $\approx 750\text{ m}$ | $\approx 1.46\text{ km}^2$ | Campos climáticos mesoescalares (`MCS` / `MEDA`), frentes de tormenta de polvo y cálculo regional de eventos SPE. |
+| **Resolución 9** | $\approx 107\text{ m}$ | $\approx 0.030\text{ km}^2$ | Zonificación térmica (`THEMIS`) y mapas de abundancia mineralógica ISRU (`CRISM` / `SHARAD`). |
+| **Resolución 11** | $\approx 15\text{ m}$ | $\approx 611\text{ m}^2$ | Planificación inicial **A\*** en Consola Base y caché macro de visibilidad radio (`LOS/NLOS`). |
+| **Resolución 12** | $\approx 5.8\text{ m}$ | $\approx 87\text{ m}^2$ ($\approx 103\text{ m}^2$ en el sitio) | **Malla real de la ruta (P1):** `hexgrid_route_res12_hexcell64b.parquet`, 141.313 celdas cargadas por el motor; navegación `D* Lite Metabólico` y Lupa *Spyglass*. |
+| **Resolución 13** | $\approx 2.2\text{ m}$ | $\approx 12.4\text{ m}^2$ | Navegación táctica estándar EVA, cálculo de gradientes de pendiente local y *Skyline Matching*. |
+| **Resolución 14** | $\approx 0.82\text{ m}$ | $\approx 1.77\text{ m}^2$ | **Celda elemental de paso humano ("Boot-Step Grid"):** detección de bloques HiRISE ($0.25\text{ m/px}$), grietas y bordes de trampa de regolito para **`D* Lite Metabólico`**. |
+
+**Índices y carga:** el motor usa índices H3 reales de `h3o` (longitud −180..180 por dentro, Este 0–360 en la API), las mismas celdas que el `h3` de Python del pipeline de P1, y carga directamente el Parquet de P1 (los `NULL` pasan a «sin dato» explícito). Las longitudes medias son las de `h3o` × 0,5331 y las áreas × 0,2842.
 
 **Estrategia de Fusión Multi-Resolución:** Las capas de baja resolución (`THEMIS`, `MCS`) se heredan de padre a hijo mediante el árbol jerárquico nativo de `h3o` (*Zero-Copy Parent Lookup*), combinándose con factores de modulación locales calculados sobre `HiRISE DTM` (por ejemplo, la acumulación de polvo fino estimada por concavidad local del terreno) para evitar discontinuidades artificiales en los bordes de píxel de $100\text{ m}$.
 
@@ -208,13 +211,13 @@ Cada celda hexagonal activa en el corredor de Melas Chasma se representa en **Ap
 | `roughness_hi` | `f32` / `FLOAT32` | 4 | Índice adim. ($0\text{–}1$) | Densidad de rocas/obstáculos extraída de varianza local `HiRISE 0.25 m/px`. |
 | `isru_h2o_pct` | `f32` / `FLOAT32` | 4 | $\% \text{ masa}$ ($0\text{–}25\%$) | Fracción de agua estructural en sulfatos `CRISM` (alimenta Sector Norte de `Spyglass`). |
 | `sky_view_factor` | `f32` / `FLOAT32` | 4 | $\Psi_{\text{SVF}} \in [0.05, 1.0]$ | Fracción de hemisferio celeste no obstruido por los muros de Melas Chasma (blindaje SPE). |
-| `los_base_rssi_dbm` | `f32` / `FLOAT32` | 4 | $\text{dBm}$ ($-140\text{ a }-40$) | Intensidad de señal UHF estimada con la Base (identifica zonas `NLOS` $< -100\text{ dBm}$). |
+| `los_base_rssi_dbm` | `f32` / `FLOAT32` | 4 | $\text{dBm}$ ($-140\text{ a }-40$) | Nivel del enlace primario en banda S ($2.4\text{ GHz}$, $1\text{ W}$) con la Base, calculado por P1 con difracción en filo de cuchillo sobre el DTM (identifica zonas `NLOS` $< -100\text{ dBm}$: WP2 $-103\text{ dBm}$, WP3 $-108\text{ dBm}$). |
 | `base_metabolic_cost` | `f32` / `FLOAT32` | 4 | $\text{W}$ (Watts base) | Gasto metabólico estacionario al cruzar la celda a velocidad nominal ($1.0\text{ m/s}$). |
 | `horizon_hash_id` | `u32` / `UINT32` | 4 | Índice de tabla | Puntero al perfil angular precalculado $\phi_{\text{DEM}}(\alpha)$ para `Canyon-TRN`. |
 | `hazard_bitmask` | `u16` / `UINT16` | 2 | Flags binarios | Máscara de riesgos estáticos (ej. `IS_SLOPE_CRITICAL`, `IS_SHELTER`, `IS_NLOS`). |
 | `padding_crc` | `u8[14]` | 14 | Alineación + CRC | Relleno de alineación a 64 bytes y suma de verificación rápida contra *bit-flips* (SEU). |
 
-**Integración en $< 2\text{ ms}$ con el Shader "Spyglass" de la Persona 2:**
+**Integración con el Shader "Spyglass" de la Persona 2 (consulta medida: Lupa de $100\text{ m}$ con 3 sectores, 307 celdas, $63\text{ µs}$ de mediana y $69\text{ µs}$ p95; celda por índice $0.04\text{ µs}$ / $0.13\text{ µs}$; Rust nativo en modo release sobre la malla real en memoria, Apple M4; cumple el objetivo de $2\text{ ms}$; no medido aún en WASM en el navegador):**
 Cuando el operador mueve el cursor en la Consola 3D (`CesiumJS + Three.js`), el navegador obtiene en $O(1)$ el `h3_index` bajo el puntero y sus $k$-anillos vecinos (radio de $150\text{ m}$) mediante **Rust WASM**. Este *slice* de registros de 64 bytes se vuelca directamente a un *Uniform / Storage Buffer* de **WebGPU/WebGL**, permitiendo que el *Fragment Shader* circular de **3 sectores de $120^\circ$** pinte en tiempo real a 60–120 FPS:
 * **Sector Norte ($120^\circ$):** `isru_h2o_pct` (`CRISM/SHARAD` — azul eléctrico para sulfatos con $>10\%\text{ H}_2\text{O}$).
 * **Sector Derecha ($120^\circ$):** `thermal_inertia_tiu` (`THEMIS` — magenta/naranja para arena trampa $<150\text{ TIU}$).
@@ -244,7 +247,7 @@ Cada amenaza $k$ posee una tasa instantánea de aparición $\lambda_k(\mathbf{x}
    $$\lambda_2(t) = \lambda_{2,0} \cdot \Phi_{\text{solar}}(t)$$
 3. **Deslizamiento / Trampa de Regolito ($H_3$):** Se dispara mediante funciones sigmoides suaves $\sigma(\cdot)$ cuando la celda presenta baja inercia térmica `THEMIS` y alta pendiente `HiRISE`:
    $$\lambda_3(\mathbf{x}) = \lambda_{3,0} \cdot \sigma\!\big(\alpha_I (150 - I(\mathbf{x}))\big) \cdot \sigma\!\big(\alpha_\theta (\theta(\mathbf{x}) - 18^\circ)\big)$$
-4. **Sombra de Radio NLOS ($H_4$):** Determinada por el trazado de línea de visión topográfica sobre `MOLA/HRSC`, más un término de atenuación atmosférica por polvo $\tau(t)$ en banda UHF:
+4. **Sombra de Radio NLOS ($H_4$):** Determinada por el trazado de línea de visión topográfica sobre `MOLA/HRSC`, más un término de atenuación atmosférica por polvo $\tau(t)$ en el enlace primario en banda S:
    $$\lambda_4(\mathbf{x}, t) = \mathbb{I}_{\text{obstruido}}(\mathbf{x}) \cdot \lambda_{\text{drop}} + \beta_\tau \max(0, \tau(t) - 1.5)$$
 
 #### Matriz Generadora Infinitesimal $Q$ (Cadena de Markov en Tiempo Continuo — CTMC)
@@ -261,10 +264,10 @@ El conjunto de las $2^4 = 16$ combinaciones posibles de amenazas conforma un esp
 
 | Propiedad Algorítmica | **A\* Multicriterio** (Nodo 1: Consola Base Pre-EVA) | **D\* Lite Metabólico** (Nodo 2: Traje EVA en Vivo) |
 | :--- | :--- | :--- |
-| **Propósito Operativo** | Calcular la ruta inicial óptima (*Base $\to$ WP1 $\to$ WP2 $\to$ Base*) y validar las **100 simulaciones Monte Carlo** del *"Chaos Mode"*. | Recalcular la trayectoria óptima en tiempo real cuando cambian repentinamente los pesos del terreno (polvo, radiación SPE, terreno blando). |
+| **Propósito Operativo** | Calcular la ruta inicial óptima (*Base $\to$ WP1 $\to$ WP2 $\to$ Base*) y validar las **10.000 simulaciones Monte Carlo** del *"Chaos Mode"* (semilla fija: **96,0 %** de misión segura con cambio al refugio frente a **23,8 %** solo con retorno a la Base). | Recalcular la trayectoria óptima en tiempo real cuando cambian repentinamente los pesos del terreno (polvo, radiación SPE, terreno blando). |
 | **Dirección de Búsqueda** | Adelante (*Start $\to$ Goal*). | **Inversa (*Goal $\to$ Posición Actual del Astronauta*)**, preservando el árbol de búsqueda previo. |
 | **Complejidad de Recálculo** | $O(E \log V)$ completo desde cero en cada cambio de clima. | **Incremental:** solo repara los hexágonos `h3o` inconsistentes ($g(s) \neq rhs(s)$) afectados por la perturbación. |
-| **Gestión de Memoria en Rust** | Asignación dinámica estándar en servidor / WASM. | ***Zero-Allocation Hot Loop*:** Cola de prioridad (`BinaryHeap`) y tablas hash indexadas sobre un *arena buffer* pre-alojado en arranque (latencia **$< 5\text{ ms}$**). |
+| **Gestión de Memoria en Rust** | Asignación dinámica estándar en servidor / WASM. | ***Zero-Allocation Hot Loop*:** Cola de prioridad (`BinaryHeap`) y tablas hash indexadas sobre un *arena buffer* pre-alojado en arranque (replanificación medida: **$17\text{ ms}$** en un corredor de $\pm 200\text{ m}$, frente a $154\text{ ms}$ sobre las 141.313 celdas). |
 
 ---
 
@@ -306,12 +309,14 @@ Simultáneamente, **D\* Lite** mantiene actualizados los tiempos mínimos de des
 #### Regla Formal de Conmutación Automática de Destino (*Dynamic Goal Switching*)
 El sistema conmuta instantáneamente el nodo objetivo $G_{\text{target}}$ desde `Base` (o `WP1/WP2`) hacia `WP3_SHELTER` cuando se verifica **cualquiera** de las siguientes condiciones deterministas con factor de seguridad $\alpha_{\text{sec}} = 0.85$ (margen obligatorio del 15%):
 
-$$\text{SwitchToShelter}(t) \iff \Big( T_{\text{walkback, Base}}(t) > 0.85 \cdot T_{\text{vital}}(t) \;\land\; T_{\text{walkback, Shelter}}(t) < T_{\text{walkback, Base}}(t) \Big) \;\lor\; \Big( D_{\text{ruta}\to\text{Base}}(t) > D_{\text{umbral\_SPE}} \;\land\; D_{\text{ruta}\to\text{WP3}}(t) < 0.35 \cdot D_{\text{ruta}\to\text{Base}}(t) \Big)$$
+$$\text{SwitchToShelter}(t) \iff \Big( T_{\text{walkback, Base}}(t) > 0.85 \cdot T_{\text{vital}}(t) \;\land\; T_{\text{walkback, Shelter}}(t) < T_{\text{walkback, Base}}(t) \Big) \;\lor\; \Big( D_{\text{ruta}\to\text{Base}}(t) > D_{\text{límite\_misión}} - D_{\text{acum}}(t) \;\land\; D_{\text{ruta}\to\text{WP3}}(t) < 0.35 \cdot D_{\text{ruta}\to\text{Base}}(t) \;\land\; \dot{D}_{\text{SPE}} > 1\text{ mSv/h} \Big)$$
+
+Dosis de decisión (un único modelo, el mismo que el coste de arista): tasa SPE medida en la alerta ($8\text{ mSv/h}$, constante) multiplicada por el *Sky View Factor* de cada celda del camino. En T+105 da **$0.89\text{ mSv}$** hasta el refugio y **$5.30\text{ mSv}$** hasta la Base, frente a $2\text{ mSv}$ de presupuesto; el término de radiación de $T_{\text{vital}}$ usa el SVF de la celda actual ($17.9\text{ min}$). La «ventana a cielo abierto» de $15\text{ min}$ (presupuesto a $8\text{ mSv/h}$ sin sombra de terreno) es una referencia y no interviene en la decisión. Cifras exportadas por el motor en `data/mission-scenarios/planner_walkback.json`.
 
 ```mermaid
 flowchart TD
     START["Ciclo 1 Hz en Traje EVA\nLectura de Biometría + Dosímetro + Canyon-TRN"] --> UPDATE["Actualizar Costes Dinámicos C(u,v,t)\nen Malla Hexagonal h3o"]
-    UPDATE --> DSTAR["Ejecutar D* Lite Metabólico (Zero-Alloc Rust < 5 ms)\nCalcular Ruta a Base y Ruta a Refugio WP3"]
+    UPDATE --> DSTAR["Ejecutar D* Lite Metabólico (Rust, 17 ms medidos)\nCalcular Ruta a Base y Ruta a Refugio WP3"]
     DSTAR --> CALC["Calcular T_vital(t), T_walkback_Base(t), T_walkback_WP3(t)\ny Dosis Proyectada SPE"]
     CALC --> CHECK{"¿T_walkback_Base > 0.85 * T_vital\nO Dosis SPE Ruta Base > Umbral Crítico?"}
     CHECK -->|"NO (Margen Seguro)"| NOMINAL["Mantener Objetivo Nominal (WP1/WP2 o Base)\nActualizar Barra Walkback Limit Dual en Verde/Cian"]
@@ -376,17 +381,17 @@ Durante una emergencia combinada, presentar 4 ventanas emergentes y 4 alarmas so
 1. **$t = 0\text{ ms}$ (Detección Multi-Vector en ROS 2 `rclrs`):**
    * `zenoh_watchdog`: Pérdida de 3 *heartbeats* tras el espolón rocoso $\to$ Flag `H4_NLOS_OFFLINE`.
    * `canyon_trn` + `h3o`: Celda actual en $I = 110\text{ TIU}$ y pendiente $\theta = 22^\circ$; biometría reporta salto de $\dot{V}_{O_2}$ a **$3.2\text{ L/min}$** $\to$ Flag `H3_REGOLITH_SLOPE`.
-   * `rad_dosimeter`: Flujo SPE sube a **$8\text{ mSv/h}$** (ventana de dosis segura restante $T_{\text{rad\_limit}} = 15\text{ min}$) $\to$ Flag `H2_SPE_CRITICAL`.
+   * `rad_dosimeter`: Flujo SPE sube a **$8\text{ mSv/h}$** (ventana de referencia a cielo abierto $15\text{ min}$; $T_{\text{vital}} = 17.9\text{ min}$ con el SVF de la celda) $\to$ Flag `H2_SPE_CRITICAL`.
    * `baro_nephelo`: Opacidad de polvo salta de $\tau = 0.7$ a **$\tau = 2.4$** con ráfagas frontales de $28\text{ m/s}$ $\to$ Flag `H1_DUST_STORM`.
-2. **$t = 1\text{–}5\text{ ms}$ (Replanificación `D* Lite` + *Dynamic Goal Switching*):**
-   * `D* Lite Metabólico` recalcula ambos retornos en **$3.8\text{ ms}$**: $T_{\text{walkback, Base}} = 48\text{ min} > T_{\text{rad\_limit}} = 15\text{ min}$, mientras que $T_{\text{walkback, WP3}} = 8\text{ min}$ ($600\text{ m}$ con $\Psi_{\text{SVF}} = 0.15$).
+2. **$t \approx 1\text{–}18\text{ ms}$ (Replanificación `D* Lite` + *Dynamic Goal Switching*):**
+   * `D* Lite Metabólico` recalcula ambos retornos en **$17\text{ ms}$** (mediana medida): $T_{\text{walkback, Base}} = 48\text{ min}$ ($2.15\text{ km}$; $47.6\text{ min}$) $> 0.85 \cdot T_{\text{vital}} = 15.2\text{ min}$ y su dosis proyectada ($5.30\text{ mSv}$) supera el presupuesto restante, mientras que $T_{\text{walkback, WP3}} = 9\text{ min}$ ($9.4\text{ min}$, $595\text{ m}$ a $548\text{ W}$ de media, $0.89\text{ mSv}$ en ruta; refugio con $\Psi_{\text{SVF}} = 0.15$).
    * El *Safety Guardrail* conmuta $G_{\text{target}} \to \text{WP3\_SHELTER}$ y computa una ruta de escape lateral inmediata para abandonar la trampa de arena de $110\text{ TIU}$ en los primeros $40\text{ m}$ hacia roca consolidada ($>380\text{ TIU}$).
-3. **$t = 6\text{ ms}$ (Triaje de Supresión y Renderizado AR Instantáneo):**
-   * La matriz de prioridad suprime 3 ventanas de aviso individuales (pasa `H4_NLOS` a un icono pasivo en esquina superior, absorbe `H1` y `H3` en los pesos del trazado) y emite **una sola directiva visual**: la barra *Walkback Limit Dual* tacha la marca de Base y resalta el marcador de escape a **WP3 (8 min)**, mientras el shader AR en el suelo muta instantáneamente de cian a **chevrones rojo/ámbar pulsantes** indicando los pasos laterales hacia el escarpe.
-4. **$t = 7\text{–}280\text{ ms}$ (Síntesis de Voz Única vía `Candle`/`ort` INT4):**
-   * El Guardrail entrega un *Context Frame* cerrado al SLM local cuantizado (sin búsqueda libre): `{evento: "SPE_Y_TORMENTA", terreno: "SALIR_ARENA_IZQUIERDA", destino: "REFUGIO_WP3", rumbo: "344_GRADOS", distancia_m: 600, tiempo_min: 8, radio: "OFFLINE_AUTONOMO"}`.
+3. **$t \approx 19\text{ ms}$ (Triaje de Supresión y Renderizado AR Instantáneo):**
+   * La matriz de prioridad suprime 3 ventanas de aviso individuales (pasa `H4_NLOS` a un icono pasivo en esquina superior, absorbe `H1` y `H3` en los pesos del trazado) y emite **una sola directiva visual**: la barra *Walkback Limit Dual* tacha la marca de Base y resalta el marcador de escape a **WP3 (9 min)**, mientras el shader AR en el suelo muta instantáneamente de cian a **chevrones rojo/ámbar pulsantes** indicando los pasos laterales hacia el escarpe.
+4. **$t \approx 20\text{–}300\text{ ms}$ (Síntesis de Voz Única vía `Candle`/`ort` INT4):**
+   * El Guardrail entrega un *Context Frame* cerrado al SLM local cuantizado (sin búsqueda libre): `{evento: "SPE_Y_TORMENTA", terreno: "SALIR_ARENA_IZQUIERDA", destino: "REFUGIO_WP3", rumbo: "344_GRADOS", distancia_m: 600, tiempo_min: 9, radio: "OFFLINE_AUTONOMO"}`.
    * La NPU genera la locución táctica única (duración **$< 8\text{ segundos}$**):
-     > *"Alerta solar y viento en cañón. Enlace autónomo activo. Abandone el talud diez metros a su izquierda hacia roca firme y siga el sendero ámbar rumbo tres-cuatro-cuatro hasta el refugio del escarpe a seiscientos metros, ocho minutos."*
+     > *"Alerta solar y viento en cañón. Enlace autónomo activo. Abandone el talud diez metros a su izquierda hacia roca firme y siga el sendero ámbar rumbo tres-cuatro-cuatro hasta el refugio del escarpe a seiscientos metros, nueve minutos."*
 
 ---
 
@@ -399,13 +404,52 @@ El nodo de cómputo portátil integrado en la mochila PLSS del traje (*Wearable 
 | **Procesador y NPU Embebida** | SoC aeroespacial ARM Cortex-A78AE / RISC-V *Dual-Core Lockstep* + Acelerador NPU ($\approx 10\text{ TOPS}$ INT4) + Memoria **LPDDR5 ECC** ($4\text{ GB}$ totales). | — | $1.2\text{ W}$ base | — |
 | **Middleware ROS 2 (`rclrs`) + `Eclipse Zenoh`** | Bus de mensajes determinista en Rust + Router Zenoh con *ring-buffer* CRDT local. | $42\text{ MB}$ | $0.3\text{ W}$ | $< 1.0\text{ ms}$ |
 | **Caché Geoespacial `h3o` + `Canyon-TRN` (`nalgebra`)** | Sub-malla `Parquet/h3o` ($6 \times 6\text{ km}$) + EKF 15-DOF + Banco de Horizontes MOLA (*Skyline Matching*). | $145\text{ MB}$ | $1.1\text{ W}$ | $2.5\text{ ms}$ (EKF) / $18\text{ ms}$ (Skyline) |
-| **Motor `D* Lite Metabólico` + `Guardrail FSM`** | Grafo pre-alojado en arena estática de Rust (*Zero-Alloc*) + Máquina de estados de soporte vital a 100 Hz. | $68\text{ MB}$ | $0.4\text{ W}$ | **$< 5.0\text{ ms}$** (Recálculo completo) |
+| **Motor `D* Lite Metabólico` + `Guardrail FSM`** | Grafo pre-alojado en arena estática de Rust (*Zero-Alloc*) + Máquina de estados de soporte vital a 100 Hz. | $68\text{ MB}$ | $0.4\text{ W}$ | **$17\text{ ms}$ medidos** (cambio de destino, corredor $\pm 200\text{ m}$; p95 $17.6\text{ ms}$) |
 | **Capa Neuronal (`Candle` / `ort` INT4 + `whisper-rs`)** | SLM 1.5B cuantizado a 4 bits ($\sim 850\text{ MB}$) + `whisper-rs` tiny/base ($\sim 140\text{ MB}$) + TTS táctico ($\sim 80\text{ MB}$). | $1,070\text{ MB}$ | $1.8\text{ W}$ en escucha / $4.2\text{ W}$ pico voz | $< 280\text{ ms}$ (Inicio de voz) |
 | **Renderizador HUD AR (Casco + Muñeca)** | Proyección *waveguide* monocromática/RGB de alto contraste (Three.js / OpenXR ligero). | $125\text{ MB}$ | $0.8\text{ W}$ | $< 11\text{ ms}$ ($90\text{ Hz}$) |
-| **TOTAL NODO TRAJE EVA** | **Sistema Operativo RTOS / Linux RT Minimal + Binario Único Rust** | **$\approx 1.45\text{ GB}$ (36% de 4 GB)** | **$\approx 4.8\text{ W}$ medio / $7.2\text{ W}$ pico** | **Respuesta Crítica $< 10\text{ ms}$** |
+| **TOTAL NODO TRAJE EVA** | **Sistema Operativo RTOS / Linux RT Minimal + Binario Único Rust** | **$\approx 1.45\text{ GB}$ (36% de 4 GB)** | **$\approx 4.8\text{ W}$ medio / $7.2\text{ W}$ pico** | **Guardrail $< 10\text{ ms}$; replanificación $17\text{ ms}$ medidos** |
 
 #### Mitigación de Errores por Radiación Espacial (*Single Event Upsets* — SEU)
 En Marte, sin campo magnético global y especialmente durante un Evento de Partículas Solares (SPE), los protones de alta energía provocan inversiones de bits en memoria (*bit-flips* / SEU). La arquitectura protege la vida del astronauta en tres niveles:
 1. **Nivel Hardware:** Memoria **LPDDR5 con ECC (*Error-Correcting Code*)** capaz de corregir errores de 1 bit y detectar errores de 2 bits (*SECDED*) y ejecución en núcleos *Lockstep* para comparar instrucciones ciclo a ciclo.
 2. **Nivel Datos Geoespaciales:** Cada registro hexagonal de 64 bytes en `h3o` incorpora un CRC rápido (`padding_crc`); si la celda en RAM sufre corrupción, se recarga instantáneamente desde la memoria Flash resistente a radiación (*MRAM/NOR*).
 3. **Nivel Software en Rust (*Triple Modular Redundancy* Lógica — TMR):** Las variables críticas del `Safety Guardrail` (reservas de $O_2$, $T_{\text{walkback}}$, estado de *Dynamic Goal Switching*) se almacenan triplicadas en estructuras independientes en Rust y se validan por votación mayoritaria (*2-out-of-3 voting*) en cada ciclo de `100 Hz`.
+
+---
+
+## 5. Cambios respecto al diseño original (commit `e353ba8`)
+
+Lista de los cambios de comportamiento del núcleo Rust desde el diseño original de P3, uno por uno y con su motivo, para que su autor los acepte o los revierta. Principio común: el motor es la fuente de verdad y las cifras de este documento son las que exporta (`data/mission-scenarios/planner_walkback.json` y `chaos_mode_results.json`).
+
+**Copiloto neuro-simbólico (`neuro_symbolic.rs`)**
+1. **Umbrales rojos tomados de `eva_thresholds.json` de P1, con sus operadores** (el valor exacto de frontera pasa a ámbar). Antes y después: polvo τ ≥ 1,5 → τ > 2,0; viento ≥ 20 → > 20 m/s; consumo de O₂ > 2,5 → > 1,75 L/min; RSSI ≤ −115 → < −100 dBm; tasa SPE ≥ 1,0 → > 1,0 mSv/h; pendiente ≥ 20° → > 20°; TIU ≤ 150 → < 150. Motivo: una sola fuente de umbrales para el traje, la consola y el validador.
+2. **O₂ primario en rojo por debajo del 30 % del depósito (167,9 L de 559,8 L)**, antes < 100 L. Motivo: el depósito de P1 es de 800 g ≈ 560 L; 100 L no correspondía a ninguna banda.
+3. **Ámbar desde el JSON:** pendiente ≥ 10° (antes 15°), TIU ≤ 400 (antes 180), viento ≥ 10 m/s (antes 15). Hay tres disparadores ámbar nuevos, los tres bandas directas del JSON: tasa SPE ≥ 0,05 mSv/h, RSSI ≤ −85 dBm y O₂ ≥ 1,35 L/min. Efecto visible: la marcha hacia WP2 (1,61 L/min) queda en *Caution*.
+4. **Rumbo y distancia de escape del tramo L3 (344°, 600 m)**, antes 245°. Motivo: emplazamiento reubicado al sitio real (−9,90°, 283,39° E).
+
+**Motor estocástico (`stochastic_hazard.rs`)**
+5. **Valores físicos de P1:** SPE de 85 a 8 mSv/h (envolvente de diseño), fondo de 0,0175 a 0,027 mSv/h (RAD, Gale), τ de 0,65/2,4 a 0,7/2,4.
+6. **«Sin dato» explícito:** sin pendiente cuenta como 0°, sin TIU usa 325 TIU (banda media, decisión abierta para P1) y sin RSSI cuenta como sombra de radio. Motivo: un NaN producía tasas NaN.
+7. **Criterio del Chaos Mode.** Antes era «muerte si la dosis supera 30 mSv». Ahora una simulación es **misión segura** si alcanza un destino (Base o refugio) sin superar el presupuesto de 2 mSv de dosis SPE y sin agotar el O₂. Se distinguen cuatro desenlaces: segura; incumple la regla de vuelo; pérdida de consumibles; no llega. Si coinciden dos, cuenta el más grave, en este orden: pérdida de consumibles, no llega, incumple la regla de vuelo.
+8. **Más cambios del Chaos Mode:**
+   - O₂ inicial de 210 a 559,8 L y cambio al refugio por O₂ por debajo de 167,9 L (antes 95 L).
+   - La estrategia con refugio vuelve a la Base si no llega a cambiar.
+   - Celdas ordenadas por índice, para que la semilla fija reproduzca el resultado.
+   - Resultado: **96,0 %** de misión segura con cambio al refugio frente a **23,8 %** solo con la Base (10.000 simulaciones, semilla 42), no el 99,4 % anterior.
+
+**Modelo metabólico (`metabolic_dstar.rs`)**
+9. **Modelo de P1 en lugar de la variante Pandolf:** M = 120 + η·0,285·W·v + W·v·sen θ / (0,25·(1 − s)), con 170 kg con traje (antes 130 kg). Desaparecen el término cuadrático en v y la carga del traje. Motivo: un solo modelo con el validador de P1, comprobado en 15 casos idénticos.
+10. **η por bandas de TIU** (1,0 / 1,3 / 1,6 / 2,1, con la frontera de 250 TIU en el tramo blando), antes exponencial (1 + 1,8·e^−(I−60)/90). Sin TIU usa 1,3, antes caía en 2,1.
+11. **Bajada sin crédito**: el término de pendiente no resta (antes la bajada por debajo del −12 % sumaba frenado excéntrico y el resto restaba). Una entrada NaN da «sin dato» (arista intransitable), no potencia de llano. El deslizamiento se recorta a 0,95.
+12. **Velocidad por topes en cada arista:** la mayor que cumple a la vez un tope de velocidad y un tope de potencia. En la huida, 1,25 m/s y 650 W; en el retorno sostenido, 585 W y 1,0 m/s × visibilidad del polvo. Antes la velocidad era fija a 1,0 m/s × visibilidad × 0,45 en la trampa. La trampa de regolito pasa a deslizamiento 0,30, no a un factor de velocidad.
+
+**Malla (`h3_mars_grid.rs`)**
+13. **Índices H3 reales con `h3o`** en lugar del empaquetado axial propio sobre una proyección local. Métricas escaladas a la esfera MOLA: 5,77 m de arista a resolución 12, antes una tabla fija de 5,01 m.
+14. **Carga del Parquet de P1** (141.313 celdas de resolución 12): el motor planifica sobre el DTM real. El corredor sintético queda solo para la demostración y el Chaos Mode.
+15. **Nivel de radio de la malla:** enlace primario en banda S (2,4 GHz, 1 W) con difracción en filo de cuchillo. WP2 queda a −103,0 dBm y WP3 a −107,7 dBm, en rojo; la baliza UHF de 435 MHz es solo de baja tasa. La amenaza de sombra de radio se dispara por ese nivel frente a −100 dBm.
+
+**Planificador (`metabolic_dstar.rs`, `mission.rs`)**
+16. **Pendiente de arista = gradiente de las celdas** (pendiente y orientación sobre base de 40 m) proyectado sobre el rumbo, en lugar del salto de cota entre vecinas, que en un DTM de 20 m muestreado a 5 m bloqueaba el 5,7 % de las aristas. Transitabilidad por la pendiente de la celda.
+17. **Suavizado del camino** (*string-pulling* con comprobación de transitabilidad y sin coste mayor). Tiempo, O₂ y dosis se miden sobre la polilínea: 595 m hasta el refugio y 2.148 m hasta la Base, frente a 677 y 2.436 m de cadena de celdas.
+18. **Un único cálculo de decisión**, cuyas cifras imprime el simulador. Dosis = tasa de la alerta × SVF de cada celda; resultan 0,89 mSv al refugio y 5,30 mSv a la Base, con T_vital de 17,9 min. Ritmos distintos para el retorno y para la huida.
+19. **Corredor de búsqueda de ±200 m** alrededor de WP2 → Base y WP2 → WP3: 17 ms medidos frente a 154 ms en la malla completa, con el mismo óptimo (test). No cumple el objetivo original de < 5 ms.

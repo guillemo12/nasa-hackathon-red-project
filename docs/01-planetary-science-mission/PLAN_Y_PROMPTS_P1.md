@@ -7,7 +7,7 @@
 ## ✅ Decisiones y Stack Tecnológico Cerrados para Persona 1 (Checkpoints 1, 2 y 3)
 
 * **Nombre del Sistema:** **R.E.D. ATLAS**
-* **Región Marciana:** **Valles Marineris — Melas Chasma** (~9.8°S, 283.6°E). Cañón de 7–9 km de desnivel con antiguos depósitos lacustres, capas de sulfatos hidratados, taludes de deslizamiento y sombras severas de comunicación.
+* **Región Marciana:** **Valles Marineris — Melas Chasma** (~9.9°S, 283.4°E). Cañón de 7–9 km de desnivel con antiguos depósitos lacustres, capas de sulfatos hidratados, taludes de deslizamiento y sombras severas de comunicación.
 * **Trazado de la Misión:** **Ruta "Triángulo de Supervivencia" (4–5 km en el fondo de Melas Chasma)**:
   1. **Base (Hábitat):** Terraza aluvial estable en el piso del cañón.
   2. **Waypoint 1 (ISRU / Agua):** Afloramiento de sulfatos polihidratados (extracción de agua in-situ).
@@ -36,7 +36,7 @@ Estamos desarrollando el proyecto "R.E.D. ATLAS" (Reconnaissance, EVA & Dynamic-
 Nuestro objetivo es diseñar una especificación científica y técnica 100% rigurosa (sin escribir código fuente de programación, pero especificando formatos de datos y parámetros exactos).
 
 Nuestro equipo ha fijado las siguientes decisiones y STACK TECNOLÓGICO UNIFICADO que debes usar en toda tu respuesta:
-- Región: Fondo del cañón de Valles Marineris — Melas Chasma (entorno a 9.8°S, 283.6°E).
+- Región: Fondo del cañón de Valles Marineris — Melas Chasma (entorno a 9.9°S, 283.4°E).
 - Ruta elegida: "Triángulo de Supervivencia" (recorrido EVA de 4 a 5 km en total).
 - Stack de Ingeniería de Datos NASA: Preprocesamiento con Python (GDAL, Rasterio, PDS4-tools) convirtiendo los productos PDS de la NASA a rasters Cloud-Optimized GeoTIFF (COG), vectores GeoJSON (para Waypoints y rutas) y tablas columnares Apache Parquet que se indexan en nuestro motor central escrito en Rust (usando el crate `h3o` para una Malla Hexagonal H3 sobre el elipsoide IAU Mars 2000 y DuckDB Spatial).
 - Stack UX/UI (Persona 2): Consola 3D de Base en TypeScript + React + CesiumJS + Three.js (con un shader WebGPU para la "Lupa Espacial Spyglass" dividida en 3 sectores: Agua CRISM + Trampas de Arena THEMIS + Pendiente MOLA) y un simulador "Chaos Mode". En EVA: HUD AR minimalista + Tablet de muñeca + Barra "Walkback Limit Dual".
@@ -88,7 +88,7 @@ Necesito que generes con rigor de ingeniería aeroespacial y medicina espacial d
    - COMBO A (Trampa Táctica): "Trampa de Regolito/Pendiente en WP2" + "Sombra de Radio NLOS (Corte de sesión Zenoh con la Base)".
    - COMBO B (Tormenta en el Abismo): "Vientos Catabáticos y Tormenta de Polvo Local" + "Sobreesfuerzo Metabólico (Contracción rápida del Walkback Limit)".
    - COMBO C (Escenario de Crisis Máxima - Triple Amenaza): "Alerta de Erupción Solar (SPE - Radiación aguda)" + "Sombra de Radio NLOS" + "Ráfagas de Polvo en Tarde Marciana".
-   Explica para cada combo por qué volver a la Base (a 2.5 km) resulta letal y cómo el blindaje topográfico del Waypoint 3 (Escarpe/Oquedad a 600 m) salva la vida del astronauta.
+   Explica para cada combo por qué volver a la Base (a 2,15 km) resulta letal y cómo el blindaje topográfico del Waypoint 3 (Escarpe/Oquedad a 600 m) salva la vida del astronauta.
 ```
 
 ---
@@ -108,7 +108,7 @@ Escribe una simulación técnica inmersiva, cronológica (desde T-45 min hasta T
   Al aproximarse al lóbulo de deslizamiento del WP2, un espolón de roca bloquea la línea de visión con la Base -> Salta "Amenaza 1: Sombra de Radio (NLOS)". El nodo ROS 2 (`rclrs`) del traje pasa automáticamente a modo 100% Offline activando el posicionamiento "Canyon-TRN" en Rust (comparando con LiDAR y cámara la silueta de los muros de 7 km de Melas Chasma contra el DEM de MOLA). Además, el suelo cae a 110 TIU (THEMIS) con pendiente de 22°, disparando el consumo de O2 a 3.2 L/min.
 - ACTO 4 (T+105 min a T+140 min | Impacto Multi-Amenaza Aleatoria y Dynamic Goal Switching):
   Con el astronauta sin radio y en terreno difícil, el entorno estocástico dispara simultáneamente una "Alerta de Partículas Solares (SPE)" detectada por el dosímetro local + un frente de "Viento Catabático y Polvo (Tau sube de 0.7 a 2.4)".
-  Muestra con números exactos cómo la barra "Walkback Limit Dual" indica que volver a la Base (48 min estimados) supera el tiempo límite de radiación segura (15 min). El motor en Rust D* Lite Metabólico ejecuta "Dynamic Goal Switching" en <10 ms hacia el Waypoint 3 (Refugio en Escarpe a 8 min), el HUD aplica "Triaje de Fusión de Alerta Única" (el sendero en el suelo cambia a rojo/ámbar pulsante hacia la pared del cañón) y el Copiloto IA Neuro-Simbólico (`Candle` + `whisper-rs`) da una única orden clara por voz.
+  Muestra con números exactos cómo la barra "Walkback Limit Dual" indica que volver a la Base (48 min estimados) supera el tiempo límite de radiación segura (15 min). El motor en Rust D* Lite Metabólico ejecuta "Dynamic Goal Switching" en 17 ms hacia el Waypoint 3 (Refugio en Escarpe a 9 min), el HUD aplica "Triaje de Fusión de Alerta Única" (el sendero en el suelo cambia a rojo/ámbar pulsante hacia la pared del cañón) y el Copiloto IA Neuro-Simbólico (`Candle` + `whisper-rs`) da una única orden clara por voz.
 - ACTO 5 (T+140 min a T+165 min | Supervivencia en el Refugio WP3 y Telemetría Final):
   Llegada a la oquedad del escarpe vertical. Demuestra con datos cómo la pared de roca de 4 km de altura bloquea el 85% del flujo de protones solares (Sky View Factor reducido a 0.15) y protege del viento hasta que pasa el pico y el enlace Zenoh se restablece.
 Incluye al final un diagrama de secuencia completo en sintaxis Mermaid.js (`sequenceDiagram`) de toda la misión.

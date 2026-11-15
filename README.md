@@ -17,7 +17,7 @@
 
 ## 🌌 Descripción General del Proyecto
 
-**R.E.D. ATLAS** es una plataforma de inteligencia cartográfica multicapa, planificación metabólica de rutas EVA (*Marswalk*) y supervivencia autónoma asistida por IA diseñada para la exploración humana de **Valles Marineris — Melas Chasma** (~9.8°S, 283.6°E).
+**R.E.D. ATLAS** es una plataforma de inteligencia cartográfica multicapa, planificación metabólica de rutas EVA (*Marswalk*) y supervivencia autónoma asistida por IA diseñada para la exploración humana de **Valles Marineris — Melas Chasma** (~9.9°S, 283.4°E).
 
 Operar en el fondo de un cañón marciano de **7 a 9 km de profundidad** presenta desafíos extremos: paredes que bloquean la línea de visión de radio (dejando al astronauta incomunicado), taludes de deslizamiento $>20^\circ$, bancos traicioneros de regolito fino, vientos catabáticos y eventos de radiación solar (SPE) con hasta **22 minutos de retardo de comunicación con la Tierra**.
 

@@ -1,10 +1,8 @@
 """Constantes de la malla H3: umbrales, códigos de procedencia, rutas y centinelas.
 
-Los umbrales de color salen de ``data/mission-scenarios/eva_thresholds.json``. Dos umbrales
-de bandera no están en ese JSON y solo existen en el contrato de P3
-(``src/shared/src/lib.rs``): ``SHELTER_SVF_MAX`` (0,20) e ``ISRU_WATER_MIN_PCT`` (12 %).
-Se declaran aquí, con la fuente citada, y un test los contrasta con ``lib.rs`` cuando el
-fichero existe.
+Todos los umbrales de bandera salen de ``data/mission-scenarios/eva_thresholds.json``,
+incluidos el refugio (SVF <= 0,20) y el ISRU (H₂O >= 12 %), que antes solo existían en
+``src/shared/src/lib.rs``. Un test los contrasta con ``lib.rs`` cuando el fichero existe.
 """
 from __future__ import annotations
 
@@ -50,31 +48,45 @@ def contract_table_path(res: int) -> Path:
 
 
 # --- Umbrales de bandera ------------------------------------------------------------
-# Solo en lib.rs (P3); no están en eva_thresholds.json.
-SHELTER_SVF_MAX = np.float32(0.20)        # lib.rs: SHELTER_SVF_MAX, «<= 0.20»
-ISRU_WATER_MIN_PCT = np.float32(12.0)     # lib.rs: ISRU_WATER_MIN_PCT, «>= 12 %»
+# Todos salen de eva_thresholds.json. Refugio e ISRU son criterios binarios: se toman los
+# extremos del rango verde, que es cerrado («0-0.20» -> SVF <= 0,20; «12-100» -> H2O >= 12).
+
+
+def _spec(threshold_id: str) -> dict:
+    for t in config.load_thresholds()["thresholds"]:
+        if t["id"] == threshold_id:
+            return t
+    raise KeyError(f"{threshold_id} no está en eva_thresholds.json")
 
 
 def _red_limit(threshold_id: str) -> np.float32:
     """Primer número de la cadena «red» de un umbral (p. ej. «>20» -> 20, «<-100 o …» -> -100)."""
-    for t in config.load_thresholds()["thresholds"]:
-        if t["id"] == threshold_id:
-            m = re.search(r"[<>]\s*(-?\d+(?:\.\d+)?)", t["red"])
-            if not m:
-                raise ValueError(f"No se puede leer el umbral rojo de {threshold_id}: {t['red']}")
-            return np.float32(float(m.group(1)))
-    raise KeyError(threshold_id)
+    t = _spec(threshold_id)
+    m = re.search(r"[<>]\s*(-?\d+(?:\.\d+)?)", t["red"])
+    if not m:
+        raise ValueError(f"No se puede leer el umbral rojo de {threshold_id}: {t['red']}")
+    return np.float32(float(m.group(1)))
+
+
+def _green_range(threshold_id: str) -> tuple[np.float32, np.float32]:
+    """Extremos del rango verde cerrado «a-b»."""
+    t = _spec(threshold_id)
+    m = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*", t["green"])
+    if not m:
+        raise ValueError(f"El verde de {threshold_id} no es un rango cerrado: {t['green']}")
+    a, b = sorted((float(m.group(1)), float(m.group(2))))
+    return np.float32(a), np.float32(b)
 
 
 @cache
 def flag_thresholds() -> dict[str, np.float32]:
     """Umbrales de bandera en float32, igual que los compara el motor en Rust."""
     return {
-        "slope_red_gt_deg": _red_limit("slope_deg"),               # «>20»
-        "tiu_red_lt": _red_limit("thermal_inertia_tiu"),          # «<150»
-        "rssi_red_lt_dbm": _red_limit("radio_rssi_dbm"),          # «<-100»
-        "svf_shelter_le": SHELTER_SVF_MAX,
-        "h2o_isru_ge_pct": ISRU_WATER_MIN_PCT,
+        "slope_red_gt_deg": _red_limit("slope_deg"),                    # «>20»
+        "tiu_red_lt": _red_limit("thermal_inertia_tiu"),               # «<150»
+        "rssi_red_lt_dbm": _red_limit("radio_rssi_dbm"),               # «<-100»
+        "svf_shelter_le": _green_range("shelter_sky_view_factor")[1],  # «0-0.20»
+        "h2o_isru_ge_pct": _green_range("isru_h2o_wt_pct")[0],         # «12-100»
     }
 
 

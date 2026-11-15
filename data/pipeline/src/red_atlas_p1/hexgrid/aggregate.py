@@ -18,6 +18,8 @@ Dos regímenes, según la relación entre la celda y el píxel CTX de ~20 m:
   horizonte                 máximo
   línea de vista            todos los píxeles con LOS; fracción con LOS; margen mínimo
   THEMIS DN                 media de los valores THEMIS muestreados en cada píxel CTX
+  rugosidad                 media (y máximo)
+  nivel recibido (RSSI)     mínimo (peor caso; también media); difracción: máximo
   escenario                 conservador: TIU mínima, SVF mínimo, pendiente máxima,
                             LOS mínima, H₂O máxima; con fracción de cobertura
   ========================  =====================================================
@@ -100,6 +102,10 @@ def _finish(cols: dict, layers: dict[str, Layer]) -> dict:
                "horizon": "horizon_max_deg", "los": "los_fraction"}[v]
         cols[f"{v}_prov"] = np.where(np.isfinite(cols[key]), PROV_DERIVED, PROV_NONE).astype(np.uint8)
         cols[f"{v}_src_res_m"] = const(layers[lay].src_res_m, np.float32)
+    for v, key, lay in (("roughness", "roughness_m", "roughness_m"),
+                        ("rssi", "rssi_dbm", "rssi_dbm")):
+        cols[f"{v}_prov"] = np.where(np.isfinite(cols[key]), PROV_DERIVED, PROV_NONE).astype(np.uint8)
+        cols[f"{v}_src_res_m"] = const(layers[lay].src_res_m, np.float32)
     for v, lay in (("themis_day", "themis_day_dn"), ("themis_night", "themis_night_dn")):
         cols[f"{v}_prov"] = np.where(np.isfinite(cols[f"{v}_dn"]), PROV_MEASURED, PROV_NONE).astype(np.uint8)
         cols[f"{v}_src_res_m"] = const(layers[lay].src_res_m, np.float32)
@@ -130,7 +136,7 @@ def _finish(cols: dict, layers: dict[str, Layer]) -> dict:
     cols["hazard_bitmask"] = hazard_bitmask(
         slope_deg=cols["slope_deg_effective"], tiu=cols["tiu_effective"],
         svf=cols["svf_effective"], los_base=cols["los_base_effective"],
-        rssi_dbm=np.full(n, np.nan), h2o_pct=cols["h2o_effective"])
+        rssi_dbm=cols["rssi_dbm"], h2o_pct=cols["h2o_effective"])
     return cols
 
 
@@ -179,6 +185,15 @@ def build_fine(cells: np.ndarray, layers: dict[str, Layer], res: int) -> dict:
     cols["los_margin_min_m"] = s["los_margin_m"]
     cols["themis_day_dn"] = s["themis_day_dn"]
     cols["themis_night_dn"] = s["themis_night_dn"]
+    cols["roughness_m"] = s["roughness_m"]
+    cols["roughness_m_max"] = s["roughness_m"]
+    cols["rssi_dbm"] = s["rssi_dbm"]
+    cols["rssi_dbm_mean"] = s["rssi_dbm"]
+    cols["rssi_dbm_low"] = s["rssi_dbm_low"]
+    cols["rssi_dbm_high"] = s["rssi_dbm_high"]
+    cols["diffraction_db"] = s["diffraction_db"]
+    cols["rssi_uhf_dbm"] = s["rssi_uhf_dbm"]
+    cols["diffraction_uhf_db"] = s["diffraction_uhf_db"]
     for v, (lay, _) in SCENARIO_VARS.items():
         val = s[lay]
         cols[f"{_scen_col(v)}"] = val
@@ -227,7 +242,9 @@ def build_coarse(layers: dict[str, Layer], res: int, include=None) -> dict:
         "elev_m", "elev_min_m", "elev_max_m", "slope_deg_mean", "slope_deg_p90",
         "slope_deg_max", "aspect_deg", "aspect_resultant", "svf_mean", "svf_min", "svf_max",
         "horizon_max_deg", "horizon_max_az_deg", "los_fraction", "los_margin_min_m",
-        "themis_day_dn", "themis_night_dn")}
+        "themis_day_dn", "themis_night_dn", "roughness_m", "roughness_m_max", "rssi_dbm",
+        "rssi_dbm_mean", "rssi_dbm_low", "rssi_dbm_high", "diffraction_db", "rssi_uhf_dbm",
+        "diffraction_uhf_db")}
     for v in SCENARIO_VARS:
         out[_scen_col(v)] = np.full(n, np.nan)
         out[f"{v}_scenario_cover_frac"] = np.zeros(n, dtype=np.float32)
@@ -263,6 +280,15 @@ def build_coarse(layers: dict[str, Layer], res: int, include=None) -> dict:
         out["los_margin_min_m"][i] = _nan_stat(g["los_margin_m"], "min")
         out["themis_day_dn"][i] = _nan_stat(g["themis_day_dn"], "mean")
         out["themis_night_dn"][i] = _nan_stat(g["themis_night_dn"], "mean")
+        out["roughness_m"][i] = _nan_stat(g["roughness_m"], "mean")
+        out["roughness_m_max"][i] = _nan_stat(g["roughness_m"], "max")
+        out["rssi_dbm"][i] = _nan_stat(g["rssi_dbm"], "min")
+        out["rssi_dbm_mean"][i] = _nan_stat(g["rssi_dbm"], "mean")
+        out["rssi_dbm_low"][i] = _nan_stat(g["rssi_dbm_low"], "min")
+        out["rssi_dbm_high"][i] = _nan_stat(g["rssi_dbm_high"], "min")
+        out["diffraction_db"][i] = _nan_stat(g["diffraction_db"], "max")
+        out["rssi_uhf_dbm"][i] = _nan_stat(g["rssi_uhf_dbm"], "min")
+        out["diffraction_uhf_db"][i] = _nan_stat(g["diffraction_uhf_db"], "max")
         for v, (lay, stat) in SCENARIO_VARS.items():
             sv = g[lay]
             fin = np.isfinite(sv)

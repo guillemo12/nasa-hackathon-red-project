@@ -1,18 +1,20 @@
-import { useEffect, useState } from 'react';
-import { ConsoleShell } from '@/components/ConsoleShell';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ConsoleShell, type ToastMessage } from '@/components/ConsoleShell';
 import { Console3DView } from '@/components/Console3DView';
 import { RoutePlannerView } from '@/components/RoutePlannerView';
 import { EvaHudView } from '@/components/EvaHudView';
-import { getNearestEvaEvent } from '@/data/missionData';
+import { CHAOS_REFERENCE, T_DECISION_MIN, T_END_MIN, T_START_MIN } from '@/data/missionData';
 import {
+  ApiError,
   fetchApiHealth,
-  fetchEva07Event,
-  fetchMars2020RawImages,
+  fetchChaosMode,
+  fetchEva07Sample,
   postZenohSync,
   type ApiHealth,
-  type MarsRawImage,
 } from '@/engine/apiClient';
-import type { ConsoleView, Eva07Event } from '@/types/mission';
+import { isCertified } from '@/engine/chaos';
+import { sampleEva07Local } from '@/engine/evaModel';
+import type { ChaosState, ConsoleView, Eva07Sample, SyncState, Tone } from '@/types/mission';
 
 const VIEW_TO_PATH: Record<ConsoleView, string> = {
   '3d-console': '/cartografia-3d',
@@ -36,165 +38,258 @@ function pathToView(pathname: string): ConsoleView {
   }
 }
 
-export function App() {
-  const [activeView, setActiveView] = useState<ConsoleView>(() =>
-    pathToView(window.location.pathname)
-  );
-  const [tMin, setTMin] = useState<number>(() =>
-    pathToView(window.location.pathname) === 'eva-emergency' ? 105 : 28
-  );
-  const [currentEvent, setCurrentEvent] = useState<Eva07Event>(() =>
-    getNearestEvaEvent(pathToView(window.location.pathname) === 'eva-emergency' ? 105 : 28)
-  );
-  const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null);
-  const [zenohSynced, setZenohSynced] = useState<boolean>(false);
-  const [marsImages, setMarsImages] = useState<MarsRawImage[]>([]);
-  const [selectedImageIdx, setSelectedImageIdx] = useState<number>(0);
-  const [isLive, setIsLive] = useState<boolean>(true);
-  const [telemetryFromApi, setTelemetryFromApi] = useState<boolean>(false);
-  const [toast, setToast] = useState<{
-    title: string;
-    detail?: string;
-    tone?: 'cyan' | 'green' | 'amber' | 'red';
-  } | null>(null);
+/** Minuto con el que arranca cada pantalla al cargarla directamente por su URL. */
+function initialTime(view: ConsoleView): number {
+  if (view === 'eva-emergency') return T_DECISION_MIN;
+  // Primer hito con la astronauta fuera: llegada a WP1. Las pantallas de consola son pre-EVA.
+  if (view === 'eva-hud-nominal') return 28;
+  return T_START_MIN;
+}
 
-  const notify = (
-    title: string,
-    detail?: string,
-    tone: 'cyan' | 'green' | 'amber' | 'red' = 'cyan'
-  ) => {
-    setToast({ title, detail, tone });
-  };
+/** Minutos de misión que avanza el reloj por segundo cuando está EN VIVO. */
+const LIVE_MIN_PER_S = 1;
+const LIVE_TICK_MS = 500;
+const HEALTH_POLL_ONLINE_MS = 15000;
+/** Con la API caída los reintentos se espacian: 5, 10, 20 y 30 s. */
+const HEALTH_POLL_OFFLINE_MS = [5000, 10000, 20000, 30000];
+const TOAST_MS = 7000;
+/** Tiempo mínimo que se enseña «en curso» para que la operación se perciba. */
+const MIN_BUSY_MS = 700;
+
+const wait = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
+export function App() {
+  const [activeView, setActiveView] = useState<ConsoleView>(() => pathToView(window.location.pathname));
+  const [tMin, setTMin] = useState<number>(() => initialTime(pathToView(window.location.pathname)));
+  // El reloj arranca parado: nada cambia en pantalla sin que el operador lo pida (H-12).
+  const [isLive, setIsLive] = useState(false);
+  const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null);
+  const [apiChecked, setApiChecked] = useState(false);
+  const [apiSample, setApiSample] = useState<Eva07Sample | null>(null);
+  const [sync, setSync] = useState<SyncState>({ status: 'idle' });
+  const [chaos, setChaos] = useState<ChaosState>({ status: 'idle', run: null });
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const toastId = useRef(0);
+
+  const apiOnline = apiHealth !== null;
+
+  const notify = useCallback((title: string, detail?: string, tone: Tone = 'cyan') => {
+    toastId.current += 1;
+    setToast({ id: toastId.current, title, detail, tone });
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), 3500);
+    const id = window.setTimeout(() => setToast(null), TOAST_MS);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  // Estado de la API: se vuelve a consultar siempre, más a menudo mientras está caída (H-22).
+  useEffect(() => {
+    let cancelled = false;
+    let timer = 0;
+    let failures = 0;
+    const poll = async () => {
+      const health = await fetchApiHealth();
+      if (cancelled) return;
+      setApiHealth(health);
+      setApiChecked(true);
+      failures = health ? 0 : failures + 1;
+      const offlineDelay = HEALTH_POLL_OFFLINE_MS[Math.min(failures, HEALTH_POLL_OFFLINE_MS.length) - 1];
+      timer = window.setTimeout(poll, health ? HEALTH_POLL_ONLINE_MS : offlineDelay);
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
       const next = pathToView(window.location.pathname);
       setActiveView(next);
-      if (next === 'eva-emergency') setTMin(105);
-      else if (next === 'eva-hud-nominal') setTMin(28);
+      if (next === 'eva-emergency') {
+        setIsLive(false);
+        setTMin(T_DECISION_MIN);
+      }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  useEffect(() => {
-    fetchApiHealth().then(setApiHealth);
-    fetchMars2020RawImages(8).then(setMarsImages);
-  }, []);
-
+  // Reloj EN VIVO: avanza hasta el final de la cronología y se para (no vuelve a empezar solo).
   useEffect(() => {
     if (!isLive) return;
     const id = window.setInterval(() => {
-      setTMin((prev) => {
-        if (activeView === 'eva-emergency') {
-          const next = prev + 0.3;
-          return next > 113 ? 105 : Number(next.toFixed(1));
-        }
-        const next = prev + 0.5;
-        return next > 165 ? 0 : Number(next.toFixed(1));
-      });
-    }, 1000);
+      setTMin((prev) =>
+        Math.min(T_END_MIN, Number((prev + (LIVE_MIN_PER_S * LIVE_TICK_MS) / 1000).toFixed(2)))
+      );
+    }, LIVE_TICK_MS);
     return () => window.clearInterval(id);
-  }, [isLive, activeView]);
-
+  }, [isLive]);
   useEffect(() => {
+    if (isLive && tMin >= T_END_MIN) setIsLive(false);
+  }, [isLive, tMin]);
+
+  // El modelo local responde al instante; si la API está arriba, su muestra (con el estado del
+  // motor Rust) sustituye a la local cuando llega. Sin API no se lanza ninguna petición.
+  const localSample = useMemo(() => sampleEva07Local(tMin), [tMin]);
+  useEffect(() => {
+    if (!apiOnline) {
+      setApiSample(null);
+      return;
+    }
     let active = true;
-    fetchEva07Event(tMin).then(({ event, fromApi }) => {
-      if (active) {
-        setCurrentEvent(event);
-        setTelemetryFromApi(fromApi);
+    void fetchEva07Sample(tMin).then((s) => {
+      if (!active) return;
+      if (s) setApiSample(s);
+      else {
+        setApiSample(null);
+        setApiHealth(null);
       }
     });
     return () => {
       active = false;
     };
-  }, [tMin]);
+  }, [tMin, apiOnline]);
 
-  const handleSyncZenoh = async () => {
-    const res = await postZenohSync();
-    setZenohSynced(res.synced);
-    notify(
-      'Sincronización Eclipse Zenoh completada',
-      `Checksum ${res.checksum} · ${res.cellsSynced} celdas H3 enviadas a xEMU-04`,
-      'green'
-    );
-  };
+  const sample: Eva07Sample =
+    apiSample && Math.abs(apiSample.t_min - localSample.t_min) < 0.005 ? apiSample : localSample;
 
-  const handleSelectView = (view: ConsoleView) => {
-    const resolvedView = view === 'eva-emergency' ? 'eva-hud-nominal' : view;
-    setActiveView(resolvedView);
-    const nextPath = VIEW_TO_PATH[resolvedView];
-    if (window.location.pathname !== nextPath) {
-      window.history.pushState(null, '', nextPath);
+  const certified = isCertified(chaos);
+
+  const handleSync = useCallback(async () => {
+    if (sync.status === 'syncing') return;
+    setSync({ status: 'syncing' });
+    try {
+      const [res] = await Promise.all([postZenohSync(), wait(MIN_BUSY_MS)]);
+      setSync({
+        status: 'ok',
+        checksum: res.checksum,
+        cells: res.cells_synced,
+        bytes: res.bundle_bytes,
+        simulated: res.simulated,
+      });
+      notify(
+        res.simulated ? 'Ruta preparada para el traje (enlace simulado)' : 'Ruta enviada al traje',
+        `${res.cells_synced.toLocaleString('es-ES')} celdas de terreno, ${(res.bundle_bytes / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MB. Huella ${res.checksum.slice(0, 12)}…`,
+        'green'
+      );
+    } catch {
+      setSync({ status: 'error' });
+      setApiHealth(null);
+      notify(
+        'No se ha podido enviar: el traje no ha recibido nada',
+        'El motor de cálculo no responde. Arráncalo (cargo run --bin api_server) y vuelve a intentarlo.',
+        'red'
+      );
     }
+  }, [notify, sync.status]);
+
+  const handleRunChaos = useCallback(
+    async (trials: number, seed: number = CHAOS_REFERENCE.seed) => {
+      setChaos((prev) => ({ ...prev, status: 'running', error: undefined }));
+      try {
+        const [run] = await Promise.all([fetchChaosMode(seed, trials), wait(MIN_BUSY_MS)]);
+        setChaos({ status: 'done', run, finishedAt: Date.now() });
+        notify(
+          `Simulación terminada: ${run.trials.toLocaleString('es-ES')} salidas (semilla ${run.seed})`,
+          `A salvo en el ${run.report.survival_rate_with_shelter_pct.toLocaleString('es-ES')} % con el refugio WP3 y en el ${run.report.survival_rate_base_only_pct.toLocaleString('es-ES')} % solo con la Base.`,
+          'cyan'
+        );
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Error desconocido';
+        setChaos({ status: 'error', run: null, error: message });
+        setApiHealth(null);
+        notify(
+          'No se ha podido simular',
+          'El motor de cálculo no responde. Se mantiene la referencia de la misión.',
+          'red'
+        );
+      }
+    },
+    [notify]
+  );
+
+  const handleSelectView = useCallback((view: ConsoleView) => {
+    setActiveView(view);
+    const nextPath = VIEW_TO_PATH[view];
+    if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath);
     if (view === 'eva-emergency') {
-      setTMin(105);
-    } else if (view === 'eva-hud-nominal' && tMin >= 105 && tMin < 114) {
-      setTMin(28);
+      setIsLive(false);
+      setTMin(T_DECISION_MIN);
     }
-  };
+  }, []);
+
+  const handleSelectTime = useCallback((nextT: number) => {
+    setIsLive(false);
+    setTMin(Math.min(T_END_MIN, Math.max(T_START_MIN, nextT)));
+    // /multiemergencia es un atajo a T+105: al elegir otro minuto la URL vuelve a ser la de
+    // la telemetría (misma pantalla, sin tocar el historial).
+    if (window.location.pathname === VIEW_TO_PATH['eva-emergency'] && nextT !== T_DECISION_MIN) {
+      setActiveView('eva-hud-nominal');
+      window.history.replaceState(null, '', VIEW_TO_PATH['eva-hud-nominal']);
+    }
+  }, []);
+
+  const handleToggleLive = useCallback(() => {
+    if (!isLive && tMin >= T_END_MIN) setTMin(T_START_MIN);
+    setIsLive(!isLive);
+  }, [isLive, tMin]);
+
+  const isEvaView = activeView === 'eva-hud-nominal' || activeView === 'eva-emergency';
 
   return (
     <ConsoleShell
       activeView={activeView}
       onSelectView={handleSelectView}
-      currentEvent={currentEvent}
-      zenohSynced={zenohSynced}
+      sample={sample}
+      sync={sync}
       apiHealth={apiHealth}
+      apiChecked={apiChecked}
       isLive={isLive}
-      telemetryFromApi={telemetryFromApi}
-      onToggleLive={() => setIsLive((l) => !l)}
+      onToggleLive={handleToggleLive}
+      onResetClock={() => handleSelectTime(T_START_MIN)}
       toast={toast}
       onDismissToast={() => setToast(null)}
     >
       {activeView === '3d-console' && (
         <Console3DView
-          currentEvent={currentEvent}
-          zenohSynced={zenohSynced}
-          onSyncZenoh={handleSyncZenoh}
-          marsImages={marsImages}
-          selectedImageIdx={selectedImageIdx}
-          onChangeImageIdx={setSelectedImageIdx}
+          sample={sample}
+          apiOnline={apiOnline}
+          sync={sync}
+          certified={certified}
+          onSyncZenoh={handleSync}
+          chaos={chaos}
+          onRunChaos={handleRunChaos}
           onNotify={notify}
         />
       )}
 
       {activeView === 'route-planificator' && (
         <RoutePlannerView
-          zenohSynced={zenohSynced}
-          onApproveOfflinePlan={handleSyncZenoh}
+          apiOnline={apiOnline}
+          sync={sync}
+          certified={certified}
+          onSyncZenoh={handleSync}
+          chaos={chaos}
+          onRunChaos={handleRunChaos}
           onNotify={notify}
         />
       )}
 
-      {activeView === 'eva-hud-nominal' && (
+      {/* Una sola instancia para /telemetria-eva y /multiemergencia: el estado del HUD
+          (dial, capas, muestras) no se pierde al cambiar de una a otra (H-03, H-24). */}
+      {isEvaView && (
         <EvaHudView
-          currentEvent={currentEvent}
+          sample={sample}
+          tMin={tMin}
+          isLive={isLive}
+          apiOnline={apiOnline}
+          onToggleLive={handleToggleLive}
+          onSelectTimeMin={handleSelectTime}
           onNotify={notify}
-          onSelectTimeMin={(nextT) => {
-            setIsLive(false);
-            setTMin(nextT);
-          }}
-        />
-      )}
-
-      {activeView === 'eva-emergency' && (
-        <EvaHudView
-          forceEmergency
-          currentEvent={currentEvent}
-          onNotify={notify}
-          onSelectTimeMin={(nextT) => {
-            setTMin(nextT);
-            if (nextT < 105 || nextT >= 114) {
-              handleSelectView('eva-hud-nominal');
-            }
-          }}
         />
       )}
     </ConsoleShell>

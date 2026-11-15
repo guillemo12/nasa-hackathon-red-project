@@ -17,6 +17,7 @@ use red_atlas_shared::{
     ActiveHazards, HexCellState64B, DUST_TAU_NOMINAL, DUST_TAU_STORM, EVA_SPE_DOSE_BUDGET_MSV,
     GCR_SURFACE_RATE_MSV_H, LOW_TIU_TRAP_THRESHOLD, NLOS_RSSI_THRESHOLD_DBM,
     SPE_PEAK_ENVELOPE_MSV_H, is_no_data, or_assumed, SVF_NO_DATA_ASSUMED, TIU_NO_DATA_ASSUMED,
+    O2_PRIMARY_RED_L, SUIT_O2_PRIMARY_USABLE_L,
 };
 use serde::{Deserialize, Serialize};
 
@@ -360,41 +361,118 @@ impl MarkovHazardModel {
     }
 }
 
+/// Outcome counts of one strategy in [`run_chaos_mode_monte_carlo`].
+///
+/// Criterion ("misión segura"): the astronaut reaches a destination (Base habitat, or the WP3
+/// shelter when Dynamic Goal Switching is allowed) without exceeding the 2 mSv EVA SPE dose
+/// budget and without exhausting primary O2. When several failures coincide in one trial the
+/// most severe one is counted: consumables lost > destination not reached > flight-rule breach.
+/// The 2 mSv budget is a flight rule, not a lethal dose: exceeding it is reported apart from a
+/// loss of consumables. Only primary O2 is modelled as a consumable (no LCVG / battery).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChaosOutcomeCounts {
+    /// Destination reached, SPE dose <= budget, O2 left.
+    pub safe: usize,
+    /// Destination reached with O2 left, but SPE dose above the 2 mSv flight rule.
+    pub flight_rule_breach: usize,
+    /// Primary O2 exhausted.
+    pub consumables_lost: usize,
+    /// No destination reached within the simulated horizon (O2 left).
+    pub destination_not_reached: usize,
+}
+
 /// Summary report produced by [`run_chaos_mode_monte_carlo`].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ChaosModeReport {
     /// Total number of simulated EVA trials.
     pub trials: usize,
-    /// Number of trials where the astronaut survived using WP3 Cliff Shelter Dynamic Goal Switching.
+    /// Trials that end as "misión segura" with Dynamic Goal Switching to the WP3 shelter allowed.
     pub survived_with_wp3_shelter: usize,
-    /// Number of trials where the astronaut survived when forced to return only to Base Habitat.
+    /// Trials that end as "misión segura" when only the return to the Base is allowed.
     pub survived_base_only: usize,
-    /// Survival percentage with WP3 Cliff Shelter (`0.0..=100.0`).
+    /// "Misión segura" percentage with the WP3 shelter allowed (`0.0..=100.0`).
     pub survival_rate_with_shelter_pct: f64,
-    /// Survival percentage when forced to return only to Base (`0.0..=100.0`).
+    /// "Misión segura" percentage with Base-only return (`0.0..=100.0`).
     pub survival_rate_base_only_pct: f64,
-    /// Total number of multi-hazard states ($\ge 2$ concurrent hazards) triggered across all trials.
+    /// Total number of multi-hazard states ($\ge 2$ concurrent hazards) entered across all trials.
     pub multi_hazard_events_triggered: usize,
+    /// Outcome breakdown with the shelter allowed.
+    pub outcomes_with_shelter: ChaosOutcomeCounts,
+    /// Outcome breakdown with Base-only return.
+    pub outcomes_base_only: ChaosOutcomeCounts,
+    /// Trials in which the switch to the shelter was triggered.
+    pub switched_to_shelter: usize,
+    /// Trials by the maximum number of hazards active at the same time (index 0..=4).
+    pub trials_by_max_concurrent_hazards: [usize; 5],
+    /// Safe trials with the shelter allowed, by maximum concurrent hazards.
+    pub safe_with_shelter_by_max_concurrent: [usize; 5],
+    /// Safe trials with Base-only return, by maximum concurrent hazards.
+    pub safe_base_only_by_max_concurrent: [usize; 5],
+}
+
+/// Number of 5-minute legs of the Chaos Mode traverse (120 min from departure).
+pub const CHAOS_TRAVERSE_LEGS: usize = 24;
+/// Duration of one Chaos Mode leg, minutes.
+pub const CHAOS_DT_MIN: f64 = 5.0;
+/// Solar activity multiplier of the Chaos Mode SPE onset rate.
+pub const CHAOS_SOLAR_ACTIVITY: f64 = 2.2;
+/// Initial primary O2 of a Chaos Mode trial: the full usable tank at departure, L.
+pub const CHAOS_INITIAL_O2_L: f64 = SUIT_O2_PRIMARY_USABLE_L;
+/// Primary O2 level that forces the switch to the shelter: P1 red band (< 30 % of the tank), L.
+pub const CHAOS_O2_SWITCH_L: f64 = O2_PRIMARY_RED_L;
+
+fn classify(reached: bool, o2_left: bool, dose_ok: bool) -> usize {
+    if !o2_left {
+        2
+    } else if !reached {
+        3
+    } else if !dose_ok {
+        1
+    } else {
+        0
+    }
+}
+
+fn count(c: &mut ChaosOutcomeCounts, outcome: usize) {
+    match outcome {
+        0 => c.safe += 1,
+        1 => c.flight_rule_breach += 1,
+        2 => c.consumables_lost += 1,
+        _ => c.destination_not_reached += 1,
+    }
 }
 
 /// Runs a `trials`-iteration Monte Carlo "Chaos Mode" EVA traverse over `corridor_cells`
 /// starting at `mars_solar_hour`, comparing Base-only return vs Dynamic Goal Switching to
-/// the WP3 Cliff Shelter.
+/// the WP3 Cliff Shelter on the same stochastic hazard timeline (paired comparison).
+///
+/// Model limits (declared, not hidden): the traverse samples `CHAOS_TRAVERSE_LEGS` cells by
+/// position in `corridor_cells` (pass them sorted for reproducibility), not along a planned
+/// route; the return to the Base needs 14 nominal legs starting at leg 6, slowed by dust (x0.65)
+/// and the regolith trap (x0.45); the escape to the shelter takes one leg at 0.55 of the open-sky
+/// dose. The outcome criterion is documented on [`ChaosOutcomeCounts`].
 pub fn run_chaos_mode_monte_carlo(
     corridor_cells: &[HexCellState64B],
     trials: usize,
     seed: u64,
     mars_solar_hour: f64,
 ) -> ChaosModeReport {
+    let mut report = ChaosModeReport {
+        trials,
+        survived_with_wp3_shelter: 0,
+        survived_base_only: 0,
+        survival_rate_with_shelter_pct: 0.0,
+        survival_rate_base_only_pct: 0.0,
+        multi_hazard_events_triggered: 0,
+        outcomes_with_shelter: ChaosOutcomeCounts::default(),
+        outcomes_base_only: ChaosOutcomeCounts::default(),
+        switched_to_shelter: 0,
+        trials_by_max_concurrent_hazards: [0; 5],
+        safe_with_shelter_by_max_concurrent: [0; 5],
+        safe_base_only_by_max_concurrent: [0; 5],
+    };
     if trials == 0 || corridor_cells.is_empty() {
-        return ChaosModeReport {
-            trials,
-            survived_with_wp3_shelter: 0,
-            survived_base_only: 0,
-            survival_rate_with_shelter_pct: 0.0,
-            survival_rate_base_only_pct: 0.0,
-            multi_hazard_events_triggered: 0,
-        };
+        return report;
     }
 
     let mut rng = XorShift64::new(seed);
@@ -411,56 +489,50 @@ pub fn run_chaos_mode_monte_carlo(
         0.15
     };
 
-    // Build a deterministic 24-leg EVA traverse (~120 min) sampling across the provided corridor.
-    const TRAVERSE_LEGS: usize = 24;
-    const DT_MIN: f64 = 5.0;
-    const SOLAR_ACTIVITY_CHAOS: f64 = 2.2;
-
-    // PLSS mission limits at start of critical EVA window (O2 reserve + acute SPE dose cap).
-    const INITIAL_O2_LITERS: f64 = 210.0;
-    const MISSION_RAD_LIMIT_MSV: f64 = EVA_SPE_DOSE_BUDGET_MSV as f64;
-
-    let mut survived_with_wp3_shelter = 0usize;
-    let mut survived_base_only = 0usize;
-    let mut multi_hazard_events_triggered = 0usize;
+    let budget_msv = EVA_SPE_DOSE_BUDGET_MSV as f64;
 
     for _trial in 0..trials {
         let mut model = MarkovHazardModel::new();
 
-        // Paired comparison on the exact same stochastic hazard timeline:
-        let mut o2_base = INITIAL_O2_LITERS;
+        // Strategy A: Base-only return.
+        let mut o2_base = CHAOS_INITIAL_O2_L;
         let mut rad_base = 0.0_f64;
         let mut base_progress = 0.0_f64;
-        let mut base_alive = true;
+        let mut base_o2_out = false;
 
-        let mut o2_shelter = INITIAL_O2_LITERS;
-        let mut rad_shelter = 0.0_f64;
-        let mut switched_to_shelter = false;
+        // Strategy B: Dynamic Goal Switching allowed (returns to the Base unless it switches).
+        let mut o2_b = CHAOS_INITIAL_O2_L;
+        let mut rad_b = 0.0_f64;
+        let mut progress_b = 0.0_f64;
+        let mut switched = false;
         let mut shelter_arrived = false;
-        let mut shelter_alive = true;
+        let mut b_o2_out = false;
 
         let mut prev_multi = false;
+        let mut max_concurrent = 0u8;
 
-        for leg in 0..TRAVERSE_LEGS {
-            let idx = (leg * corridor_cells.len()) / TRAVERSE_LEGS;
+        for leg in 0..CHAOS_TRAVERSE_LEGS {
+            let idx = (leg * corridor_cells.len()) / CHAOS_TRAVERSE_LEGS;
             let cell = &corridor_cells[idx];
-            let local_hour = (mars_solar_hour + (leg as f64) * DT_MIN / 60.0) % MARS_SOL_HOURS;
+            let local_hour = (mars_solar_hour + (leg as f64) * CHAOS_DT_MIN / 60.0) % MARS_SOL_HOURS;
 
-            let hazards = model.step_ctmc(cell, local_hour, SOLAR_ACTIVITY_CHAOS, DT_MIN, &mut rng);
+            let hazards =
+                model.step_ctmc(cell, local_hour, CHAOS_SOLAR_ACTIVITY, CHAOS_DT_MIN, &mut rng);
 
             let active_count = (hazards.h1_dust_storm as u8)
                 + (hazards.h2_spe_radiation as u8)
                 + (hazards.h3_regolith_slope as u8)
                 + (hazards.h4_nlos_offline as u8);
+            max_concurrent = max_concurrent.max(active_count);
             let is_multi = active_count >= 2;
             if is_multi && !prev_multi {
-                multi_hazard_events_triggered += 1;
+                report.multi_hazard_events_triggered += 1;
             }
             prev_multi = is_multi;
 
             // Instantaneous metabolic O2 demand (L/min) from slope, regolith TIU, and H1/H3 stress.
             let base_o2_l_min = 0.80
-                + 0.045 * (cell.slope_deg as f64).max(0.0)
+                + 0.045 * or_assumed(cell.slope_deg, 0.0).max(0.0) as f64
                 + if cell.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD {
                     0.65
                 } else {
@@ -472,73 +544,79 @@ pub fn run_chaos_mode_monte_carlo(
 
             let open_svf =
                 (or_assumed(cell.sky_view_factor, SVF_NO_DATA_ASSUMED) as f64).clamp(0.15, 1.0);
-            let step_rad_open = (hazards.spe_dose_rate_msv_h as f64) * open_svf * (DT_MIN / 60.0);
+            let step_rad_open = (hazards.spe_dose_rate_msv_h as f64) * open_svf * (CHAOS_DT_MIN / 60.0);
 
             // Travel speed degradation under dust storm & regolith trap.
             let speed_factor = (if hazards.h1_dust_storm { 0.65 } else { 1.0 })
                 * (if hazards.h3_regolith_slope { 0.45 } else { 1.0 });
 
-            // --- Strategy A: Base-only return (must complete full 1.0 normalized return distance) ---
-            if base_alive && base_progress < 1.0 {
-                o2_base -= step_o2_rate * DT_MIN;
+            // --- Strategy A: walk back to the Base (inside the habitat once arrived) ---
+            if !base_o2_out && base_progress < 1.0 {
+                o2_base -= step_o2_rate * CHAOS_DT_MIN;
                 rad_base += step_rad_open;
-                // Only advance toward Base once past initial outbound legs (leg >= 6).
                 if leg >= 6 {
                     base_progress += speed_factor / 14.0;
                 }
-                if o2_base <= 0.0 || rad_base > MISSION_RAD_LIMIT_MSV {
-                    base_alive = false;
-                }
+                base_o2_out = o2_base <= 0.0;
             }
 
-            // --- Strategy B: Dynamic Goal Switching to WP3 Cliff Shelter ---
-            if shelter_alive {
-                if !switched_to_shelter && (is_multi || hazards.h2_spe_radiation || o2_shelter < 95.0)
+            // --- Strategy B: same walk back unless the switch to the WP3 shelter triggers ---
+            if !b_o2_out {
+                if !switched
+                    && progress_b < 1.0
+                    && (is_multi || hazards.h2_spe_radiation || o2_b < CHAOS_O2_SWITCH_L)
                 {
-                    switched_to_shelter = true;
+                    switched = true;
                 }
-
-                if switched_to_shelter {
+                if switched {
                     if !shelter_arrived {
-                        // ~8-10 min (2 legs) lateral escape to WP3 cliff alcove.
-                        o2_shelter -= step_o2_rate * DT_MIN;
-                        rad_shelter += step_rad_open * 0.55;
+                        o2_b -= step_o2_rate * CHAOS_DT_MIN;
+                        rad_b += step_rad_open * 0.55;
                         shelter_arrived = true;
                     } else {
-                        // Sheltered inside WP3 alcove: low resting O2 rate & SVF=0.15 shielding.
-                        o2_shelter -= 0.42 * DT_MIN;
-                        rad_shelter += (hazards.spe_dose_rate_msv_h as f64)
+                        // Sheltered inside WP3 alcove: low resting O2 rate & SVF shielding.
+                        o2_b -= 0.42 * CHAOS_DT_MIN;
+                        rad_b += (hazards.spe_dose_rate_msv_h as f64)
                             * effective_shelter_svf
-                            * (DT_MIN / 60.0);
+                            * (CHAOS_DT_MIN / 60.0);
                     }
-                } else {
-                    o2_shelter -= step_o2_rate * DT_MIN;
-                    rad_shelter += step_rad_open;
+                } else if progress_b < 1.0 {
+                    o2_b -= step_o2_rate * CHAOS_DT_MIN;
+                    rad_b += step_rad_open;
+                    if leg >= 6 {
+                        progress_b += speed_factor / 14.0;
+                    }
                 }
-
-                if o2_shelter <= 0.0 || rad_shelter > MISSION_RAD_LIMIT_MSV {
-                    shelter_alive = false;
-                }
+                b_o2_out = o2_b <= 0.0;
             }
         }
 
-        if base_alive && base_progress >= 1.0 {
-            survived_base_only += 1;
+        let k = max_concurrent.min(4) as usize;
+        report.trials_by_max_concurrent_hazards[k] += 1;
+        if switched {
+            report.switched_to_shelter += 1;
         }
-        if shelter_alive {
-            survived_with_wp3_shelter += 1;
+
+        let outcome_a = classify(base_progress >= 1.0, !base_o2_out, rad_base <= budget_msv);
+        count(&mut report.outcomes_base_only, outcome_a);
+        if outcome_a == 0 {
+            report.survived_base_only += 1;
+            report.safe_base_only_by_max_concurrent[k] += 1;
+        }
+
+        let reached_b = shelter_arrived || progress_b >= 1.0;
+        let outcome_b = classify(reached_b, !b_o2_out, rad_b <= budget_msv);
+        count(&mut report.outcomes_with_shelter, outcome_b);
+        if outcome_b == 0 {
+            report.survived_with_wp3_shelter += 1;
+            report.safe_with_shelter_by_max_concurrent[k] += 1;
         }
     }
 
     let denom = trials as f64;
-    ChaosModeReport {
-        trials,
-        survived_with_wp3_shelter,
-        survived_base_only,
-        survival_rate_with_shelter_pct: (survived_with_wp3_shelter as f64) * 100.0 / denom,
-        survival_rate_base_only_pct: (survived_base_only as f64) * 100.0 / denom,
-        multi_hazard_events_triggered,
-    }
+    report.survival_rate_with_shelter_pct = (report.survived_with_wp3_shelter as f64) * 100.0 / denom;
+    report.survival_rate_base_only_pct = (report.survived_base_only as f64) * 100.0 / denom;
+    report
 }
 
 #[inline]
@@ -625,6 +703,32 @@ mod tests {
             r_trap.lambda3_regolith
         );
         assert!(r_trap.lambda4_nlos > r_firm.lambda4_nlos);
+    }
+
+    /// The seeded Chaos Mode must be reproducible: two independently generated corridors
+    /// (different HashMap iteration orders) fed through `planner_graph()` (cells sorted by H3
+    /// index) give the same report. Feeding `grid.cells.values()` directly did not.
+    #[test]
+    fn chaos_mode_is_reproducible_on_sorted_corridor_cells() {
+        use crate::h3_mars_grid::H3MarsGrid;
+        let run = || {
+            let grid = H3MarsGrid::generate_melas_chasma_corridor(11);
+            let (cells, _) = grid.planner_graph();
+            run_chaos_mode_monte_carlo(&cells, 100, 42, 14.5)
+        };
+        let first = run();
+        for _ in 0..3 {
+            assert_eq!(run(), first);
+        }
+        assert!(first.survived_with_wp3_shelter > first.survived_base_only);
+        // Bookkeeping: outcomes and breakdowns add up to the number of trials.
+        for o in [first.outcomes_with_shelter, first.outcomes_base_only] {
+            assert_eq!(o.safe + o.flight_rule_breach + o.consumables_lost + o.destination_not_reached, first.trials);
+        }
+        assert_eq!(first.trials_by_max_concurrent_hazards.iter().sum::<usize>(), first.trials);
+        assert_eq!(first.safe_with_shelter_by_max_concurrent.iter().sum::<usize>(), first.survived_with_wp3_shelter);
+        assert_eq!(first.safe_base_only_by_max_concurrent.iter().sum::<usize>(), first.survived_base_only);
+        assert_eq!(first.outcomes_with_shelter.safe, first.survived_with_wp3_shelter);
     }
 
     #[test]

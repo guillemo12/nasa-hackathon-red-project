@@ -19,7 +19,7 @@ COLUMN_DOCS: dict[str, tuple[str, str]] = {
     'lat_pc_deg': ('°', 'Posición (planetocéntrica; Este 0–360; IAU_2015:49900)'),
     'lon_e_deg': ('°', 'Posición (planetocéntrica; Este 0–360; IAU_2015:49900)'),
     'metabolic_power_w': ('W', 'Potencia metabólica de la fase'),
-    'power_source': ('—', 'Origen de la potencia: `modelo`, `modelo_tramo_real`, `modelo_ritmo_regulado`, `modelo_parametro_escenario`, `escenario` o `sin_consumo` (ver §4)'),
+    'power_source': ('—', 'Origen de la potencia: `modelo`, `modelo_tramo_real`, `modelo_ritmo_regulado`, `planificador_dstar`, `escenario` o `sin_consumo` (ver §4)'),
     'o2_l_min': ('L/min STPD', 'Consumo de O₂ (potencia / 335)'),
     'o2_g_min': ('g/min', 'Consumo de O₂ (× 1,429 g/L)'),
     'o2_used_g': ('g', 'O₂ primario consumido desde T+0'),
@@ -39,21 +39,19 @@ COLUMN_DOCS: dict[str, tuple[str, str]] = {
     'radio_distance_m': ('m', 'Distancia en línea recta a la Base (trayecto radioeléctrico)'),
     'radio_los': ('—', 'Línea de vista. Falsa en T+92–157; desde T+158 vuelve por el repetidor'),
     'radio_nlos_s': ('s', 'Segundos acumulados sin línea de vista'),
-    'radio_rssi_dbm': ('dBm', 'Nivel recibido (1 W, 435 MHz, 0 dBi; 40 dB de difracción en NLOS)'),
+    'radio_rssi_dbm': ('dBm', 'Nivel recibido del enlace primario de datos (banda S, 2,4 GHz, 1 W, 0 dBi; 30 dB de difracción en NLOS, derivados de la malla real)'),
     'radio_class': ('—', 'VERDE, AMBAR o ROJO con `radio_rssi_dbm` (incluye «NLOS >60 s»)'),
     'threat_polvo': ('—', 'Frente de polvo catabático activo'),
     'threat_spe': ('—', 'Evento SPE activo'),
     'threat_trampa_regolito': ('—', 'Trampa de regolito (110 TIU, 22°) activa'),
     'threat_sombra_radio': ('—', 'Sombra de radio (NLOS) activa'),
     'n_threats': ('—', 'Número de amenazas activas (4 en T+105)'),
-    'base_route_m': ('m', 'Distancia de ruta al destino'),
-    'wp3_route_m': ('m', 'Distancia de ruta al destino'),
+    'base_route_m': ('m', 'Distancia de camino al destino (desde WP2, la del planificador: 2.148 m)'),
+    'wp3_route_m': ('m', 'Distancia de camino al destino (desde WP2, la del planificador: 595 m)'),
     'base_time_min': ('min', 'Tiempo de marcha al destino'),
     'wp3_time_min': ('min', 'Tiempo de marcha al destino'),
-    'base_dose_proj_env_msv': ('mSv', 'Dosis SPE proyectada por el traje. Con la alerta activa, 8 mSv/h constantes todo el trayecto; sin alerta, 0'),
-    'wp3_dose_proj_env_msv': ('mSv', 'Dosis SPE proyectada por el traje. Con la alerta activa, 8 mSv/h constantes todo el trayecto; sin alerta, 0'),
-    'base_dose_proj_ramp_msv': ('mSv', 'Dosis proyectada integrando la `rampa_calibrada` hacia delante (proyección «oráculo», solo para comparar)'),
-    'wp3_dose_proj_ramp_msv': ('mSv', 'Dosis proyectada integrando la `rampa_calibrada` hacia delante (proyección «oráculo», solo para comparar)'),
+    'base_dose_proj_msv': ('mSv', '**Dosis de decisión** proyectada (modelo del motor): envolvente constante × SVF medio efectivo de la ruta del planificador × tiempo; con la alerta inactiva, 0. En T+105 = 5,30 mSv'),
+    'wp3_dose_proj_msv': ('mSv', '**Dosis de decisión** proyectada (modelo del motor): envolvente constante × SVF medio efectivo de la ruta del planificador × tiempo; con la alerta inactiva, 0. En T+105 = 0,89 mSv'),
     'base_o2_need_g': ('g', 'O₂ necesario para llegar'),
     'wp3_o2_need_g': ('g', 'O₂ necesario para llegar'),
     'base_margin_min': ('min', 'Margen = mín(margen de O₂, margen de radiación). O₂: (restante − necesario) / consumo de marcha. Radiación (con SPE activa): minutos a cielo abierto que deja el presupuesto de 2 mSv a 8 mSv/h, menos el tiempo de marcha'),
@@ -85,7 +83,7 @@ Ficheros de escenario de la Persona 1 para el motor de la Persona 3 (estocástic
   - Los acumulados (O₂ y dosis) integran `[t−1, t]` con la fase que contiene `t−1`.
   - Las variables instantáneas (potencia, SVF, amenazas) son las de la fase que contiene `t`.
   - Las fases son intervalos `[t0, t1)`; la fila T+165 toma la última fase.
-- **Posición:** interpolación lineal en lat/lon a lo largo de los tramos L1 (T+0–28), L2 (T+75–98) y L3 (T+105–113). Fuera de esos intervalos el astronauta está quieto en un nodo.
+- **Posición:** interpolación lineal en lat/lon a lo largo de los tramos L1 (T+0–28), L2 (T+75–98) y L3 (T+105–114,45). Las fronteras de fase pueden ser fraccionarias: los acumulados reparten cada minuto entre las fases que lo cubren. Fuera de esos intervalos el astronauta está quieto en un nodo.
 - **Distancias de ruta del Walkback:**
   - Desde los nodos:
 
@@ -93,13 +91,11 @@ Ficheros de escenario de la Persona 1 para el motor de la Persona 3 (estocástic
     |---|---|---|
     | Base | 0 | 1.600 m (L4 al revés) |
     | WP1 | 1.500 m | 1.065 m en recta (no hay tramo planificado) |
-    | WP2 | **2.500 m** (ruta segura D\* Lite) | 600 m |
+    | WP2 | **2.148 m** (camino del planificador D\* Lite) | 595 m (camino del planificador) |
     | WP3 | 1.600 m | 0 |
 
-  - Entre nodos se interpolan con la fracción recorrida. Es una aproximación de validación: la distancia real la calcula el D\* Lite de la Persona 3.
-- **Velocidades del Walkback:**
-  - Base: 2.500 m / 48 min = 52,1 m/min (0,868 m/s), a 323 W (η 1,3; en bajada no se acredita la pendiente).
-  - WP3: 1,25 m/s, a 412,9 W (η 1,3 de la TIU media de L3; L3 baja 56 m, así que no se acredita pendiente).
+  - Entre nodos se interpolan con la fracción recorrida. Es una aproximación de validación: el planificador solo exporta las rutas desde WP2 en T+105.
+- **Velocidades del Walkback:** se leen de `data/mission-scenarios/planner_walkback.json`, que exporta el motor Rust (`cargo run --release --bin export_mission_results` en `src/core-engine`): planificador D\* Lite sobre la malla H3 res. 12 real, con los topes de ritmo de `eva_thresholds.json` (huida 1,25 m/s y 650 W; retorno sostenido 1,0 m/s y 585 W). El validador no copia ninguna cifra a mano; si el JSON falta o sus campos no cuadran (llegada = T+105 + tiempo, velocidad = camino / tiempo, decisión «WP3, Base no viable»), la cronología no se genera. Cifras en §9.
 - **Etiquetas de procedencia:**
   - **[M]** medido.
   - **[D]** derivado.
@@ -126,11 +122,13 @@ Compresión zstd. Los metadatos clave-valor del esquema Parquet incluyen:
 | `events[]` | Hitos con `t_min`, `lmst`, `id`, `title`, `threat` (amenaza principal o `null`), `active_threats[]`, `phase_id` y `values{}`. `values` lleva O₂, potencia, tasas y dosis (los 3 perfiles y GCR), radio, τ, los dos lados del Walkback y el destino viable, con 4 decimales |
 | `threat_windows_t_min` | Intervalo `[inicio, fin)` de cada amenaza. Fin 166 = activa hasta el final |
 | `phases[]` | La cronología como datos (ver §4): intervalo, acto, descripción, lugar, destino, potencia y su origen, SVF, factor de dosis, tasa SPE externa (perfil nominal y envolvente) en `t0` y en `t1 − 1`, amenazas activas y estado de cada amenaza (`activa`, `inactiva`, `se_activa`, `se_desactiva`) |
-| `reference_figures` | Cifras de referencia del modelo: 300 / 591 / 841 / 1.073 W, 93,17 dB, −63,2 y −103,2 dBm, 15 min, 1,2 mSv/h |
-| `spe_profile_comparison` | Para cada perfil: nudos, dosis del escape, tasa media, dosis al llegar, dosis en el refugio, total, retorno de 48 min a la Base y viabilidad en T+105 |
+| `reference_figures` | Cifras de referencia del modelo: 300 / 591 / 841 / 1.073 W; enlace primario en banda S: 108,0 dB, −78,0 y −108,0 dBm a 2,5 km; baliza UHF: 93,17 dB y −63,2 dBm; 15 min, 1,2 mSv/h |
+| `decision_dose_T105` | Walkback en T+105 según el motor: modelo de dosis, camino, tiempo, llegada, velocidad y potencia medias, O₂, SVF medio efectivo y dosis de decisión de cada destino; T_vital; ventana a cielo abierto; y la referencia antigua de 6,4 mSv marcada como tal |
+| `chaos_mode` | Resultados del Chaos Mode leídos de `chaos_mode_results.json`: simulaciones, semilla, % de misión segura con refugio y solo con la Base, corredor, criterio y limitaciones |
+| `spe_profile_comparison` | Dosis **acumulada** con cada perfil temporal: nudos, huida, tasa media, refugio, total y vuelta a la Base a cielo abierto en el tiempo del planificador |
 | `final` | O₂ restante y dosis SPE (nominal y envolvente) y GCR en T+165 |
 
-Identificadores de hitos: `spyglass` (T−45), `chaos_mode` (T−30), `zenoh_sync` (T−10), `salida` (T+0), `llegada_wp1` (T+28), `salida_wp1` (T+75), `nlos` (T+92), `regolito` (T+98), `spe_polvo` y `dynamic_goal_switching` (T+105), `llegada_wp3` (T+113), `refugio_activo` (T+114), `pico_spe` (T+125), `remite_spe` (T+140), `zenoh_restablecido` (T+158) y `telemetria_final` (T+165).
+Identificadores de hitos: `spyglass` (T−45), `chaos_mode` (T−30), `zenoh_sync` (T−10), `salida` (T+0), `llegada_wp1` (T+28), `salida_wp1` (T+75), `nlos` (T+92), `regolito` (T+98), `spe_polvo` y `dynamic_goal_switching` (T+105), `llegada_wp3` (T+114, redondeo de T+114,45), `refugio_activo` (T+115, primer minuto completo bajo la cornisa), `pico_spe` (T+125), `remite_spe` (T+140), `zenoh_restablecido` (T+158) y `telemetria_final` (T+165).
 
 ## 4. Cronología como datos
 
@@ -152,30 +150,33 @@ Orígenes de potencia (`power_source`):
 El canónico calcula dos cifras con supuestos distintos sobre la misma tasa de dosis:
 
 - **≈0,6 mSv en los 8–9 min de escape.** Implica una tasa media de unos 4–4,5 mSv/h.
-- **6,4 mSv volviendo a la Base en 48 min.** Implica 8 mSv/h constantes desde el primer minuto.
+- **6,4 mSv volviendo a la Base en 48 min.** Implica 8 mSv/h constantes desde el primer minuto, a cielo abierto y sin SVF. **Esta referencia ya no es la cifra del sistema:** la dosis de decisión es la del motor (§9).
+
+**Dos modelos, dos preguntas.** La serie lleva dos dosis distintas que no deben mezclarse:
+
+1. **Dosis de decisión (proyección, Walkback Limit Dual):** la del motor. Al detectar la alerta, el traje supone lo peor que ha medido —la envolvente de 8 mSv/h constante— y la multiplica por el SVF de cada celda del camino que propone el planificador. Responde a «¿me cabe esta ruta en el presupuesto de 2 mSv?». En T+105: **0,89 mSv** al refugio y **5,30 mSv** a la Base.
+2. **Dosis acumulada (cronología minuto a minuto):** la que de verdad recibe el astronauta con el perfil temporal de la tormenta (rampa calibrada, nominal), a cielo abierto en marcha (factor 1,0) y con el SVF 0,15 bajo la cornisa. Responde a «¿cuánto se ha llevado?». Al llegar al refugio: 0,72 mSv.
+
+Difieren porque la proyección usa la tasa máxima constante desde el primer minuto (la tormenta todavía está subiendo) y el SVF de las celdas (0,70 de media en el camino al refugio, 0,84 en el de la Base), mientras que la acumulada sigue la rampa y toma cielo abierto en marcha. La proyección es conservadora a propósito: es la que decide.
 
 El validador modela la tasa externa a cielo abierto como un **perfil temporal explícito**: lineal a trozos, con nudos `(T, mSv/h)` y tasa 0 antes de T+105. Calcula tres perfiles:
 
 <<PROFILES>>
 
-**Qué reproduce cada perfil:**
+**Qué reproduce cada perfil (dosis acumulada):**
 
-- **15 min de ventana, 6,4 mSv = 3,2× la regla y 1,2 mSv/h en WP3:** la **envolvente**.
-- **≈0,6 mSv a la llegada a WP3:** la **rampa calibrada**. Su nudo (108, 5) es un **parámetro libre ajustado** para dar esa cifra, no una predicción. La rampa lineal literal (0 → 8 en 20 min) da solo 0,21 mSv, un 64 % menos.
-- **«≤ 1,6 mSv en total»:** ningún perfil por sí solo. El entregable suma 0,6 (rampa) y 1,0 (envolvente en el refugio). Con la envolvente completa el total es **2,11 mSv**, por encima de la regla de 2 mSv. Con la rampa calibrada es 1,40 mSv.
-- **Diferencia entre casos:**
-  - En el escape, 1,07 frente a 0,58 mSv: la envolvente da +0,49 mSv (×1,84).
-  - En el retorno a la Base, 6,40 frente a 5,36 mSv: −1,04 mSv (−16 %) con la rampa calibrada.
+- **15 min de ventana y 1,2 mSv/h en WP3:** la **envolvente**.
+- **≈0,6 mSv a la llegada a WP3:** la **rampa calibrada**, con el escape antiguo de 8 min (0,58 mSv en T+113). Su nudo (108, 5) es un **parámetro libre ajustado** para dar esa cifra y no se recalibra: con la huida de 9,45 min la dosis acumulada al llegar es **0,72 mSv**. La rampa lineal literal da 0,29 mSv.
+- **«≤ 1,6 mSv en total»:** ningún perfil por sí solo. Con la envolvente completa el total acumulado es **2,27 mSv**, por encima de la regla de 2 mSv; con la rampa calibrada es **1,52 mSv**.
 
-**La decisión no depende del perfil.** Con los tres perfiles, en T+105 la Base no es viable (4,7–6,4 mSv > 2) y WP3 sí (0,21–1,07 mSv ≤ 2).
+**La decisión no depende del perfil.** La toma la dosis de decisión del motor (5,30 mSv a la Base > 2; 0,89 mSv al refugio ≤ 2). Con cualquiera de los tres perfiles acumulados a cielo abierto el resultado sería el mismo.
 
 **Qué usa la serie:**
 
-- La **viabilidad** usa la proyección del traje: envolvente de 8 mSv/h al detectar la SPE, como manda la regla del canónico.
-- La **dosis acumulada nominal** usa la rampa calibrada.
-- Las demás dosis van en columnas aparte.
+- La **viabilidad** usa la dosis de decisión del motor (`*_dose_proj_msv`).
+- La **dosis acumulada nominal** usa la rampa calibrada (`dose_spe_msv`); la envolvente y la rampa lineal van en columnas aparte.
 
-**Factor de exposición:** en marcha es 1,0 (convenio «cielo abierto»), no el SVF real de la ruta (0,84–0,85 en los nodos del DTM CTX). Solo así salen los 15 min y los 6,4 mSv. El SVF 0,15 se aplica desde la entrada bajo la cornisa (T+113). Es el supuesto de escenario de la alcoba con cornisa [E]; el SVF real del WP3 derivado del DTM CTX de 20 m es 0,76 [D], porque un DEM no representa la cornisa (`sky_view_factor_dem` en el GeoJSON).
+**Factor de exposición:** en marcha es 1,0 (convenio «cielo abierto»), no el SVF real de la ruta (0,84–0,85 en los nodos del DTM CTX). Solo así sale la ventana de 15 min. El SVF 0,15 se aplica desde la llegada bajo la cornisa (T+114,45). Es el supuesto de escenario de la alcoba con cornisa [E]; el SVF real del WP3 derivado del DTM CTX de 20 m es 0,76 [D], porque un DEM no representa la cornisa (`sky_view_factor_dem` en el GeoJSON).
 
 ## 6. Interpretación de los rangos de `eva_thresholds.json`
 
@@ -197,25 +198,39 @@ El intérprete (`scenario/thresholds.py`) no modifica el JSON. Reglas:
 
 ## 7. Otras discrepancias detectadas (el canónico no se cambia)
 
-- **Radio:**
-  - −63,2 dBm − (20…30 dB) = −83…−93 dBm, no los −95…−110 dBm del canónico. Para ese rango hacen falta 32–47 dB.
-  - Con 20–30 dB el NLOS no llegaría a rojo por nivel. La serie usa **40 dB** (dentro de «30+»).
-  - Con 40 dB, en WP3 (1,6 km en recta) el nivel es −99,3 dBm: ámbar por nivel y rojo por persistencia NLOS.
+- **Radio (enlace primario en banda S):**
+  - Con el UHF de 435 MHz del canónico, la difracción de arista única sobre el DTM real solo resta 19–26 dB en WP2 y WP3 (−81,0 y −85,7 dBm): la sombra de radio no llegaba a rojo por nivel. Ver `data/nasa-layers/SCHEMA_HEXGRID.md`.
+  - El enlace primario de datos (sesión Zenoh) pasa a banda S, 2,4 GHz, 1 W: 108,0 dB de pérdida en espacio libre a 2,5 km, −78,0 dBm con línea de vista y 30 dB de difracción en NLOS (media de 26,4 dB en WP2 y 33,8 dB en WP3 sobre el DTM real). UHF 435 MHz queda como baliza de baja tasa.
+  - En la serie, el NLOS da −106,7 dBm en WP2 (2,15 km) y −104,1 dBm en WP3 (1,6 km): rojo por nivel, además de por persistencia.
 - **Velocidades de 592 W y 839 W:** el canónico solo dice «velocidad reducida». Despejadas, son 0,762 y 0,688 m/s. El validador usa 0,76 y 0,69 m/s [R], que dan 590,9 y 841,5 W.
-- **Margen de WP3 en T+105:** 15 − 8 = **7 min**, rojo según `walkback_margin_min`. WP3 solo resulta viable porque la regla del margen de 10 min se aplica a la Base, como en el diagrama 3.6, y no al destino de refugio.
+- **Margen de WP3 en T+105:** 15 − 9,45 = **5,55 min**, rojo según `walkback_margin_min`. WP3 solo resulta viable porque la regla del margen de 10 min se aplica a la Base, como en el diagrama 3.6, y no al destino de refugio.
 - **Dosis en el refugio:** 51 min a 1,2 mSv/h son 1,02 mSv, no «≤ 1,0». Por tanto, el «≤ 1,6 mSv» del entregable es en rigor 1,62 mSv con sus propios supuestos.
 
 ## 8. Sitio reubicado y potencias de marcha
 
-El triángulo se trasladó 13,6 km (rumbo 245°) al pie de la pared suroeste de la cuenca, como figura rígida (1.500 / 1.200 / 600 / 1.600 m; WP2→Base 2.150 m en recta y 2.500 m por la ruta segura). Las cotas son del DTM CTX de 20 m [M]: Base −1.660 m, WP1 −1.582 m, WP2 −1.464 m y WP3 −1.520 m. Desniveles: L1 +78 m, L2 +118 m, L3 −56 m (el refugio queda **cuesta abajo** desde WP2), L4 −140 m y R1 −196 m. La geometría se lee del GeoJSON; las pendientes medias del GeoJSON salen del perfil del DTM y difieren de atan(Δz/d) hasta 0,07° (L3: −5,26° frente a −5,33°).
+El triángulo se trasladó 13,6 km (rumbo 245°) al pie de la pared suroeste de la cuenca, como figura rígida (1.500 / 1.200 / 600 / 1.600 m; WP2→Base 2.150 m en recta). Las cotas son del DTM CTX de 20 m [M]: Base −1.660 m, WP1 −1.582 m, WP2 −1.464 m y WP3 −1.520 m. Desniveles: L1 +78 m, L2 +118 m, L3 −56 m (el refugio queda **cuesta abajo** desde WP2), L4 −140 m y R1 −196 m. La geometría se lee del GeoJSON; las pendientes medias del GeoJSON salen del perfil del DTM y difieren de atan(Δz/d) hasta 0,07° (L3: −5,26° frente a −5,33°).
 
 - **Atmósfera en la Base:** P = 610 Pa · exp(−z / 11,1 km) = **708 Pa** y columna = P / g = **19,0 g/cm²** (antes 724 Pa y 19,5 g/cm² a −1.905 m). Sigue por encima del punto triple del agua (611 Pa).
 - **WP2:** se conservan los dos valores. 22° es la rampa local de escenario [E], con la que sale la cifra compartida de 1.072,9 W y 3,20 L/min; 19,4° es la pendiente real del nodo a 20 m [D].
 - **Regla de η por tramo [D]:** η de la TIU media de sus dos nodos: L1 (320/410) 1,3; L2 (410/110) 1,3; L3 (110/620) 1,3. El banco de 110 TIU (η 2,1) solo se aplica donde la cronología activa la trampa de regolito (T+98–106). Se descarta la regla del peor nodo porque la cronología sitúa el banco al final del tramo (la trampa empieza en T+98), no por sus vatios. Sensibilidad: la TIU media de L2 (260) está a 10 TIU del corte de 250. Con η 1,6, L2 daría 586,1 W (bastaría salir de WP1 0,1 min antes); con η 2,1, 664,5 W durante 23 min (habría que adelantar la salida de WP1 3,9 min, a 0,743 m/s).
-- **Velocidades [D]:** las medias que imponen los hitos fijos: L1 1.500 m en 28 min (0,893 m/s), L2 1.200 m en 23 min (0,870 m/s) y L3 600 m en 8 min (1,25 m/s).
+- **Velocidades [D]:** las medias que imponen los hitos fijos: L1 1.500 m en 28 min (0,893 m/s), L2 1.200 m en 23 min (0,870 m/s). La huida L3 ya no sale del modelo (ver más abajo).
 - **Tras el pico del WP2 [D]:** el traje regula el ritmo para no pasar del rojo sostenido: 0,268 m/s en la rampa de 22° (585,0 W).
-- **Entrada bajo la cornisa:** 0,5 m/s [E] por el talud real de 20,1° del WP3 (η 1,0): 644,9 W durante 1 min.
-- **Sostenibilidad:** «insostenible» = más de 5 min seguidos por encima de 585 W. Antes, la rampa lenta a 0,28 m/s daba 605 W y T+98–106 eran 8 min seguidos por encima del rojo. **Cambio aplicado:** la velocidad tras el pico baja a 0,268 m/s (585,0 W, en el límite ámbar). Así T+98–106 son 8 min a ≥585 W, pero solo 3 + 1 por encima: el pico canónico y la salida del banco (593,2 W). La entrada bajo la cornisa (644,9 W) dura 1 min. No cambia ningún hito.
-- **Escape:** baja 56 m, así que el modelo no acredita pendiente: 593,2 W en el primer minuto (banco, η 2,1) y 412,9 W el resto (η 1,3). Los 580–650 W del canónico suponían subida. El modelo no cuenta el coste excéntrico de bajar laderas de hasta 22°: es optimista en bajada.
+- **Sostenibilidad:** «insostenible» = más de 5 min seguidos por encima de 585 W. Antes, la rampa lenta a 0,28 m/s daba 605 W y T+98–106 eran 8 min seguidos por encima del rojo. **Cambio aplicado:** la velocidad tras el pico baja a 0,268 m/s (585,0 W, en el límite ámbar). Con la huida del planificador (548 W), solo el pico canónico (T+98–101) queda por encima de 585 W.
+- **Huida a WP3 (decisión del equipo, 2026-11-14):** la fuente de verdad es el planificador D\* Lite del motor Rust sobre el terreno real, con el mismo modelo de velocidad y los topes de huida (1,25 m/s, 650 W): **9,45 min** por 595 m de camino (T+105–114,45), 1,05 m/s y **548 W** de media, 15,4 L de O₂. Sustituye a la fase de 8 min (antes 593,2 W el primer minuto, 412,9 W el resto y 644,9 W en la entrada a la cornisa). El modelo por tramos daba menos porque L3 baja 56 m y no acredita pendiente; el planificador recorre el terreno real celda a celda.
+- **Retorno a la Base:** se elimina la «ruta segura de 2.500 m» (rodeo de 1,16). La distancia es la del camino del planificador: **2.148 m** («unos 2,15 km»), casi la línea recta de 2.150 m, en 47,6 min («48 min»).
 - **Calibración:** ninguna potencia está ajustada al O₂. ISRU (250 W) y reposo (130 W) son las cifras de escenario del canónico. Los porcentajes de O₂ son una salida y sus tests, de regresión; el de T+28 se comprueba además a mano.
+
+## 9. Resultados del motor (Walkback en T+105 y Chaos Mode)
+
+Se leen de `data/mission-scenarios/planner_walkback.json` y `chaos_mode_results.json`, que se regeneran con `cargo run --release --bin export_mission_results` en `src/core-engine`. El validador falla si faltan o si sus campos no cuadran.
+
+**Walkback Limit Dual en T+105** (dosis de decisión = envolvente constante × SVF de cada celda):
+
+<<DECISION>>
+
+T_vital 17,9 min (término de radiación con el SVF de la celda actual); ventana a cielo abierto 15,0 min. Referencia antigua, que **ya no es la cifra del sistema**: 8 mSv/h durante 48 min a cielo abierto, sin SVF = 6,4 mSv.
+
+**Chaos Mode** (sustituye al 99,4 % anterior, que deja de ser cifra del proyecto):
+
+<<CHAOS>>
 '''

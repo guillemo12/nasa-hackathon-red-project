@@ -58,9 +58,10 @@ def test_tabla_de_contrato_desde_sintetico(synth_full, tmp_path):
     write_parquet(ct, p)
     back = pq.read_table(p)
     assert back.schema.remove_metadata().equals(tables.CONTRACT_SCHEMA)
-    # Sin dato -> nulo, no 0.
-    assert back["roughness_hi"].null_count == back.num_rows
-    assert back["los_base_rssi_dbm"].null_count == back.num_rows
+    # Rugosidad y RSSI derivados; TIU sin zona de escenario y coste metabólico -> nulo, no 0.
+    assert set(back["roughness_hi"].to_pylist()) == {0.5}
+    assert set(back["los_base_rssi_dbm"].to_pylist()) == {-70.0}
+    assert back["base_metabolic_cost"].null_count == back.num_rows
     assert back["thermal_inertia_tiu"].null_count == back.num_rows
     assert set(back["horizon_hash_id"].to_pylist()) == {0}
     assert set(back["padding_crc"].to_pylist()) == {bytes(14)}

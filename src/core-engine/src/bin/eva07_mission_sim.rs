@@ -2,37 +2,44 @@
 //!
 //! End-to-end 5-Act simulation of EVA-07 in the SW basin of Melas Chasma, Valles Marineris
 //! (~9.90°S, 283.39°E; site data in `red_atlas_shared::SURVIVAL_TRIANGLE_SITE`):
-//! - **Act 1**: Pre-EVA Chaos Mode stress test (100 Monte Carlo runs proving WP3 shelter advantage).
+//! - **Act 1**: Pre-EVA Chaos Mode stress test (10,000 seeded Monte Carlo runs, Base-only vs WP3 shelter).
 //! - **Act 2**: WP1 ISRU water confirmation (CRISM >12% H2O, 3-sector Spyglass, zero-hallucination SLM geology Q&A).
 //! - **Act 3**: WP2 NLOS radio shadow + Canyon-TRN Skyline Matching (crushing ~12m drift to <0.5m) + 110 TIU / 22° slope biomechanics.
 //! - **Act 4**: T+105 min 4-hazard simultaneous impact + Dynamic Goal Switching + Single-Alert Fusion + TMR 2-of-3 SEU protection.
 //! - **Act 5**: Survival at WP3 cliff shelter (SVF=0.15, 85% SPE radiation attenuation) + Zenoh CRDT telemetry replay.
 //! - **Timeline**: EVA-07 O2 and SPE dose computed with the P1 metabolic model over
-//!   `red_atlas_shared::EVA07_PHASES` and compared with P1's `eva07_events.json`.
+//!   `red_atlas_shared::eva07_phases` (escape from the planner) and compared with P1's
+//!   `eva07_events.json`. All mission figures come from `red_atlas_core::mission`, the same code
+//!   that writes `data/mission-scenarios/planner_walkback.json` and `chaos_mode_results.json`.
 
 use red_atlas_core::canyon_trn::{
     generate_melas_horizon_bank, CanyonTrnEkf, ImuSample, LidarScanMatch, SkylineObservation,
     VioDelta, HORIZON_BINS,
 };
-use red_atlas_core::h3_mars_grid::{geodesic_distance_m, H3MarsGrid};
+use red_atlas_core::h3_mars_grid::H3MarsGrid;
 use red_atlas_core::metabolic_dstar::{
-    metabolic_o2_rate_l_min, pandolf_mars_metabolic_watts, soil_sinkage_eta, MetabolicDStarPlanner,
+    metabolic_o2_rate_l_min, pandolf_mars_metabolic_watts, soil_sinkage_eta,
 };
 use red_atlas_core::neuro_symbolic::{
     EdgeSlmVoiceBackend, GuardrailFsm, QuantizedCandleSlmMock, ScienceSample, TmrVoted,
     ZenohCrdtRingBuffer, COLOR_CAUTION_HEX, COLOR_EVAC_SHELTER_HEX, COLOR_NOMINAL_HEX,
     COLOR_SHELTER_HOLD_HEX,
 };
-use red_atlas_core::stochastic_hazard::run_chaos_mode_monte_carlo;
+use red_atlas_core::mission::{
+    compute_chaos_export, compute_t105_walkback, full_timeline, integrate_timeline, load_grid,
+    node_radio_levels, repo_path, sample_at, TimelineSample, WalkbackReport, CHAOS_SEED, CHAOS_SOLAR_HOUR,
+    CHAOS_TRIALS, DECISION_CORRIDOR_HALF_WIDTH_M, P1_GRID_PARQUET_REL,
+};
 use red_atlas_shared::{
-    eva07_spe_open_sky_rate_msv_h, melas_chasma_survival_triangle, ActiveHazards, Eva07Effort,
-    Eva07Phase, HexCellState64B, MissionWaypointKind, PlssTelemetry, SafetyGuardrailState,
+    melas_chasma_survival_triangle, ActiveHazards, 
+    MissionWaypointKind, PlssTelemetry, SafetyGuardrailState,
     TargetGoal, WalkbackDualStatus, CRITICAL_SLOPE_DEG, DUST_TAU_NOMINAL, DUST_TAU_STORM,
-    ESCAPE_LEG_WP2_WP3, EVA07_PHASES, EVA_SPE_DOSE_BUDGET_MSV, GCR_SURFACE_RATE_MSV_H,
+    ESCAPE_LEG_WP2_WP3, EVA07_PRE_DECISION_PHASES, EVA_SPE_DOSE_BUDGET_MSV, GCR_SURFACE_RATE_MSV_H,
     HAZARD_FLAG_ISRU_WATER, ISRU_WATER_MIN_PCT, LOW_TIU_TRAP_THRESHOLD, MARS_GRAVITY,
-    MELAS_BASE_PRESSURE_MBAR, NLOS_RSSI_THRESHOLD_DBM, O2_DENSITY_G_PER_L, SHELTER_SVF_MAX,
+    MELAS_BASE_PRESSURE_MBAR, NLOS_RSSI_THRESHOLD_DBM, RADIO_BEACON_FREQ_MHZ, RADIO_PRIMARY_FREQ_MHZ,
+    RSSI_AMBER_THRESHOLD_DBM, SHELTER_SVF_MAX,
     SITE_BASE_ELEV_M, SITE_REFERENCE_LAT_DEG, SITE_REFERENCE_LON_DEG, SPE_PEAK_ENVELOPE_MSV_H,
-    SUIT_O2_PRIMARY_USABLE_G, SURVIVAL_TRIANGLE_LEGS, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG,
+    SURVIVAL_TRIANGLE_LEGS, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG,
     WP2_SLIP_FRACTION, WP2_TRAVERSE_SPEED_MPS,
 };
 
@@ -43,85 +50,9 @@ const P1_EVENTS_JSON: &str = include_str!("../../../../data/mission-scenarios/ev
 const O2_PCT_TOLERANCE: f64 = 0.05;
 const DOSE_MSV_TOLERANCE: f64 = 0.005;
 
-/// State of the EVA-07 timeline at the end of minute `t_min`.
-#[derive(Debug, Clone, Copy)]
-struct TimelineSample {
-    t_min: i32,
-    power_w: f64,
-    o2_rate_l_min: f64,
-    o2_remaining_g: f64,
-    dose_spe_msv: f64,
-}
-
-impl TimelineSample {
-    fn o2_remaining_pct(&self) -> f64 {
-        100.0 * self.o2_remaining_g / SUIT_O2_PRIMARY_USABLE_G
-    }
-    fn o2_remaining_liters(&self) -> f32 {
-        (self.o2_remaining_g / O2_DENSITY_G_PER_L) as f32
-    }
-    fn timestamp_s(&self) -> f64 {
-        self.t_min as f64 * 60.0
-    }
-}
-
-/// Metabolic power of a phase with the P1 model (`pandolf_mars_metabolic_watts`).
-fn phase_power_w(phase: &Eva07Phase) -> f64 {
-    match phase.effort {
-        Eva07Effort::None => 0.0,
-        Eva07Effort::Scenario(watts) => watts,
-        Eva07Effort::Walk { leg, speed_mps, tiu, slip, slope_deg } => {
-            let leg = &SURVIVAL_TRIANGLE_LEGS[leg];
-            let grade_deg = slope_deg
-                .map(|s| s as f64)
-                .unwrap_or_else(|| (leg.delta_elev_m / leg.distance_m).atan().to_degrees());
-            pandolf_mars_metabolic_watts(grade_deg, tiu, speed_mps, slip)
-        }
-    }
-}
-
-fn phase_at(t_min: f64) -> &'static Eva07Phase {
-    EVA07_PHASES
-        .iter()
-        .find(|p| t_min >= p.t0_min && t_min < p.t1_min)
-        .unwrap_or(&EVA07_PHASES[EVA07_PHASES.len() - 1])
-}
-
-/// Integrates the EVA-07 timeline minute by minute (P1 convention: the interval [t-1, t] uses
-/// the phase that contains t-1; the SPE rate is piecewise linear, so the trapezoid is exact).
-fn simulate_eva07_timeline() -> Vec<TimelineSample> {
-    let t_start = EVA07_PHASES[0].t0_min as i32;
-    let t_end = EVA07_PHASES[EVA07_PHASES.len() - 1].t1_min as i32;
-    let mut o2_used_g = 0.0;
-    let mut dose = 0.0;
-    let mut samples = Vec::new();
-    for t in t_start..=t_end {
-        if t > t_start {
-            let prev = phase_at((t - 1) as f64);
-            let o2_g_min = metabolic_o2_rate_l_min(phase_power_w(prev)) * O2_DENSITY_G_PER_L;
-            o2_used_g += o2_g_min;
-            let r0 = eva07_spe_open_sky_rate_msv_h((t - 1) as f64);
-            let r1 = eva07_spe_open_sky_rate_msv_h(t as f64);
-            dose += prev.dose_factor * 0.5 * (r0 + r1) / 60.0;
-        }
-        let now = phase_at(t as f64);
-        let power = phase_power_w(now);
-        samples.push(TimelineSample {
-            t_min: t,
-            power_w: power,
-            o2_rate_l_min: metabolic_o2_rate_l_min(power),
-            o2_remaining_g: SUIT_O2_PRIMARY_USABLE_G - o2_used_g,
-            dose_spe_msv: dose,
-        });
-    }
-    samples
-}
-
-fn sample_at(timeline: &[TimelineSample], t_min: i32) -> TimelineSample {
-    *timeline
-        .iter()
-        .find(|s| s.t_min == t_min)
-        .expect("timeline covers T-45..T+165")
+/// Timeline sample at minute `t_min`, or an error naming the minute.
+fn timeline_at(timeline: &[TimelineSample], t_min: i32) -> Result<TimelineSample, String> {
+    sample_at(timeline, t_min).ok_or_else(|| format!("timeline does not cover T{t_min:+}"))
 }
 
 fn print_banner(act: &str, title: &str) {
@@ -135,6 +66,13 @@ fn print_separator() {
 }
 
 fn main() {
+    if let Err(e) = run() {
+        eprintln!("eva07_mission_sim: {e}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), String> {
     println!("################################################################################");
     println!("#                                                                              #");
     println!("#   R.E.D. ATLAS :: EVA-07 END-TO-END MISSION SIMULATION (MELAS CHASMA)        #");
@@ -146,15 +84,50 @@ fn main() {
     println!("#                                                                              #");
     println!("################################################################################\n");
 
-    // EVA-07 reference timeline (O2 and SPE dose) used by the PLSS telemetry of every act.
-    let timeline = simulate_eva07_timeline();
+    // EVA-07 timeline up to the T+105 decision (independent of the planner); the full timeline
+    // is integrated after Act 4 with the escape that the planner computes.
+    let pre_timeline = integrate_timeline(&EVA07_PRE_DECISION_PHASES);
+
+    // P1's real terrain grid (H3 res 12): radio levels at the nodes and the T+105 planner.
+    let grid_path = repo_path(P1_GRID_PARQUET_REL);
+    println!("[GRID]   Loading P1 terrain grid {} ...", P1_GRID_PARQUET_REL);
+    let load_start = std::time::Instant::now();
+    let real_grid = load_grid(&grid_path)?;
+    println!(
+        "         {} H3 res-{} cells loaded in {:.0} ms.",
+        real_grid.len(),
+        real_grid.res,
+        load_start.elapsed().as_secs_f64() * 1000.0
+    );
+    println!(
+        "[RADIO]  Primary data link (Zenoh session): S band {:.1} GHz, 1 W; UHF {:.0} MHz = low-rate beacon.",
+        RADIO_PRIMARY_FREQ_MHZ / 1000.0,
+        RADIO_BEACON_FREQ_MHZ
+    );
+    let radio = node_radio_levels(&real_grid);
+    for (id, rssi) in &radio {
+        let class = if rssi.is_nan() {
+            "NO DATA"
+        } else if *rssi < NLOS_RSSI_THRESHOLD_DBM {
+            "RED (radio shadow)"
+        } else if *rssi <= RSSI_AMBER_THRESHOLD_DBM {
+            "AMBER"
+        } else {
+            "GREEN"
+        };
+        println!("         {:<18} {:>7.1} dBm  {}", id, rssi, class);
+    }
+    let rssi_at = |kind: usize| radio.get(kind).map_or(f32::NAN, |r| r.1);
+    let (rssi_wp1, rssi_wp2) = (rssi_at(1), rssi_at(2));
+    // Radio-shadow threat (H4) by the real level against the -100 dBm red threshold.
+    let radio_shadow = |rssi: f32| rssi.is_nan() || rssi < NLOS_RSSI_THRESHOLD_DBM;
 
     // ============================================================================
     // ACT 1: PRE-EVA CHAOS MODE STRESS TEST (HABITAT BASE CONSOLE)
     // ============================================================================
     print_banner(
         "ACT 1",
-        "PRE-EVA CHAOS MODE STRESS TEST (100 MONTE CARLO RUNS)",
+        "PRE-EVA CHAOS MODE STRESS TEST (10,000 MONTE CARLO RUNS)",
     );
     println!("[INIT] Generating IAU Mars 2000 H3 hexagonal corridor (Res 11)...");
     let grid = H3MarsGrid::generate_melas_chasma_corridor(11);
@@ -177,33 +150,39 @@ fn main() {
     );
     assert_eq!(crc_valid, grid.len(), "All cells must have valid CRC16");
 
-    let corridor_cells: Vec<HexCellState64B> = grid.cells.values().copied().collect();
-
-    println!("[SIM]  Launching 100-run Monte Carlo Chaos Mode simulation...");
+    // Same seeded run as `data/mission-scenarios/chaos_mode_results.json` (cells sorted by H3
+    // index; `grid.cells` is a HashMap whose order changes between runs).
+    println!(
+        "[SIM]  Launching {}-run Monte Carlo Chaos Mode simulation (seed {}, {:.2} h LMST)...",
+        CHAOS_TRIALS, CHAOS_SEED, CHAOS_SOLAR_HOUR
+    );
     println!("       Coupled 16-state CTMC Markov model (H1 Dust, H2 SPE, H3 Regolith, H4 NLOS).");
-    let chaos_report = run_chaos_mode_monte_carlo(&corridor_cells, 100, 42, 14.5);
-
-    println!("\n[RESULTS] CHAOS MODE MONTE CARLO REPORT (100 TRIALS):");
-    println!("       - Total Trials Executed        : {}", chaos_report.trials);
-    println!(
-        "       - Multi-Hazard Events Triggered: {}",
-        chaos_report.multi_hazard_events_triggered
-    );
-    println!(
-        "       - Strategy A (Base-Only Return) : {}/100 survived ({:.1}%)",
-        chaos_report.survived_base_only, chaos_report.survival_rate_base_only_pct
-    );
-    println!(
-        "       - Strategy B (WP3 Cliff Shelter): {}/100 survived ({:.1}%)",
-        chaos_report.survived_with_wp3_shelter, chaos_report.survival_rate_with_shelter_pct
-    );
-    println!(
-        "       -> Delta Survival Gain with WP3 : +{:.1}%",
-        chaos_report.survival_rate_with_shelter_pct - chaos_report.survival_rate_base_only_pct
-    );
-
+    let chaos = compute_chaos_export();
+    let r = &chaos.report;
+    println!("\n[RESULTS] CHAOS MODE MONTE CARLO REPORT ({} TRIALS):", r.trials);
+    println!("       Criterion: {}", chaos.criterion);
+    println!("       - Multi-Hazard Events Triggered: {}", r.multi_hazard_events_triggered);
+    for (label, o, pct) in [
+        ("A (Base-only return)   ", &r.outcomes_base_only, r.survival_rate_base_only_pct),
+        ("B (switch to WP3 shelter)", &r.outcomes_with_shelter, r.survival_rate_with_shelter_pct),
+    ] {
+        println!(
+            "       - Strategy {label}: safe {:>5} ({:.2}%) | flight-rule breach {:>5} | consumables lost {:>5} | not reached {:>5}",
+            o.safe, pct, o.flight_rule_breach, o.consumables_lost, o.destination_not_reached
+        );
+    }
+    println!("       - Switch to WP3 triggered in {} trials", r.switched_to_shelter);
+    println!("       - By max simultaneous hazards (trials | safe with WP3 | safe Base-only):");
+    for k in 0..5 {
+        println!(
+            "           {k} hazards: {:>5} | {:>5} | {:>5}",
+            r.trials_by_max_concurrent_hazards[k],
+            r.safe_with_shelter_by_max_concurrent[k],
+            r.safe_base_only_by_max_concurrent[k]
+        );
+    }
     assert!(
-        chaos_report.survived_with_wp3_shelter > chaos_report.survived_base_only,
+        r.survived_with_wp3_shelter > r.survived_base_only,
         "WP3 Cliff Shelter must deliver superior survival over Base-only return"
     );
     println!("\n[DECISION] PRE-EVA MISSION CLEARANCE: GO FOR EVA-07.");
@@ -283,13 +262,13 @@ fn main() {
         h1_dust_storm: false,
         h2_spe_radiation: false,
         h3_regolith_slope: false,
-        h4_nlos_offline: false,
+        h4_nlos_offline: radio_shadow(rssi_wp1),
         dust_tau: DUST_TAU_NOMINAL,
         wind_speed_ms: 6.2,
         spe_dose_rate_msv_h: GCR_SURFACE_RATE_MSV_H,
-        rssi_dbm: wp1_cell.los_base_rssi_dbm,
+        rssi_dbm: rssi_wp1,
     };
-    let t40 = sample_at(&timeline, 40); // ISRU work at WP1
+    let t40 = timeline_at(&pre_timeline, 40)?; // ISRU work at WP1
     let nominal_telem = PlssTelemetry {
         timestamp_s: t40.timestamp_s(),
         o2_remaining_liters: t40.o2_remaining_liters(),
@@ -364,14 +343,14 @@ fn main() {
 
     // 1. NLOS Radio Drop
     println!(
-        "\n[COMM] Base Habitat UHF signal drops behind the terrain spur (no DTM line of sight):"
+        "\n[COMM] Base Habitat S-band link drops behind the terrain spur (P1 grid level, knife-edge diffraction):"
     );
     println!(
         "       RSSI = {:.1} dBm (Threshold: {:.1} dBm)",
-        wp2_cell.los_base_rssi_dbm, NLOS_RSSI_THRESHOLD_DBM
+        rssi_wp2, NLOS_RSSI_THRESHOLD_DBM
     );
     assert!(
-        wp2_cell.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM,
+        radio_shadow(rssi_wp2),
         "WP2 must be in NLOS radio shadow"
     );
     zenoh_buffer.set_nlos_mode(true);
@@ -535,11 +514,11 @@ fn main() {
 
     // Guardrail Caution evaluation
     let mut caution_hazards = nominal_hazards.clone();
-    caution_hazards.h4_nlos_offline = true;
-    caution_hazards.rssi_dbm = wp2_cell.los_base_rssi_dbm;
+    caution_hazards.h4_nlos_offline = radio_shadow(rssi_wp2);
+    caution_hazards.rssi_dbm = rssi_wp2;
     caution_hazards.h3_regolith_slope = true;
 
-    let t98 = sample_at(&timeline, 98); // WP2 ramp peak
+    let t98 = timeline_at(&pre_timeline, 98)?; // WP2 ramp peak
     let caution_telem = PlssTelemetry {
         timestamp_s: t98.timestamp_s(),
         o2_remaining_liters: t98.o2_remaining_liters(),
@@ -600,136 +579,90 @@ fn main() {
         WP2_RAMP_SLOPE_DEG, wp2_cell.thermal_inertia_tiu
     );
     println!(
-        "        4. H4 (NLOS Offline)    : RSSI = {:.1} dBm, no line of sight to the Base",
-        wp2_cell.los_base_rssi_dbm
+        "        4. H4 (Radio shadow)    : S band {:.1} dBm < {:.0} dBm (P1 grid level at WP2)",
+        rssi_wp2, NLOS_RSSI_THRESHOLD_DBM
     );
 
-    let t105_hazards = ActiveHazards {
-        h1_dust_storm: true,
-        h2_spe_radiation: true,
-        h3_regolith_slope: true,
-        h4_nlos_offline: true,
-        dust_tau: DUST_TAU_STORM,
-        wind_speed_ms: 28.0,
-        spe_dose_rate_msv_h: SPE_PEAK_ENVELOPE_MSV_H,
-        rssi_dbm: wp2_cell.los_base_rssi_dbm,
-    };
-
-    let t105 = sample_at(&timeline, 105);
-    let t105_telemetry = PlssTelemetry {
-        timestamp_s: t105.timestamp_s(),
-        o2_remaining_liters: t105.o2_remaining_liters(),
-        lcvg_water_remaining_min: 75.0,
-        battery_remaining_min: 90.0,
-        current_o2_rate_l_min: t105.o2_rate_l_min as f32,
-        cumulative_rad_msv: t105.dose_spe_msv as f32,
-        mission_rad_limit_msv: EVA_SPE_DOSE_BUDGET_MSV, // Full 2 mSv SPE budget per EVA.
-        heart_rate_bpm: 162,
-    };
-
-    let remaining_rad_budget =
-        t105_telemetry.mission_rad_limit_msv - t105_telemetry.cumulative_rad_msv;
-    // P1 "open sky" convention while walking: exposure factor 1.0 (not the DTM SVF of the route).
-    let open_svf = phase_at(105.0).dose_factor;
-    let effective_open_rad_rate = (t105_hazards.spe_dose_rate_msv_h as f64) * open_svf;
-    let t_rad_limit_min = (remaining_rad_budget as f64 / effective_open_rad_rate) * 60.0;
-
-    println!(
-        "\n[METRICS] LIFE-SUPPORT BUDGET UNDER {:.1} mSv/h SPE RADIATION:",
-        SPE_PEAK_ENVELOPE_MSV_H
-    );
-    println!(
-        "        - Remaining Radiation Budget : {:.1} mSv",
-        remaining_rad_budget
-    );
-    println!(
-        "        - Effective Open-Sky Rad Rate: {:.1} mSv/h (SVF = {:.2})",
-        effective_open_rad_rate, open_svf
-    );
-    println!(
-        "        - Open-sky time to SPE budget: {:.1} min (flight rule; not acutely lethal)",
-        t_rad_limit_min
-    );
-
-    // Setup D* Lite graph for Dynamic Goal Switching calculation
-    let cells_vec: Vec<HexCellState64B> = corridor_cells.clone();
-    let mut h3_to_idx = std::collections::HashMap::new();
-    for (i, c) in cells_vec.iter().enumerate() {
-        h3_to_idx.insert(c.h3_index, i);
-    }
-    let mut adj = vec![Vec::new(); cells_vec.len()];
-    for (i, c) in cells_vec.iter().enumerate() {
-        for (nbr_h3, dist_m) in grid.neighbor_edges(c.h3_index) {
-            if let Some(&j) = h3_to_idx.get(&nbr_h3) {
-                adj[i].push((j, dist_m));
-            }
-        }
-    }
-
-    let mut dstar = MetabolicDStarPlanner::new(cells_vec, adj);
-
-    let base_wp = &waypoints[0];
-    let wp3_wp = &waypoints[3];
-    let base_cell = grid
-        .nearest_cell(base_wp.lat_deg, base_wp.lon_deg)
-        .expect("Base cell");
-    let wp3_cell = grid
-        .nearest_cell(wp3_wp.lat_deg, wp3_wp.lon_deg)
-        .expect("WP3 cell");
-
-    println!("\n[D* LITE] Zero-Allocation D* Lite evaluates Walkback Limit Dual...");
+    // T+105 decision on P1's real terrain (H3 res 12, DTM CTX 20 m): same computation as
+    // `data/mission-scenarios/planner_walkback.json` (red_atlas_core::mission).
+    println!("\n[D* LITE] D* Lite evaluates the Walkback Limit Dual on P1 terrain...");
     let dgs_start = std::time::Instant::now();
-    let (walkback_status, escape_path) = dstar.evaluate_walkback_and_switch(
-        wp2_cell.h3_index,
-        base_cell.h3_index,
-        wp3_cell.h3_index,
-        &t105_telemetry,
-        &t105_hazards,
-    );
-    let dgs_elapsed_ms = dgs_start.elapsed().as_secs_f64() * 1000.0;
+    let walkback_run = compute_t105_walkback(
+        &real_grid,
+        P1_GRID_PARQUET_REL,
+        Some(DECISION_CORRIDOR_HALF_WIDTH_M),
+    )?;
     println!(
-        "        - Measured evaluation time      : {:.3} ms (target < 10 ms)",
-        dgs_elapsed_ms
+        "        - Corridor (+/-{:.0} m) extraction + planner graph + replanning: {:.1} ms \
+         (replanning alone: see p1_res12_decision_latency)",
+        DECISION_CORRIDOR_HALF_WIDTH_M,
+        dgs_start.elapsed().as_secs_f64() * 1000.0
     );
+    let t105_hazards = walkback_run.hazards.clone();
+    let t105_telemetry = walkback_run.telemetry.clone();
+    let walkback_status = walkback_run.decision.status;
+    let wb = &walkback_run.report;
+    let wp3_wp = &waypoints[3];
+    let wp3_cell = *real_grid
+        .get_cell(walkback_run.wp3_h3)
+        .ok_or("WP3 cell missing from the P1 grid")?;
 
-    if let Some(path) = &escape_path {
-        let path_len_m: f64 = path
-            .path_h3
-            .windows(2)
-            .map(|w| geodesic_distance_m(w[0], w[1]))
-            .sum();
+    println!("\n[METRICS] FIGURES USED BY THE DECISION (SPE envelope {:.1} mSv/h x cell SVF):", wb.spe_rate_envelope_msv_h);
+    println!(
+        "        - SPE dose so far / budget     : {:.3} / {:.1} mSv (remaining {:.3} mSv)",
+        wb.dose_accumulated_msv, wb.dose_budget_msv, wb.remaining_dose_budget_msv
+    );
+    println!(
+        "        - T_vital                      : {:.1} min = min(O2 {:.0}, cooling {:.0}, battery {:.0}, radiation {:.1} at cell SVF {:.2})",
+        wb.t_vital_min, wb.t_vital_o2_min, wb.t_vital_lcvg_min, wb.t_vital_battery_min,
+        wb.t_vital_radiation_min, wb.current_cell_svf
+    );
+    for (label, rt) in [
+        ("WP2 -> WP3 (emergency escape: 1.25 m/s, 650 W)", &wb.wp3),
+        ("WP2 -> Base (sustained return: 585 W, visibility-limited 1.0 m/s)", &wb.base),
+    ] {
+        println!("\n        [ROUTE] {label}");
         println!(
-            "        - Escape path to WP3            : {} cells, {:.0} m along the hex grid",
-            path.path_h3.len(),
-            path_len_m
+            "          length: {:.0} m on the cell chain ({} cells) -> {:.0} m walked ({} corners)",
+            rt.raw_length_m, rt.cells, rt.length_m, rt.corners
         );
+        println!(
+            "          time {:.1} min | mean speed {:.2} m/s | mean power {:.0} W | O2 {:.1} L | arrival T+{:.1}",
+            rt.time_min, rt.mean_speed_mps, rt.mean_power_w, rt.o2_liters, rt.arrival_t_min
+        );
+        println!(
+            "          grade: down<-5 {:.0}% | -5..5 {:.0}% | 5..10 {:.0}% | >10 {:.0}% | max +{:.1} / {:.1} deg | power-capped {:.0}% of length",
+            rt.grade_down_lt_minus5_pct, rt.grade_minus5_to_5_pct, rt.grade_5_to_10_pct,
+            rt.grade_gt_10_pct, rt.grade_max_up_deg, rt.grade_max_down_deg, rt.power_capped_pct
+        );
+        println!("          projected SPE dose en route (decision model): {:.3} mSv", rt.dose_spe_msv);
     }
     println!(
-        "        - T_vital                       : {:.1} min",
-        walkback_status.t_vital_min
+        "\n        - Decision: time rule (T_base {:.1} > {:.2} x T_vital {:.1} and T_WP3 < T_base) = {} | \
+         radiation rule (Base dose {:.3} > remaining {:.3} and WP3 dose < {:.2} x Base dose) = {}",
+        wb.base.time_min, wb.safety_factor, wb.t_vital_min, wb.time_switch,
+        wb.base.dose_spe_msv, wb.remaining_dose_budget_msv, wb.radiation_switch_ratio, wb.rad_switch
     );
     println!(
-        "        - T_walkback to Base Habitat    : {:.1} min (Base Feasible: {})",
-        walkback_status.t_walkback_base_min, walkback_status.base_feasible
+        "        - Reference only (not used to decide): open-sky window {:.1} min = remaining budget at {:.1} mSv/h, factor 1.0",
+        wb.open_sky_window_min, wb.spe_rate_envelope_msv_h
     );
     println!(
-        "        - T_walkback to WP3 Cliff Shelter: {:.1} min",
-        walkback_status.t_walkback_shelter_min
+        "        - WP3 escape {:.1} min: within T_vital {} | within open-sky window {}",
+        wb.wp3.time_min, wb.wp3_within_t_vital, wb.wp3_within_open_sky_window
     );
     println!(
-        "        -> Active Target Goal           : {:?}",
-        walkback_status.active_target
-    );
-    println!(
-        "        -> Dynamic Goal Switched        : {}",
-        walkback_status.dynamic_goal_switched
+        "        -> Active Target Goal           : {:?} (switched: {}, Base feasible: {})",
+        walkback_status.active_target, walkback_status.dynamic_goal_switched, walkback_status.base_feasible
     );
 
     assert_eq!(walkback_status.active_target, TargetGoal::Wp3Shelter);
     assert!(walkback_status.dynamic_goal_switched);
     assert!(!walkback_status.base_feasible);
+    // Full timeline with the escape computed by the planner (time and mean power).
+    let timeline = full_timeline(&wb.wp3);
     println!("\n[DECISION] DYNAMIC GOAL SWITCHING TRIGGERED:");
-    println!("           Base Habitat unreachable under SPE radiation flux (T_base >> T_rad_limit).");
+    println!("           Base return exceeds 0.85 x T_vital and its projected SPE dose exceeds the remaining budget.");
     println!("           Target autonomously switched to WP3 Cliff Shelter (85% SPE shielding).");
 
     // Single-Alert Fusion Triage & Guardrail
@@ -843,12 +776,12 @@ fn main() {
         sheltered_rad_rate
     );
 
-    // Shelter hold T+114..T+165 under the nominal (calibrated ramp) SPE profile.
-    let t165 = sample_at(&timeline, 165);
+    // Shelter hold T+114.4..T+165 under the nominal (calibrated ramp) SPE profile.
+    let t165 = timeline_at(&timeline, 165)?;
     let final_cumulative_rad = t165.dose_spe_msv;
     println!(
-        "          - SPE Dose at WP3 Arrival    : {:.2} mSv (T+113)",
-        sample_at(&timeline, 113).dose_spe_msv
+        "          - SPE Dose at WP3 Arrival    : {:.2} mSv (T+114)",
+        timeline_at(&timeline, 114)?.dose_spe_msv
     );
     println!(
         "          - Final Cumulative EVA Dose  : {:.2} mSv at T+165 (Mission Limit: {:.1} mSv)",
@@ -889,7 +822,7 @@ fn main() {
 
     // Replay Zenoh CRDT Ring-Buffer upon drone/repeater recovery
     println!("\n[COMM]    Aerial drone repeater establishes line-of-sight with WP3 alcove!");
-    println!("          Zenoh UHF session restored: dropping AUTONOMOUS_NLOS flag...");
+    println!("          Zenoh S-band session restored via the repeater: dropping AUTONOMOUS_NLOS flag...");
     zenoh_buffer.set_nlos_mode(false);
 
     // Push emergency and sheltered telemetry frames
@@ -916,7 +849,7 @@ fn main() {
         "Must replay buffered science samples"
     );
 
-    print_timeline_vs_p1(&timeline, &walkback_status, t_rad_limit_min);
+    print_timeline_vs_p1(&timeline, wb)?;
 
     print_separator();
     println!("  MISSION STATUS: EVA-07 Melas Chasma Survival Simulation COMPLETED.");
@@ -924,31 +857,34 @@ fn main() {
     println!("  ALL 5 ACTS VERIFIED GREEN: Pre-EVA Chaos Mode -> WP1 ISRU -> WP2 Canyon-TRN ->");
     println!("                             Act 4 Multi-Hazard Fusion -> Act 5 WP3 Shelter Survival.");
     print_separator();
+    Ok(())
 }
 
 /// Prints the EVA-07 milestones (power, O2 left, SPE dose) next to P1's reference timeline and
 /// checks that O2 and dose agree within tolerance. Walkback times are reported, not forced.
-fn print_timeline_vs_p1(
-    timeline: &[TimelineSample],
-    walkback: &WalkbackDualStatus,
-    t_rad_limit_min: f64,
-) {
+fn print_timeline_vs_p1(timeline: &[TimelineSample], wb: &WalkbackReport) -> Result<(), String> {
     print_banner("TIMELINE", "EVA-07 MILESTONES vs P1 REFERENCE (eva07_events.json)");
-    let events: serde_json::Value =
-        serde_json::from_str(P1_EVENTS_JSON).expect("P1 eva07_events.json must parse");
+    let events: serde_json::Value = serde_json::from_str(P1_EVENTS_JSON)
+        .map_err(|e| format!("P1 eva07_events.json does not parse: {e}"))?;
+    let list = events["events"]
+        .as_array()
+        .ok_or("P1 eva07_events.json has no events[] array")?;
     println!(
         "  {:>5}  {:<24} {:>8} {:>8} {:>8} {:>9} {:>9}",
         "T", "Milestone", "Power W", "O2 %", "P1 O2 %", "Dose mSv", "P1 mSv"
     );
     let mut max_o2_diff: f64 = 0.0;
     let mut max_dose_diff: f64 = 0.0;
-    for event in events["events"].as_array().expect("events[]") {
-        let t = event["t_min"].as_i64().expect("t_min") as i32;
+    for event in list {
         let id = event["id"].as_str().unwrap_or("?");
+        let field = |v: &serde_json::Value, name: &str| {
+            v.as_f64().ok_or_else(|| format!("P1 event {id}: missing numeric {name}"))
+        };
+        let t = field(&event["t_min"], "t_min")? as i32;
         let values = &event["values"];
-        let ref_o2 = values["o2_remaining_pct"].as_f64().expect("o2_remaining_pct");
-        let ref_dose = values["dose_spe_msv"].as_f64().expect("dose_spe_msv");
-        let sim = sample_at(timeline, t);
+        let ref_o2 = field(&values["o2_remaining_pct"], "o2_remaining_pct")?;
+        let ref_dose = field(&values["dose_spe_msv"], "dose_spe_msv")?;
+        let sim = timeline_at(timeline, t)?;
         max_o2_diff = max_o2_diff.max((sim.o2_remaining_pct() - ref_o2).abs());
         max_dose_diff = max_dose_diff.max((sim.dose_spe_msv - ref_dose).abs());
         println!(
@@ -963,26 +899,27 @@ fn print_timeline_vs_p1(
     assert!(max_o2_diff < O2_PCT_TOLERANCE, "O2 timeline diverges from P1");
     assert!(max_dose_diff < DOSE_MSV_TOLERANCE, "SPE dose timeline diverges from P1");
 
-    let t105_ref = events["events"]
-        .as_array()
-        .and_then(|e| e.iter().find(|ev| ev["id"] == "dynamic_goal_switching"))
+    let t105_ref = list
+        .iter()
+        .find(|ev| ev["id"] == "dynamic_goal_switching")
         .map(|ev| &ev["values"])
-        .expect("dynamic_goal_switching event");
-    println!("\n  Walkback at T+105 (D* Lite on the synthetic corridor vs P1 reference):");
+        .ok_or("P1 eva07_events.json has no dynamic_goal_switching event")?;
+    println!("\n  Walkback at T+105 (engine: planner_walkback.json, which P1's validator reads):");
     println!(
-        "    - To Base : {:>5.1} min (P1 {:.1} min over the {:.0} m safe route)",
-        walkback.t_walkback_base_min,
-        t105_ref["base_time_min"].as_f64().unwrap_or(f64::NAN),
-        red_atlas_shared::WP2_BASE_SAFE_ROUTE_M
+        "    - To Base : {:>6.2} min over {:.0} m walked (P1 {:.1} min)",
+        wb.base.time_min,
+        wb.base.length_m,
+        t105_ref["base_time_min"].as_f64().unwrap_or(f64::NAN)
     );
     println!(
-        "    - To WP3  : {:>5.1} min (P1 {:.1} min over {:.0} m)",
-        walkback.t_walkback_shelter_min,
-        t105_ref["wp3_time_min"].as_f64().unwrap_or(f64::NAN),
-        SURVIVAL_TRIANGLE_LEGS[ESCAPE_LEG_WP2_WP3].distance_m
+        "    - To WP3  : {:>6.2} min over {:.0} m walked (P1 {:.1} min)",
+        wb.wp3.time_min,
+        wb.wp3.length_m,
+        t105_ref["wp3_time_min"].as_f64().unwrap_or(f64::NAN)
     );
     println!(
-        "    - Open-sky radiation window: {:.1} min (P1 15 min); D* Lite T_vital with cell SVF: {:.1} min",
-        t_rad_limit_min, walkback.t_vital_min
+        "    - T_vital {:.1} min (used to decide) | open-sky window {:.1} min (reference, P1 15 min)",
+        wb.t_vital_min, wb.open_sky_window_min
     );
+    Ok(())
 }

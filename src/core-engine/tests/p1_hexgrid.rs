@@ -72,14 +72,20 @@ fn p1_res12_grid_matches_survival_triangle() {
     println!("Loaded {} P1 cells at res {} in {load_ms:.0} ms", grid.len(), grid.res);
 
     // SCHEMA_HEXGRID.md §1 and §6.
+    // No fixed row counts: they change whenever P1 regenerates the grid.
     assert_eq!(grid.res, 12);
-    assert_eq!(grid.len(), 141_313);
+    assert!(!grid.is_empty());
     assert!(grid.all_cells().all(|c| c.verify_crc() && h3_resolution(c.h3_index) == Some(12)));
+    // TIU and H2O exist only inside P1's scenario discs: NULL elsewhere loads as CELL_NO_DATA
+    // (never 0), and every non-null value is one of the scenario values.
     let tiu_null = grid.all_cells().filter(|c| is_no_data(c.thermal_inertia_tiu)).count();
     let h2o_null = grid.all_cells().filter(|c| is_no_data(c.isru_h2o_pct)).count();
-    assert_eq!(tiu_null, 139_978, "P1 NULL TIU must load as CELL_NO_DATA, not 0");
-    assert_eq!(h2o_null, 141_020);
-    assert!(grid.all_cells().all(|c| is_no_data(c.roughness_hi)));
+    assert!(tiu_null > 0 && tiu_null < grid.len(), "P1 NULL TIU must load as CELL_NO_DATA, not 0");
+    assert!(h2o_null > 0 && h2o_null < grid.len());
+    let scenario_tiu: Vec<f32> = red_atlas_shared::SURVIVAL_TRIANGLE_SITE.iter().map(|s| s.thermal_inertia_tiu).collect();
+    assert!(grid.all_cells().all(|c| is_no_data(c.thermal_inertia_tiu)
+        || scenario_tiu.iter().any(|&t| (t - c.thermal_inertia_tiu).abs() < 1e-3)));
+    assert!(grid.all_cells().all(|c| is_no_data(c.isru_h2o_pct) || (c.isru_h2o_pct - 12.0).abs() < 1e-4));
     assert!(grid.all_cells().all(|c| c.los_base_rssi_dbm.is_finite()));
 
     let geo = load_geojson();
@@ -105,7 +111,10 @@ fn p1_res12_grid_matches_survival_triangle() {
     assert!((wp1.isru_h2o_pct - 12.0).abs() < 1e-4 && wp1.hazard_bitmask & HAZARD_FLAG_ISRU_WATER != 0);
     let wp2 = grid.get_cell(node_cell["WP2"]).unwrap();
     assert!(wp2.hazard_bitmask & HAZARD_FLAG_REGOLITH_TRAP != 0);
-    assert!(wp2.los_base_rssi_dbm < NLOS_RSSI_THRESHOLD_DBM && wp2.hazard_bitmask & HAZARD_FLAG_NLOS != 0);
+    // NLOS comes from P1's flag; the RSSI value is whatever P1's link model (or, if NULL, the
+    // engine's) gives, so only its presence is checked.
+    assert!(wp2.hazard_bitmask & HAZARD_FLAG_NLOS != 0 && wp2.los_base_rssi_dbm.is_finite());
+    println!("WP2 RSSI {:.1} dBm (NLOS threshold {NLOS_RSSI_THRESHOLD_DBM})", wp2.los_base_rssi_dbm);
     let wp3 = grid.get_cell(node_cell["WP3"]).unwrap();
     assert!((wp3.sky_view_factor - 0.15).abs() < 1e-4 && wp3.hazard_bitmask & HAZARD_FLAG_SHELTER != 0);
 
@@ -132,9 +141,14 @@ fn p1_res12_grid_matches_survival_triangle() {
     }
     assert_eq!(checked, 4, "the four triangle legs must be in the GeoJSON");
 
-    // Spyglass on real cells: 100 m ≈ k 10 around WP1.
+    // Spyglass on real cells: 100 m ≈ k 10 around WP1 returns every k-ring cell of the grid.
     let slice = grid.query_spyglass_sectors(node_cell["WP1"], 10);
-    assert_eq!(slice.crism_water_cells.len(), 331);
+    let in_grid = red_atlas_core::h3_mars_grid::k_ring(node_cell["WP1"], 10)
+        .into_iter()
+        .filter(|h| grid.get_cell(*h).is_some())
+        .count();
+    assert_eq!(slice.crism_water_cells.len(), in_grid);
+    assert!(in_grid > 300, "WP1 should be well inside the grid");
 }
 
 /// Planner on the real terrain (reported, with loose sanity asserts). Run with `--nocapture`
@@ -165,29 +179,50 @@ fn p1_res12_grid_supports_dstar_escape() {
         spe_dose_rate_msv_h: SPE_PEAK_ENVELOPE_MSV_H,
         rssi_dbm: grid.get_cell(wp2).unwrap().los_base_rssi_dbm,
     };
-    let weights = CostWeights::default();
-
-    for (label, goal, straight_m) in [("WP2->WP3", wp3, 595.4), ("WP2->Base", base, 2148.2)] {
+    for (label, goal, straight_m, weights) in [
+        ("WP2->WP3", wp3, 595.4, CostWeights::emergency_escape()),
+        ("WP2->Base", base, 2148.2, CostWeights::default()),
+    ] {
         let t = Instant::now();
         let path = planner
             .plan_path(wp2, goal, &hazards, &weights)
             .unwrap_or_else(|| panic!("{label}: no path on the real grid"));
         let ms = t.elapsed().as_secs_f64() * 1e3;
-        let len_m: f64 = path
-            .path_h3
-            .windows(2)
-            .map(|w| geodesic_distance_m(w[0], w[1]))
-            .sum();
+        let len_m = path.length_m;
         println!(
-            "{label}: {} cells, {len_m:.0} m along the grid ({straight_m} m straight), {:.1} min, \
-             {:.2} L O2, {:.3} mSv, planned in {ms:.0} ms (graph {graph_ms:.0} ms)",
+            "{label}: {} cells, raw {:.0} m, walked {len_m:.0} m ({} corners; {straight_m} m straight), \
+             {:.1} min, {:.2} m/s, {:.0} W, {:.2} L O2, {:.3} mSv, planned in {ms:.0} ms (graph {graph_ms:.0} ms)",
             path.path_h3.len(),
+            path.raw_length_m,
+            path.smoothed_h3.len(),
             path.estimated_time_min,
+            path.mean_speed_mps(),
+            path.mean_power_w(),
             path.estimated_o2_liters,
             path.estimated_rad_msv,
         );
         assert!(path.estimated_time_min.is_finite() && path.total_cost.is_finite());
         assert!(len_m >= straight_m - 11.0, "{label}: path shorter than the straight line");
+        assert!(len_m <= path.raw_length_m + 1e-6, "{label}: smoothing must not lengthen the path");
+        let raw_len: f64 = path.path_h3.windows(2).map(|w| geodesic_distance_m(w[0], w[1])).sum();
+        assert!((raw_len - path.raw_length_m).abs() < 1e-6);
+        // Walked-grade sanity: the integrated grade reproduces the DTM height difference.
+        let dz: f64 = path.profile.iter().map(|s| s.step_m * s.grade_deg.to_radians().tan()).sum();
+        let z0 = grid.get_cell(wp2).unwrap().elev_m as f64;
+        let z1 = grid.get_cell(goal).unwrap().elev_m as f64;
+        println!("{label}: integrated grade dz {dz:.1} m vs DTM {:.1} m", z1 - z0);
+        // Guards the sign and scale of the edge grade on real data (aspect = downhill azimuth):
+        // a flipped sign would give +55 m instead of -55 m.
+        assert!(
+            (dz - (z1 - z0)).abs() < 0.05 * (z1 - z0).abs() + 1.0,
+            "{label}: integrated grade {dz:.1} m does not reproduce the DTM drop {:.1} m",
+            z1 - z0
+        );
+        // The walked route only steps on transitable cells with elevation.
+        for s in &path.profile {
+            let c = grid.get_cell(s.h3).expect("walked cell is in the grid");
+            assert!(!is_no_data(c.elev_m) && c.slope_deg <= red_atlas_shared::UNPASSABLE_SLOPE_DEG);
+        }
     }
 }
 
@@ -232,4 +267,189 @@ fn p1_res12_edge_slope_diagnostic() {
          NLOS cells {nlos}, with filled RSSI >= -100 dBm {nlos_rssi_ok}",
         100.0 * flat as f64 / total as f64
     );
+}
+
+fn median_p95(mut v: Vec<f64>) -> (f64, f64) {
+    v.sort_by(f64::total_cmp);
+    let pick = |q: f64| v[((v.len() - 1) as f64 * q).round() as usize];
+    (pick(0.5), pick(0.95))
+}
+
+/// Reproducible query timing on the real res-12 grid held in memory. Run in release:
+/// `cargo test --release --test p1_hexgrid -- --ignored --nocapture p1_res12_query_benchmark`
+#[test]
+#[ignore]
+fn p1_res12_query_benchmark() {
+    if cfg!(debug_assertions) {
+        panic!("run the benchmark with --release (debug timings are not representative)");
+    }
+    let path = repo_path("data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet");
+
+    // 1. Full Parquet load (file already in the OS page cache after the first run).
+    let mut load_ms = Vec::new();
+    let mut grid = None;
+    for _ in 0..12 {
+        let t = Instant::now();
+        let g = H3MarsGrid::load_p1_parquet(&path).expect("load");
+        load_ms.push(t.elapsed().as_secs_f64() * 1e3);
+        grid = Some(g);
+    }
+    let grid = grid.unwrap();
+    load_ms.remove(0); // first run warms the page cache
+
+    // Deterministic sample of query centers: every 97th cell in index order.
+    let mut ids: Vec<u64> = grid.all_cells().map(|c| c.h3_index).collect();
+    ids.sort_unstable();
+    let centers: Vec<u64> = ids.iter().step_by(97).copied().collect();
+
+    // 2. Cell lookup by H3 index.
+    let mut lookup_us = Vec::with_capacity(centers.len());
+    let mut sink = 0f64;
+    for &h in &centers {
+        let t = Instant::now();
+        let c = std::hint::black_box(grid.get_cell(std::hint::black_box(h)));
+        lookup_us.push(t.elapsed().as_secs_f64() * 1e6);
+        sink += c.map_or(0.0, |c| if c.elev_m.is_finite() { c.elev_m as f64 } else { 0.0 });
+    }
+
+    // 3. Spyglass 100 m radius, three geometric sectors (only fully interior centers).
+    let mut spy_us = Vec::new();
+    let mut spy_cells = Vec::new();
+    for &h in &centers {
+        let t = Instant::now();
+        let s = std::hint::black_box(grid.query_spyglass_radius(h, 100.0));
+        let dt = t.elapsed().as_secs_f64() * 1e6;
+        let n = s.crism_water_cells.len() + s.themis_trap_cells.len() + s.mola_slope_svf_cells.len() - 2;
+        if n >= 300 {
+            spy_us.push(dt);
+            spy_cells.push(n as f64);
+        }
+    }
+
+    // 4. Spyglass by k-ring (k = 10, ≈ 100 m), the per-variable lists without sector split.
+    let mut ring_us = Vec::new();
+    for &h in &centers {
+        let t = Instant::now();
+        let s = std::hint::black_box(grid.query_spyglass_sectors(h, 10));
+        ring_us.push(t.elapsed().as_secs_f64() * 1e6);
+        sink += s.crism_water_cells.len() as f64;
+    }
+
+    let (lm, lp) = median_p95(load_ms.clone());
+    let (cm, cp) = median_p95(lookup_us.clone());
+    let (sm, sp) = median_p95(spy_us.clone());
+    let (rm, rp) = median_p95(ring_us.clone());
+    let (cells_med, _) = median_p95(spy_cells);
+    println!("P1 res-12 grid in memory: {} cells (sink {sink:.0})", grid.len());
+    println!("  Parquet full load        : n={:>4}  median {lm:8.1} ms  p95 {lp:8.1} ms", load_ms.len());
+    println!("  Cell by H3 index         : n={:>4}  median {cm:8.3} us  p95 {cp:8.3} us", lookup_us.len());
+    println!(
+        "  Spyglass 100 m, 3 sectors: n={:>4}  median {sm:8.1} us  p95 {sp:8.1} us  ({cells_med:.0} cells)",
+        spy_us.len()
+    );
+    println!("  Spyglass k-ring k=10     : n={:>4}  median {rm:8.1} us  p95 {rp:8.1} us", ring_us.len());
+}
+
+/// The search corridor of the T+105 decision gives exactly the routes of the full grid.
+#[test]
+fn p1_res12_decision_corridor_matches_full_grid() {
+    use red_atlas_core::mission::{compute_t105_walkback, DECISION_CORRIDOR_HALF_WIDTH_M, P1_GRID_PARQUET_REL};
+    let grid = load_res12();
+    let full = compute_t105_walkback(&grid, P1_GRID_PARQUET_REL, None).expect("full");
+    let corr = compute_t105_walkback(&grid, P1_GRID_PARQUET_REL, Some(DECISION_CORRIDOR_HALF_WIDTH_M))
+        .expect("corridor");
+    for (a, b) in [
+        (&full.decision.wp3_path, &corr.decision.wp3_path),
+        (&full.decision.base_path, &corr.decision.base_path),
+    ] {
+        // Equal-cost cell chains may break ties differently; the optimum (cost), the walked
+        // polyline and every exported figure must be identical.
+        let (a, b) = (a.as_ref().unwrap(), b.as_ref().unwrap());
+        assert!((a.total_cost - b.total_cost).abs() <= 1e-9 * a.total_cost.abs().max(1.0));
+        assert!((a.estimated_time_min - b.estimated_time_min).abs() < 1e-9);
+        assert!((a.length_m - b.length_m).abs() < 1e-9);
+        assert!((a.estimated_rad_msv - b.estimated_rad_msv).abs() < 1e-12);
+        assert_eq!(a.smoothed_h3, b.smoothed_h3, "corridor changed the walked route");
+    }
+    assert_eq!(full.decision.status, corr.decision.status);
+    assert!(red_atlas_core::mission::json_mismatch(
+        &serde_json::to_value(&full.report.wp3).unwrap(),
+        &serde_json::to_value(&corr.report.wp3).unwrap(),
+        1e-9
+    )
+    .is_none());
+}
+
+/// Release latency of the T+105 replanning (`evaluate_walkback_detailed`: two plans + smoothing)
+/// on a prebuilt planner, full grid vs decision corridor. Run:
+/// `cargo test --release --test p1_hexgrid -- --ignored --nocapture p1_res12_decision_latency`
+#[test]
+#[ignore]
+fn p1_res12_decision_latency() {
+    use red_atlas_core::mission::{t105_decision_inputs, DECISION_CORRIDOR_HALF_WIDTH_M};
+    if cfg!(debug_assertions) {
+        panic!("run with --release (debug timings are not representative)");
+    }
+    let grid = load_res12();
+    let node = |i: usize| {
+        let s = &red_atlas_shared::SURVIVAL_TRIANGLE_SITE[i];
+        grid.nearest_cell(s.lat_deg, s.lon_deg).unwrap().h3_index
+    };
+    let (base, wp2, wp3) = (node(0), node(2), node(3));
+    let (telemetry, hazards) = t105_decision_inputs(-100.0).unwrap();
+    for (label, g) in [
+        ("full grid", grid.clone()),
+        ("corridor", grid.corridor_around(wp2, &[base, wp3], DECISION_CORRIDOR_HALF_WIDTH_M)),
+    ] {
+        let t = Instant::now();
+        let (cells, adj) = g.planner_graph();
+        let build_ms = t.elapsed().as_secs_f64() * 1e3;
+        let mut planner = MetabolicDStarPlanner::new(cells, adj);
+        let mut ms = Vec::new();
+        for _ in 0..31 {
+            let t = Instant::now();
+            let d = std::hint::black_box(planner.evaluate_walkback_detailed(wp2, base, wp3, &telemetry, &hazards));
+            ms.push(t.elapsed().as_secs_f64() * 1e3);
+            assert!(d.status.dynamic_goal_switched);
+        }
+        ms.remove(0);
+        let (m, p) = median_p95(ms);
+        println!(
+            "{label:>9}: {} cells, graph build {build_ms:.0} ms (pre-EVA), replanning median {m:.2} ms p95 {p:.2} ms (n=30)",
+            g.len()
+        );
+    }
+}
+
+/// Diagnostic: narrowest corridor that keeps the full-grid routes (`--ignored --nocapture`).
+#[test]
+#[ignore]
+fn p1_res12_corridor_width_scan() {
+    use red_atlas_core::mission::{compute_t105_walkback, P1_GRID_PARQUET_REL};
+    let grid = load_res12();
+    let full = compute_t105_walkback(&grid, P1_GRID_PARQUET_REL, None).unwrap();
+    for w in [50.0, 100.0, 150.0, 200.0, 300.0, 400.0] {
+        let node = |i: usize| {
+            let st = &red_atlas_shared::SURVIVAL_TRIANGLE_SITE[i];
+            grid.nearest_cell(st.lat_deg, st.lon_deg).unwrap().h3_index
+        };
+        let sub = grid.corridor_around(node(2), &[node(0), node(3)], w);
+        let (cells, adj) = sub.planner_graph();
+        let mut planner = MetabolicDStarPlanner::new(cells, adj);
+        let (tel, hz) = red_atlas_core::mission::t105_decision_inputs(-100.0).unwrap();
+        let mut ms = Vec::new();
+        for _ in 0..11 {
+            let t = Instant::now();
+            std::hint::black_box(planner.evaluate_walkback_detailed(node(2), node(0), node(3), &tel, &hz));
+            ms.push(t.elapsed().as_secs_f64() * 1e3);
+        }
+        let (m, p) = median_p95(ms);
+        println!("w {w}: {} cells, replanning median {m:.2} ms p95 {p:.2} ms", sub.len());
+        let c = compute_t105_walkback(&grid, P1_GRID_PARQUET_REL, Some(w)).unwrap();
+        let same = |a: &Option<red_atlas_core::metabolic_dstar::PathResult>, b: &Option<red_atlas_core::metabolic_dstar::PathResult>| {
+            let (a, b) = (a.as_ref().unwrap(), b.as_ref().unwrap());
+            (a.path_h3 == b.path_h3, (a.total_cost - b.total_cost).abs(), (a.estimated_time_min - b.estimated_time_min).abs())
+        };
+        println!("w {w}: wp3 {:?} base {:?}", same(&full.decision.wp3_path, &c.decision.wp3_path), same(&full.decision.base_path, &c.decision.base_path));
+    }
 }

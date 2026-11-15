@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
@@ -17,6 +17,22 @@ function geojsonPlugin() {
   };
 }
 
+// La API Rust (`cargo run --bin api_server` en `src/core-engine`) y las teselas de Mars Trek
+// se sirven por proxy tanto en desarrollo (`npm run dev`) como con la aplicación compilada
+// (`npm run preview`). Un alojamiento estático necesita el mismo proxy y la redirección de las
+// rutas de la aplicación a `index.html`.
+const proxy: Record<string, ProxyOptions> = {
+  '/api': {
+    target: 'http://127.0.0.1:3001',
+    changeOrigin: true,
+  },
+  '/mars-trek': {
+    target: 'https://trek.nasa.gov',
+    changeOrigin: true,
+    rewrite: (p) => p.replace(/^\/mars-trek/, '/tiles/Mars/EQ'),
+  },
+};
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), geojsonPlugin()],
   resolve: {
@@ -24,57 +40,34 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@data': path.resolve(__dirname, '../../data'),
     },
+    dedupe: ['three'],
   },
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:3001',
-        changeOrigin: true,
-      },
-      '/nasa-rss': {
-        target: 'https://mars.nasa.gov',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/nasa-rss/, '/rss/api/'),
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.removeHeader('origin');
-            proxyReq.removeHeader('referer');
-            proxyReq.removeHeader('sec-fetch-site');
-            proxyReq.removeHeader('sec-fetch-mode');
-            proxyReq.removeHeader('sec-fetch-dest');
-            proxyReq.removeHeader('sec-ch-ua');
-            proxyReq.removeHeader('sec-ch-ua-mobile');
-            proxyReq.removeHeader('sec-ch-ua-platform');
-            proxyReq.setHeader('user-agent', 'curl/8.4.0');
-          });
+  optimizeDeps: {
+    include: [
+      'three',
+      'three/examples/jsm/controls/OrbitControls.js',
+      'three/examples/jsm/lines/Line2.js',
+      'three/examples/jsm/lines/LineGeometry.js',
+      'three/examples/jsm/lines/LineMaterial.js',
+    ],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+          react: ['react', 'react-dom'],
         },
-      },
-      '/nasa-raw-img': {
-        target: 'https://mars.nasa.gov',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/nasa-raw-img/, '/mars2020-raw-images'),
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.removeHeader('origin');
-            proxyReq.removeHeader('referer');
-            proxyReq.removeHeader('sec-fetch-site');
-            proxyReq.removeHeader('sec-fetch-mode');
-            proxyReq.removeHeader('sec-fetch-dest');
-            proxyReq.removeHeader('sec-ch-ua');
-            proxyReq.removeHeader('sec-ch-ua-mobile');
-            proxyReq.removeHeader('sec-ch-ua-platform');
-            proxyReq.setHeader('user-agent', 'curl/8.4.0');
-          });
-        },
-      },
-      '/mars-trek': {
-        target: 'https://trek.nasa.gov',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/mars-trek/, '/tiles/Mars/EQ'),
       },
     },
+  },
+  server: {
+    proxy,
     fs: {
       allow: [path.resolve(__dirname, '../..')],
     },
+  },
+  preview: {
+    proxy,
   },
 });

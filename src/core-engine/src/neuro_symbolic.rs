@@ -24,7 +24,7 @@ use red_atlas_shared::{
     WalkbackDualStatus, CRITICAL_SLOPE_DEG, DUST_TAU_AMBER, DUST_TAU_RED, LOW_TIU_TRAP_THRESHOLD,
     NLOS_RSSI_THRESHOLD_DBM, O2_RATE_AMBER_L_MIN, O2_RATE_RED_L_MIN, RSSI_AMBER_THRESHOLD_DBM,
     SLOPE_AMBER_DEG, TIU_AMBER_THRESHOLD, SPE_AMBER_RATE_MSV_H, SPE_CRITICAL_RATE_MSV_H, WALKBACK_SAFETY_FACTOR,
-    WIND_AMBER_M_S, WIND_RED_M_S,
+    WIND_AMBER_M_S, WIND_RED_M_S, O2_PRIMARY_RED_L,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -149,10 +149,11 @@ impl GuardrailFsm {
     ///    1. Radiation / O2 Depletion
     ///    2. Terrain Trap (critical slope > 20 deg, TIU < 150)
     ///    3. Dust Storm / Wind (tau > 2.0, wind > 20 m/s)
-    ///    4. NLOS Radio Shadow (RSSI <= -100 dBm)
-    ///    Red/amber thresholds come from P1's `data/mission-scenarios/eva_thresholds.json`
-    ///    via `red_atlas_shared`.
-    ///    Suppressing redundant popups into a single tactical directive with validated voice slots.
+    ///    4. NLOS Radio Shadow (RSSI < -100 dBm)
+    ///
+    /// Red/amber thresholds come from P1's `data/mission-scenarios/eva_thresholds.json`
+    /// via `red_atlas_shared`.
+    /// Suppressing redundant popups into a single tactical directive with validated voice slots.
     pub fn evaluate(
         &mut self,
         cell_slope_deg: f32,
@@ -171,17 +172,20 @@ impl GuardrailFsm {
             || hazards.dust_tau > DUST_TAU_RED
             || hazards.wind_speed_ms > WIND_RED_M_S;
 
+        // Red bands of P1 `eva_thresholds.json`: dose rate > 1.0 mSv/h, primary O2 < 30 % of the
+        // usable tank (167.9 L of 559.8 L), O2 rate > 1.75 L/min, slope > 20 deg, TIU < 150,
+        // RSSI < -100 dBm. Boundary values themselves are amber, as in the JSON.
         let h2_rad_o2 = hazards.h2_spe_radiation
-            || hazards.spe_dose_rate_msv_h >= SPE_CRITICAL_RATE_MSV_H
-            || telemetry.o2_remaining_liters < 100.0
+            || hazards.spe_dose_rate_msv_h > SPE_CRITICAL_RATE_MSV_H
+            || (telemetry.o2_remaining_liters as f64) < O2_PRIMARY_RED_L
             || telemetry.current_o2_rate_l_min > O2_RATE_RED_L_MIN;
 
         let h3_terrain = hazards.h3_regolith_slope
-            || cell_slope_deg >= CRITICAL_SLOPE_DEG
-            || cell_tiu <= LOW_TIU_TRAP_THRESHOLD;
+            || cell_slope_deg > CRITICAL_SLOPE_DEG
+            || cell_tiu < LOW_TIU_TRAP_THRESHOLD;
 
         let h4_nlos = hazards.h4_nlos_offline
-            || hazards.rssi_dbm <= NLOS_RSSI_THRESHOLD_DBM;
+            || hazards.rssi_dbm < NLOS_RSSI_THRESHOLD_DBM;
 
         let active_hazard_count =
             (h1_dust as u8) + (h2_rad_o2 as u8) + (h3_terrain as u8) + (h4_nlos as u8);
@@ -207,7 +211,7 @@ impl GuardrailFsm {
             || !walkback.base_feasible
             || (walkback.t_walkback_base_min > walkback.t_vital_min * WALKBACK_SAFETY_FACTOR)
             || (hazards.h2_spe_radiation
-                && hazards.spe_dose_rate_msv_h >= SPE_CRITICAL_RATE_MSV_H
+                && hazards.spe_dose_rate_msv_h > SPE_CRITICAL_RATE_MSV_H
                 && walkback.t_walkback_base_min > walkback.t_walkback_shelter_min);
 
         // Determine FSM State
@@ -675,11 +679,12 @@ mod tests {
             heart_rate_bpm: 135,
         };
 
-        // Base is 48 min away, while WP3 Shelter is 8 min away (leg L3: 600 m, bearing 344)
+        // Base is 47.6 min away, while WP3 Shelter is 9.4 min away (D* Lite on P1 terrain, L3 bearing 344)
         let walkback = WalkbackDualStatus {
             t_vital_min: 75.0,
-            t_walkback_base_min: 48.0,
-            t_walkback_shelter_min: 8.0,
+            // Fixture: figures of the T+105 planner run (data/mission-scenarios/planner_walkback.json).
+            t_walkback_base_min: 47.6,
+            t_walkback_shelter_min: 9.4,
             active_target: TargetGoal::Wp3Shelter,
             dynamic_goal_switched: true,
             base_feasible: false,
@@ -735,7 +740,7 @@ mod tests {
         // Ensure key numerical navigation guidance is present without hallucination
         assert!(voice_alert.contains("344"));
         assert!(voice_alert.contains("600"));
-        assert!(voice_alert.contains("8"));
+        assert!(voice_alert.contains("9 minutes"), "{voice_alert}");
     }
 
     #[test]

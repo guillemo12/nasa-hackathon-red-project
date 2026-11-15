@@ -30,7 +30,8 @@ WP2_SLOPE_DEG = 22.0             # [E] rampa local de escenario (cifra compartid
 WP2_SPEED_M_S = 0.55             # [D]
 WP2_TIU = 110.0                  # [E] → η 2,1
 WP2_SLIP = 0.30                  # [E]
-ESCAPE_SPEED_M_S = 1.25          # [D] marcha urgente WP2→WP3
+# Los topes de ritmo (huida 1,25 m/s y 650 W; retorno sostenido 1,0 m/s y 585 W) viven en
+# ``eva_thresholds.json`` (bloque ``constants``) y se leen con ``metabolic.pace_caps()``.
 CORNICE_ENTRY_SPEED_M_S = 0.5    # [E] trepada corta a la alcoba por el talud real del WP3
 ISRU_POWER_W = 250.0             # [E] trabajo ligero de muestreo en WP1 (cifra del canónico)
 REST_POWER_W = 130.0             # [E] reposo presurizado en el refugio (cifra del canónico)
@@ -50,10 +51,11 @@ O2_USABLE_G = 800.0              # [E] O₂ primario útil
 SUIT_PRESSURE_KPA = 29.6         # [E]
 
 # --- Rutas ------------------------------------------------------------------
-SAFE_RETURN_WP2_BASE_M = 2500.0  # [D] ruta segura D* Lite WP2→Base (rodeo 1,16 sobre 2.150 m)
-SAFE_RETURN_TIME_MIN = 48.0      # [D] tiempo canónico de esa ruta
-SAFE_RETURN_DETOUR = 1.16        # [D]
-WP3_ESCAPE_TIME_MIN = 8.0        # [D] 600 m a 1,25 m/s
+SAFE_RETURN_TIME_MIN = 48.0      # [D] cifra compartida: redondeo de los 47,6 min del planificador
+
+# Walkback Limit Dual en T+105: se lee del planificador D* Lite del motor Rust
+# (``engine_results.planner()``, ``data/mission-scenarios/planner_walkback.json``).
+ESCAPE_T0 = 105.0
 RETURN_ETA = 1.3                 # [E] terraza de la ruta segura (Base 320 TIU, evita <150 TIU)
 
 # --- Radiación --------------------------------------------------------------
@@ -82,11 +84,20 @@ NOMINAL_PROFILE = "rampa_calibrada"   # perfil de la serie nominal (dosis acumul
 PROJECTION_PROFILE = "envolvente"     # lo que el traje proyecta al detectar la SPE (regla)
 
 # --- Radio ------------------------------------------------------------------
-RADIO_FREQ_MHZ = 435.0           # [D] UHF
+# Enlace primario de datos Base–traje (sesión Zenoh): banda S, 2,4 GHz, 1 W. Es el que se
+# pierde tras el relieve. Decisión tomada con la malla real (data/nasa-layers/SCHEMA_HEXGRID.md):
+# con difracción de arista única sobre el DTM CTX, a 2,4 GHz el WP2 y el WP3 quedan en rojo
+# (−103,1 y −107,9 dBm), mientras que en UHF 435 MHz solo bajan a −81,0 y −85,7 dBm.
+RADIO_FREQ_MHZ = 2400.0          # [D] banda S, enlace primario de datos
 RADIO_TX_DBM = 30.0              # [D] 1 W
 RADIO_ANTENNA_GAIN_DBI = 0.0     # supuesto: antenas isótropas (el canónico no da ganancias)
-RADIO_DIFFRACTION_DB = 40.0      # [E] «20–30+ dB»: se toma 40 dB para que el NLOS dé < −100 dBm
+# [D] Difracción de arista única (ITU-R P.526) a 2,4 GHz sobre el DTM CTX de 20 m: 26,4 dB en
+# el WP2 y 33,8 dB en el WP3; se toma la media, 30 dB (antes 40 dB de escenario en UHF).
+RADIO_DIFFRACTION_DB = 30.0
 RADIO_MIN_DISTANCE_M = 10.0      # evita log(0) con el astronauta en la Base
+# Baliza UHF de baja tasa: sobrevive degradada tras el relieve; el sistema no depende de ella.
+RADIO_BEACON_FREQ_MHZ = 435.0    # [D] UHF
+RADIO_BEACON_TX_DBM = 30.0       # [D] 1 W
 NLOS_RED_PERSISTENCE_S = 60.0    # [D/E] NLOS > 60 s → rojo
 
 # --- Cronología -------------------------------------------------------------

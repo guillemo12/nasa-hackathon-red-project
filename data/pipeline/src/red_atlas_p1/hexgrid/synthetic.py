@@ -30,7 +30,8 @@ def layers(n_rows: int = 40, n_cols: int = 40, center=None, **overrides) -> dict
     * ``elev_m`` = identificador del píxel (fila·n_cols + columna): permite comprobar qué
       píxel alimenta cada celda.
     * ``slope_deg`` = 5°, ``aspect_deg`` = 90°, ``sky_view_factor`` = 0,8, LOS = 1 con margen
-      de 10 m, horizonte de 15° a 120°, THEMIS = 100 (en otra malla de 100 m).
+      de 10 m, horizonte de 15° a 120°, THEMIS = 100 (en otra malla de 100 m), rugosidad
+      0,5 m y RSSI −70 dBm (−72 a −68).
     * Escenario vacío (NaN) salvo lo que se pase en ``overrides`` como matriz.
     """
     t = grid_transform(n_rows, n_cols, center)
@@ -56,6 +57,13 @@ def layers(n_rows: int = 40, n_cols: int = 40, center=None, **overrides) -> dict
         "thermal_inertia_tiu_scenario": lay("thermal_inertia_tiu_scenario", full(np.nan),
                                             PROV_SCENARIO),
         "h2o_wt_pct_scenario": lay("h2o_wt_pct_scenario", full(np.nan), PROV_SCENARIO),
+        "roughness_m": lay("roughness_m", full(0.5), PROV_DERIVED),
+        "rssi_dbm": lay("rssi_dbm", full(-70.0), PROV_DERIVED),
+        "rssi_dbm_low": lay("rssi_dbm_low", full(-72.0), PROV_DERIVED),
+        "rssi_dbm_high": lay("rssi_dbm_high", full(-68.0), PROV_DERIVED),
+        "diffraction_db": lay("diffraction_db", full(0.0), PROV_DERIVED),
+        "rssi_uhf_dbm": lay("rssi_uhf_dbm", full(-55.0), PROV_DERIVED),
+        "diffraction_uhf_db": lay("diffraction_uhf_db", full(0.0), PROV_DERIVED),
     }
     for k, v in overrides.items():
         L[k].values = np.array(v, dtype=np.float64)

@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "generator": "cargo run --release --bin export_mission_results (src/core-engine)",
+  "seed": 42,
+  "trials": 10000,
+  "mars_solar_hour": 14.5,
+  "corridor": "synthetic Melas Chasma corridor, H3 res 11, cells sorted by index",
+  "corridor_cells": 1172,
+  "traverse_legs": 24,
+  "leg_minutes": 5.0,
+  "solar_activity_factor": 2.2,
+  "initial_o2_l": 559.8320503848845,
+  "o2_switch_threshold_l": 167.94961511546535,
+  "dose_budget_msv": 2.0,
+  "criterion": "mision segura = reaches a destination (Base, or WP3 shelter when switching is allowed) with SPE dose <= 2 mSv and primary O2 left; otherwise the most severe of: consumables lost > destination not reached > flight-rule breach (dose > 2 mSv)",
+  "limitations": "cells sampled by position in the sorted corridor, not along a planned route; only primary O2 modelled as consumable; escape to the shelter = 1 leg at 0.55 of the open-sky dose; Base return = 14 nominal legs from leg 6",
+  "report": {
+    "trials": 10000,
+    "survived_with_wp3_shelter": 9602,
+    "survived_base_only": 2384,
+    "survival_rate_with_shelter_pct": 96.02,
+    "survival_rate_base_only_pct": 23.84,
+    "multi_hazard_events_triggered": 23338,
+    "outcomes_with_shelter": {
+      "safe": 9602,
+      "flight_rule_breach": 396,
+      "consumables_lost": 0,
+      "destination_not_reached": 2
+    },
+    "outcomes_base_only": {
+      "safe": 2384,
+      "flight_rule_breach": 3132,
+      "consumables_lost": 0,
+      "destination_not_reached": 4484
+    },
+    "switched_to_shelter": 9610,
+    "trials_by_max_concurrent_hazards": [
+      0,
+      419,
+      4104,
+      4679,
+      798
+    ],
+    "safe_with_shelter_by_max_concurrent": [
+      0,
+      413,
+      4061,
+      4410,
+      718
+    ],
+    "safe_base_only_by_max_concurrent": [
+      0,
+      291,
+      1545,
+      510,
+      38
+    ]
+  }
+}

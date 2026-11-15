@@ -127,7 +127,8 @@ pub const METABOLIC_LEVEL_COEF: f64 = 0.285;
 /// Muscular efficiency of the climbing work term.
 pub const METABOLIC_CLIMB_EFFICIENCY: f64 = 0.25;
 
-/// Lower TIU bound of the eta = 1.3 band (P1: eta = 1.3 between 250 and 400 TIU).
+/// Lower TIU bound (exclusive) of the eta = 1.3 band (P1: eta = 1.3 for 250 < TIU <= 400;
+/// exactly 250 TIU belongs to the 1.6 band, as in P1's `eta_from_tiu`).
 pub const TIU_ETA_MID_THRESHOLD: f32 = 250.0;
 
 /// P1 terrain factors eta: [> 400 TIU, 250-400, 150-250, < 150].
@@ -482,9 +483,6 @@ pub const SURVIVAL_TRIANGLE_LEGS: [SurvivalLeg; 5] = [
 /// Index of the WP2 -> WP3 escape leg (L3) in `SURVIVAL_TRIANGLE_LEGS`.
 pub const ESCAPE_LEG_WP2_WP3: usize = 2;
 
-/// WP2 -> Base return along the safe D* Lite route avoiding < 150 TIU banks, in m (P1: detour 1.16).
-pub const WP2_BASE_SAFE_ROUTE_M: f64 = 2500.0;
-
 /// Reference latitude of the local grid projection (Base Habitat node), degrees North.
 pub const SITE_REFERENCE_LAT_DEG: f64 = SURVIVAL_TRIANGLE_SITE[0].lat_deg;
 
@@ -515,27 +513,57 @@ pub const WP2_TRAVERSE_SPEED_MPS: f64 = 0.55;
 pub const WP2_SLIP_FRACTION: f64 = 0.30;
 
 // ----------------------------------------------------------------------------
-// 4c. UHF radio link budget (P1: 435 MHz, 1 W, 0 dBi, 40 dB diffraction loss in NLOS)
+// 4c. Radio link budget (P1 `scenario/constants.py` and `SCHEMA_HEXGRID.md` §9)
 // ----------------------------------------------------------------------------
+// Primary data link (the Zenoh session): S band, 2.4 GHz, 1 W, isotropic antennas. It is the
+// link that drops behind the relief (WP2 -103.1 dBm, WP3 -107.9 dBm on P1's grid, knife-edge
+// diffraction over the CTX DTM). UHF 435 MHz, 1 W stays as a low-rate beacon that survives
+// degraded (-81.0 / -85.7 dBm) and the system does not depend on it.
 
-/// UHF carrier frequency in MHz.
-pub const RADIO_UHF_FREQ_MHZ: f64 = 435.0;
+/// Primary data link carrier frequency, MHz (S band).
+pub const RADIO_PRIMARY_FREQ_MHZ: f64 = 2400.0;
 
-/// Transmitter power in dBm (1 W).
+/// Primary data link transmitter power, dBm (1 W).
 pub const RADIO_TX_POWER_DBM: f64 = 30.0;
 
-/// Diffraction loss applied without geometric line of sight, in dB (P1: "30+" dB, series uses 40).
-pub const RADIO_NLOS_DIFFRACTION_DB: f64 = 40.0;
+/// Antenna gain at each end, dBi (isotropic: P1 gives no gains).
+pub const RADIO_ANTENNA_GAIN_DBI: f64 = 0.0;
+
+/// Diffraction loss without line of sight when no per-cell value is available, dB (P1: mean of
+/// the 2.4 GHz single knife-edge losses at WP2 and WP3, 26.4 and 33.8 dB). The real grid carries
+/// its own per-cell level in `los_base_rssi_dbm`; this value only fills NULL cells and the
+/// synthetic corridor.
+pub const RADIO_NLOS_DIFFRACTION_DB: f64 = 30.0;
 
 /// Minimum distance used in the free-space loss, in m (avoids log(0) at the Base antenna).
 pub const RADIO_MIN_DISTANCE_M: f64 = 10.0;
 
-/// Received level in dBm: free-space loss at `distance_m` plus diffraction loss without LOS.
-pub fn uhf_link_rssi_dbm(distance_m: f64, line_of_sight: bool) -> f32 {
+/// Low-rate UHF beacon carrier frequency, MHz.
+pub const RADIO_BEACON_FREQ_MHZ: f64 = 435.0;
+
+/// Low-rate UHF beacon transmitter power, dBm (1 W).
+pub const RADIO_BEACON_TX_DBM: f64 = 30.0;
+
+/// Free-space loss in dB at `distance_m` (clamped to `RADIO_MIN_DISTANCE_M`) and `freq_mhz`.
+pub fn free_space_loss_db(distance_m: f64, freq_mhz: f64) -> f64 {
     let d_km = distance_m.max(RADIO_MIN_DISTANCE_M) / 1000.0;
-    let fspl_db = 20.0 * d_km.log10() + 20.0 * RADIO_UHF_FREQ_MHZ.log10() + 32.44;
+    20.0 * d_km.log10() + 20.0 * freq_mhz.log10() + 32.44
+}
+
+/// Received level of the primary S-band link in dBm: free space at `distance_m`, minus
+/// `RADIO_NLOS_DIFFRACTION_DB` without line of sight.
+pub fn primary_link_rssi_dbm(distance_m: f64, line_of_sight: bool) -> f32 {
     let diffraction = if line_of_sight { 0.0 } else { RADIO_NLOS_DIFFRACTION_DB };
-    (RADIO_TX_POWER_DBM - fspl_db - diffraction) as f32
+    (RADIO_TX_POWER_DBM + 2.0 * RADIO_ANTENNA_GAIN_DBI
+        - free_space_loss_db(distance_m, RADIO_PRIMARY_FREQ_MHZ)
+        - diffraction) as f32
+}
+
+/// Received level of the UHF beacon in dBm with a given diffraction loss.
+pub fn beacon_rssi_dbm(distance_m: f64, diffraction_db: f64) -> f32 {
+    (RADIO_BEACON_TX_DBM + 2.0 * RADIO_ANTENNA_GAIN_DBI
+        - free_space_loss_db(distance_m, RADIO_BEACON_FREQ_MHZ)
+        - diffraction_db) as f32
 }
 
 // ----------------------------------------------------------------------------
@@ -548,6 +576,17 @@ pub const SUIT_O2_PRIMARY_USABLE_G: f64 = 800.0;
 /// O2 density at STPD in g/L.
 pub const O2_DENSITY_G_PER_L: f64 = 1.429;
 
+/// Usable primary O2 volume at STPD, L (800 g / 1.429 g/L = 559.8 L).
+pub const SUIT_O2_PRIMARY_USABLE_L: f64 = SUIT_O2_PRIMARY_USABLE_G / O2_DENSITY_G_PER_L;
+
+/// Primary O2 amber band starts at or below this percentage of the usable tank
+/// (P1 `eva_thresholds.json` `o2_primary_pct`: green > 50, amber 30-50, red < 30).
+pub const O2_PRIMARY_AMBER_PCT: f64 = 50.0;
+/// Primary O2 red band (abort / change of destination) below this percentage of the tank.
+pub const O2_PRIMARY_RED_PCT: f64 = 30.0;
+/// Red primary O2 level in litres: 30 % of 559.8 L = 167.9 L.
+pub const O2_PRIMARY_RED_L: f64 = SUIT_O2_PRIMARY_USABLE_L * O2_PRIMARY_RED_PCT / 100.0;
+
 /// Sustained red limit of metabolic power in W (P1 `eva_thresholds.json`: > 585 W sustained).
 pub const METABOLIC_RED_SUSTAINED_W: f64 = 585.0;
 
@@ -557,8 +596,52 @@ pub const ISRU_WORK_POWER_W: f64 = 250.0;
 /// Pressurized rest inside the WP3 shelter in W (P1, scenario).
 pub const SHELTER_REST_POWER_W: f64 = 130.0;
 
-/// Speed entering under the WP3 overhang along the real 20.1 deg talus, in m/s (P1, scenario).
-pub const WP3_ENTRY_SPEED_MPS: f64 = 0.5;
+/// Minute of the T+105 alert: SPE + dust, Dynamic Goal Switching and start of the escape.
+/// The escape duration and power are NOT constants: they come from the D* Lite planner on the
+/// real terrain at run time (`red_atlas_core::mission`), see `eva07_phases`.
+pub const EVA07_DECISION_T_MIN: f64 = 105.0;
+
+// --- Planner pace rule (single definition) ------------------------------------------------
+// On every edge the planner walks at the highest speed that satisfies BOTH a speed cap and a
+// metabolic power cap, with the shared P1 metabolic model (edge grade, terrain eta from TIU,
+// slip). Nothing here is tuned to hit a published time.
+
+/// Emergency escape speed cap in m/s (P1 `ESCAPE_SPEED_M_S`, WP2 -> WP3 urgent march).
+pub const ESCAPE_SPEED_CAP_MPS: f64 = 1.25;
+/// Emergency escape metabolic power cap in W (team decision: short emergency effort).
+pub const ESCAPE_POWER_CAP_W: f64 = 650.0;
+/// Sustained return speed cap in m/s before dust visibility (the planner's nominal walk speed).
+pub const RETURN_SPEED_CAP_MPS: f64 = 1.0;
+/// Sustained return metabolic power cap in W: the sustained red limit of `eva_thresholds.json`.
+pub const RETURN_POWER_CAP_W: f64 = METABOLIC_RED_SUSTAINED_W;
+/// Slip fraction applied on loose-regolith trap edges (TIU < 150 and cell slope > 20 deg),
+/// P1's WP2 value. Elsewhere s = 0.
+pub const REGOLITH_TRAP_SLIP_FRACTION: f64 = WP2_SLIP_FRACTION;
+/// Floor speed in m/s so that a capped edge is slow but never divides by zero.
+pub const PACE_MIN_SPEED_MPS: f64 = 0.05;
+
+/// Speed / power caps of one walking regime.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PaceProfile {
+    pub speed_cap_mps: f64,
+    pub power_cap_w: f64,
+    /// Whether the dust visibility factor `1 / (1 + 0.15 (tau - 0.5)+)` lowers the speed cap.
+    pub dust_visibility_limits_speed: bool,
+}
+
+/// Emergency escape to the shelter: 1.25 m/s and 650 W (no visibility cap: P1 escape rule).
+pub const PACE_EMERGENCY_ESCAPE: PaceProfile = PaceProfile {
+    speed_cap_mps: ESCAPE_SPEED_CAP_MPS,
+    power_cap_w: ESCAPE_POWER_CAP_W,
+    dust_visibility_limits_speed: false,
+};
+
+/// Sustained return to the Base: 585 W and the visibility-limited 1.0 m/s cap.
+pub const PACE_SUSTAINED_RETURN: PaceProfile = PaceProfile {
+    speed_cap_mps: RETURN_SPEED_CAP_MPS,
+    power_cap_w: RETURN_POWER_CAP_W,
+    dust_visibility_limits_speed: true,
+};
 
 /// Metabolic effort of an EVA-07 phase.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -578,7 +661,8 @@ pub enum Eva07Effort {
     },
 }
 
-/// One phase `[t0_min, t1_min)` of the EVA-07 reference timeline.
+/// One phase `[t0_min, t1_min)` of the EVA-07 reference timeline (boundaries may be
+/// fractional: arrival at WP3 at T+114.4).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Eva07Phase {
     pub id: &'static str,
@@ -594,11 +678,11 @@ const fn mean_tiu(a: usize, b: usize) -> f32 {
     (SURVIVAL_TRIANGLE_SITE[a].thermal_inertia_tiu + SURVIVAL_TRIANGLE_SITE[b].thermal_inertia_tiu) / 2.0
 }
 
-/// EVA-07 phases (P1 `SCHEMA_EVA07.md` section 4). Walking speeds are the means imposed by
-/// the fixed milestones (L1 1,500 m in 28 min, L2 1,200 m in 23 min, L3 600 m in 8 min) and
-/// eta comes from the mean TIU of the two leg nodes; the 110 TIU bank (eta 2.1) only applies
-/// while the regolith trap is active (T+98-106).
-pub const EVA07_PHASES: [Eva07Phase; 14] = [
+/// EVA-07 phases (P1 `SCHEMA_EVA07.md` section 4). Walking speeds of L1 and L2 are the means
+/// imposed by the fixed milestones (L1 1,500 m in 28 min, L2 1,200 m in 23 min) and eta comes
+/// from the mean TIU of the two leg nodes; the 110 TIU bank (eta 2.1) applies on the WP2 ramp
+/// (T+98-105). These are the phases up to the T+105 decision; they do not depend on the planner.
+pub const EVA07_PRE_DECISION_PHASES: [Eva07Phase; 7] = [
     Eva07Phase { id: "A1_consola", t0_min: -45.0, t1_min: 0.0, effort: Eva07Effort::None, dose_factor: 1.0 },
     Eva07Phase {
         id: "A2_marcha_L1", t0_min: 0.0, t1_min: 28.0,
@@ -626,29 +710,27 @@ pub const EVA07_PHASES: [Eva07Phase; 14] = [
     },
     // Pace regulated so that the power stays at the sustained red limit (P1: 0.268 m/s).
     Eva07Phase { id: "A3_rampa_lenta", t0_min: 101.0, t1_min: 105.0, effort: Eva07Effort::Scenario(METABOLIC_RED_SUSTAINED_W), dose_factor: 1.0 },
-    Eva07Phase {
-        id: "A4_dgs_salida", t0_min: 105.0, t1_min: 106.0,
-        effort: Eva07Effort::Walk { leg: 2, speed_mps: 600.0 / (8.0 * 60.0), tiu: SURVIVAL_TRIANGLE_SITE[2].thermal_inertia_tiu, slip: 0.0, slope_deg: None },
-        dose_factor: 1.0,
-    },
-    Eva07Phase {
-        id: "A4_escape_L3", t0_min: 106.0, t1_min: 113.0,
-        effort: Eva07Effort::Walk { leg: 2, speed_mps: 600.0 / (8.0 * 60.0), tiu: mean_tiu(2, 3), slip: 0.0, slope_deg: None },
-        dose_factor: 1.0,
-    },
-    Eva07Phase {
-        id: "A4_entrada_cornisa", t0_min: 113.0, t1_min: 114.0,
-        effort: Eva07Effort::Walk {
-            leg: 2, speed_mps: WP3_ENTRY_SPEED_MPS, tiu: SURVIVAL_TRIANGLE_SITE[3].thermal_inertia_tiu,
-            slip: 0.0, slope_deg: Some(SURVIVAL_TRIANGLE_SITE[3].slope_dem_deg),
-        },
-        dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64,
-    },
-    Eva07Phase { id: "A4_refugio", t0_min: 114.0, t1_min: 125.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
-    Eva07Phase { id: "A4_refugio_pico", t0_min: 125.0, t1_min: 140.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
-    Eva07Phase { id: "A5_permanencia", t0_min: 140.0, t1_min: 158.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
-    Eva07Phase { id: "A5_zenoh", t0_min: 158.0, t1_min: 165.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64 },
 ];
+
+/// Full EVA-07 phases (P1 `SCHEMA_EVA07.md` section 4): the pre-decision phases, then the
+/// escape to WP3 that the D* Lite planner computes at T+105 (`escape_time_min`, mean power
+/// `escape_mean_power_w`; open-sky exposure while walking, P1 convention), then the shelter
+/// hold under the WP3 overhang (SVF 0.15) until T+165. The escape is assumed to end before
+/// T+125 (checked: `escape_time_min` is clamped to that window).
+pub fn eva07_phases(escape_time_min: f64, escape_mean_power_w: f64) -> [Eva07Phase; 12] {
+    let t0 = EVA07_DECISION_T_MIN;
+    let t1 = (t0 + escape_time_min.max(0.0)).min(125.0);
+    let svf_wp3 = SURVIVAL_TRIANGLE_SITE[3].sky_view_factor as f64;
+    let p = EVA07_PRE_DECISION_PHASES;
+    [
+        p[0], p[1], p[2], p[3], p[4], p[5], p[6],
+        Eva07Phase { id: "A4_huida_L3", t0_min: t0, t1_min: t1, effort: Eva07Effort::Scenario(escape_mean_power_w), dose_factor: 1.0 },
+        Eva07Phase { id: "A4_refugio", t0_min: t1, t1_min: 125.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: svf_wp3 },
+        Eva07Phase { id: "A4_refugio_pico", t0_min: 125.0, t1_min: 140.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: svf_wp3 },
+        Eva07Phase { id: "A5_permanencia", t0_min: 140.0, t1_min: 158.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: svf_wp3 },
+        Eva07Phase { id: "A5_zenoh", t0_min: 158.0, t1_min: 165.0, effort: Eva07Effort::Scenario(SHELTER_REST_POWER_W), dose_factor: svf_wp3 },
+    ]
+}
 
 /// Nominal open-sky SPE rate profile ("rampa calibrada"), piecewise linear knots
 /// `(T min, mSv/h)`; zero before the first knot and constant after the last one.
@@ -731,7 +813,8 @@ impl Default for PlssTelemetry {
     fn default() -> Self {
         Self {
             timestamp_s: 0.0,
-            o2_remaining_liters: 120.0,
+            // Full usable primary tank at departure (800 g = 559.8 L STPD).
+            o2_remaining_liters: SUIT_O2_PRIMARY_USABLE_L as f32,
             lcvg_water_remaining_min: 240.0,
             battery_remaining_min: 300.0,
             current_o2_rate_l_min: 0.8,
@@ -955,21 +1038,33 @@ mod tests {
     }
 
     #[test]
-    fn test_uhf_link_budget_and_spe_profile() {
-        // P1 reference figures: -63.2 dBm at 2.5 km with LOS, -99.3 dBm at 1.6 km without LOS.
-        assert!((uhf_link_rssi_dbm(2500.0, true) - (-63.2)).abs() < 0.05);
-        assert!((uhf_link_rssi_dbm(1600.0, false) - (-99.29)).abs() < 0.05);
+    fn test_radio_link_budget_and_spe_profile() {
+        // P1 free-space figures: S band 108.0 dB at 2.5 km (about -78 dBm with LOS),
+        // UHF beacon 93.2 dB (about -63 dBm).
+        assert!((free_space_loss_db(2500.0, RADIO_PRIMARY_FREQ_MHZ) - 108.0).abs() < 0.05);
+        assert!((free_space_loss_db(2500.0, RADIO_BEACON_FREQ_MHZ) - 93.2).abs() < 0.05);
+        assert!((primary_link_rssi_dbm(2500.0, true) - (-78.0)).abs() < 0.05);
+        assert!((primary_link_rssi_dbm(2500.0, false) - (-108.0)).abs() < 0.05);
+        assert!((beacon_rssi_dbm(2500.0, 0.0) - (-63.2)).abs() < 0.05);
+        // Without LOS the primary link is red (< -100 dBm) at WP3 (1.6 km) and WP2 (2.15 km).
+        assert!(primary_link_rssi_dbm(1600.0, false) < NLOS_RSSI_THRESHOLD_DBM);
+        assert!(primary_link_rssi_dbm(2150.0, false) < NLOS_RSSI_THRESHOLD_DBM);
         // Calibrated SPE ramp: 0 before T+105, 5 mSv/h at T+108, 8 mSv/h plateau, 2 at T+165.
         assert_eq!(eva07_spe_open_sky_rate_msv_h(100.0), 0.0);
         assert!((eva07_spe_open_sky_rate_msv_h(108.0) - 5.0).abs() < 1e-12);
         assert!((eva07_spe_open_sky_rate_msv_h(130.0) - 8.0).abs() < 1e-12);
         assert!((eva07_spe_open_sky_rate_msv_h(165.0) - 2.0).abs() < 1e-12);
-        // Phases are contiguous from T-45 to T+165.
-        for pair in EVA07_PHASES.windows(2) {
-            assert_eq!(pair[0].t1_min, pair[1].t0_min);
+        // Phases are contiguous from T-45 to T+165 for any planned escape duration.
+        for escape in [0.0, 9.4478, 19.9] {
+            let phases = eva07_phases(escape, 548.0);
+            for pair in phases.windows(2) {
+                assert_eq!(pair[0].t1_min, pair[1].t0_min);
+            }
+            assert_eq!(phases[0].t0_min, -45.0);
+            assert_eq!(phases[6].t1_min, EVA07_DECISION_T_MIN);
+            assert!((phases[7].t1_min - (EVA07_DECISION_T_MIN + escape)).abs() < 1e-12);
+            assert_eq!(phases[phases.len() - 1].t1_min, 165.0);
         }
-        assert_eq!(EVA07_PHASES[0].t0_min, -45.0);
-        assert_eq!(EVA07_PHASES[EVA07_PHASES.len() - 1].t1_min, 165.0);
     }
 
     #[test]
@@ -984,13 +1079,14 @@ mod tests {
         assert!(back.thermal_inertia_tiu.is_nan() && back.isru_h2o_pct.is_nan());
         assert!(back.verify_crc());
         // A missing value never satisfies a hazard threshold.
-        assert!(!(back.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD));
-        assert!(!(back.isru_h2o_pct >= ISRU_WATER_MIN_PCT));
+        let trap = back.thermal_inertia_tiu < LOW_TIU_TRAP_THRESHOLD;
+        let water = back.isru_h2o_pct >= ISRU_WATER_MIN_PCT;
+        assert!(!trap && !water);
         // Consumers substitute the documented assumption explicitly.
         assert!(is_no_data(back.thermal_inertia_tiu) && !is_no_data(back.sky_view_factor));
         assert_eq!(or_assumed(back.thermal_inertia_tiu, TIU_NO_DATA_ASSUMED), TIU_NO_DATA_ASSUMED);
         assert_eq!(or_assumed(back.sky_view_factor, SVF_NO_DATA_ASSUMED), 0.85);
-        assert!(TIU_NO_DATA_ASSUMED >= TIU_ETA_MID_THRESHOLD && TIU_NO_DATA_ASSUMED <= TIU_AMBER_THRESHOLD);
+        const { assert!(TIU_NO_DATA_ASSUMED > TIU_ETA_MID_THRESHOLD && TIU_NO_DATA_ASSUMED <= TIU_AMBER_THRESHOLD) };
     }
 
     #[test]
@@ -1077,5 +1173,133 @@ mod tests {
         let frame_deserialized: SingleAlertFrame =
             serde_json::from_str(&frame_json).expect("Frame deserialize failed");
         assert_eq!(frame, frame_deserialized);
+    }
+
+    /// Numbers in a threshold string such as ">585 sostenido; pico 1072", "10-20" or
+    /// "-85 a -100" (a '-' right after a digit is a range separator, not a sign).
+    fn threshold_numbers(text: &str) -> Vec<f64> {
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < chars.len() {
+            let sign_ok = chars[i] == '-'
+                && i + 1 < chars.len()
+                && chars[i + 1].is_ascii_digit()
+                && (i == 0 || !chars[i - 1].is_ascii_digit());
+            if chars[i].is_ascii_digit() || sign_ok {
+                let start = i;
+                i += 1;
+                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                    i += 1;
+                }
+                out.push(chars[start..i].iter().collect::<String>().parse().unwrap());
+            } else {
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// Fails if a radio constant of `src/shared` diverges from P1's validator
+    /// (`data/pipeline/src/red_atlas_p1/scenario/constants.py`, where P1 keeps them).
+    #[test]
+    fn test_radio_constants_match_p1_validator() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/pipeline/src/red_atlas_p1/scenario/constants.py");
+        let text = std::fs::read_to_string(path).expect("P1 constants.py readable");
+        let value = |name: &str| -> f64 {
+            text.lines()
+                .find_map(|l| {
+                    let (k, v) = l.split_once('=')?;
+                    (k.trim() == name).then(|| v.split('#').next().unwrap().trim().parse::<f64>().ok())?
+                })
+                .unwrap_or_else(|| panic!("{name} not found in constants.py"))
+        };
+        let pairs = [
+            ("RADIO_FREQ_MHZ", RADIO_PRIMARY_FREQ_MHZ),
+            ("RADIO_TX_DBM", RADIO_TX_POWER_DBM),
+            ("RADIO_ANTENNA_GAIN_DBI", RADIO_ANTENNA_GAIN_DBI),
+            ("RADIO_DIFFRACTION_DB", RADIO_NLOS_DIFFRACTION_DB),
+            ("RADIO_MIN_DISTANCE_M", RADIO_MIN_DISTANCE_M),
+            ("RADIO_BEACON_FREQ_MHZ", RADIO_BEACON_FREQ_MHZ),
+            ("RADIO_BEACON_TX_DBM", RADIO_BEACON_TX_DBM),
+        ];
+        let bad: Vec<String> = pairs
+            .iter()
+            .filter(|(k, v)| (value(k) - v).abs() > 1e-9)
+            .map(|(k, v)| format!("{k}: src/shared {v} != constants.py {}", value(k)))
+            .collect();
+        assert!(bad.is_empty(), "radio constants diverge from P1:\n{}", bad.join("\n"));
+    }
+
+    /// Fails if any `src/shared` constant that has a counterpart in P1's
+    /// `data/mission-scenarios/eva_thresholds.json` diverges from it.
+    #[test]
+    fn test_constants_match_p1_eva_thresholds_json() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/mission-scenarios/eva_thresholds.json");
+        let text = std::fs::read_to_string(path).expect("eva_thresholds.json readable");
+        let doc: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+
+        let constant = |key: &str| {
+            doc["constants"][key]
+                .as_f64()
+                .unwrap_or_else(|| panic!("constants.{key} missing"))
+        };
+        let band = |id: &str, field: &str| -> Vec<f64> {
+            let t = doc["thresholds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == id)
+                .unwrap_or_else(|| panic!("threshold {id} missing"));
+            threshold_numbers(t[field].as_str().unwrap_or_else(|| panic!("{id}.{field}")))
+        };
+        let mut failures = Vec::new();
+        let mut check = |name: &str, rust: f64, json: f64| {
+            if (rust - json).abs() > 1e-6 * json.abs().max(1.0) {
+                failures.push(format!("{name}: src/shared {rust} != eva_thresholds.json {json}"));
+            }
+        };
+
+        // Physical constants and pace caps.
+        check("MARS_GRAVITY", MARS_GRAVITY, constant("g_mars_m_s2"));
+        check("TOTAL_EVA_MASS_KG", TOTAL_EVA_MASS_KG, constant("suited_mass_kg"));
+        check("O2_ENERGY_JOULES_PER_LITER / 60", O2_ENERGY_JOULES_PER_LITER / 60.0, constant("o2_energy_equiv_w_per_l_min"));
+        check("O2_DENSITY_G_PER_L", O2_DENSITY_G_PER_L, constant("o2_density_g_per_l_stpd"));
+        check("MELAS_BASE_PRESSURE_MBAR * 100", MELAS_BASE_PRESSURE_MBAR * 100.0, constant("surface_pressure_pa_site"));
+        check("ESCAPE_SPEED_CAP_MPS", ESCAPE_SPEED_CAP_MPS, constant("escape_speed_cap_m_s"));
+        check("ESCAPE_POWER_CAP_W", ESCAPE_POWER_CAP_W, constant("escape_power_cap_w"));
+        check("RETURN_SPEED_CAP_MPS", RETURN_SPEED_CAP_MPS, constant("sustained_return_speed_cap_m_s"));
+        check("RETURN_POWER_CAP_W", RETURN_POWER_CAP_W, constant("sustained_return_power_cap_w"));
+
+        // Green / amber / red bands.
+        check("SLOPE_AMBER_DEG", SLOPE_AMBER_DEG as f64, band("slope_deg", "amber")[0]);
+        check("CRITICAL_SLOPE_DEG", CRITICAL_SLOPE_DEG as f64, band("slope_deg", "red")[0]);
+        check("METABOLIC_RED_SUSTAINED_W", METABOLIC_RED_SUSTAINED_W, band("metabolic_rate_w", "red")[0]);
+        check("O2_RATE_AMBER_L_MIN", O2_RATE_AMBER_L_MIN as f64, band("o2_consumption_l_min", "amber")[0]);
+        check("O2_RATE_RED_L_MIN", O2_RATE_RED_L_MIN as f64, band("o2_consumption_l_min", "red")[0]);
+        check("TIU_AMBER_THRESHOLD", TIU_AMBER_THRESHOLD as f64, band("thermal_inertia_tiu", "green")[0]);
+        check("LOW_TIU_TRAP_THRESHOLD", LOW_TIU_TRAP_THRESHOLD as f64, band("thermal_inertia_tiu", "red")[0]);
+        check("TERRAIN_ETA_BY_TIU_BAND[0]", TERRAIN_ETA_BY_TIU_BAND[0], band("terrain_factor_eta", "green")[0]);
+        let eta_amber = band("terrain_factor_eta", "amber");
+        check("TERRAIN_ETA_BY_TIU_BAND[1]", TERRAIN_ETA_BY_TIU_BAND[1], eta_amber[0]);
+        check("TERRAIN_ETA_BY_TIU_BAND[2]", TERRAIN_ETA_BY_TIU_BAND[2], eta_amber[1]);
+        check("TERRAIN_ETA_BY_TIU_BAND[3]", TERRAIN_ETA_BY_TIU_BAND[3], band("terrain_factor_eta", "red")[0]);
+        check("DUST_TAU_AMBER", DUST_TAU_AMBER as f64, band("dust_tau_880nm", "amber")[0]);
+        check("DUST_TAU_RED", DUST_TAU_RED as f64, band("dust_tau_880nm", "red")[0]);
+        check("WIND_AMBER_M_S", WIND_AMBER_M_S as f64, band("wind_speed_m_s", "amber")[0]);
+        check("WIND_RED_M_S", WIND_RED_M_S as f64, band("wind_speed_m_s", "red")[0]);
+        check("SPE_AMBER_RATE_MSV_H", SPE_AMBER_RATE_MSV_H as f64, band("dose_rate_msv_h", "amber")[0]);
+        check("SPE_CRITICAL_RATE_MSV_H", SPE_CRITICAL_RATE_MSV_H as f64, band("dose_rate_msv_h", "red")[0]);
+        check("EVA_SPE_DOSE_BUDGET_MSV", EVA_SPE_DOSE_BUDGET_MSV as f64, band("eva_spe_dose_budget_msv", "red")[0]);
+        check("RSSI_AMBER_THRESHOLD_DBM", RSSI_AMBER_THRESHOLD_DBM as f64, band("radio_rssi_dbm", "green")[0]);
+        check("NLOS_RSSI_THRESHOLD_DBM", NLOS_RSSI_THRESHOLD_DBM as f64, band("radio_rssi_dbm", "red")[0]);
+        check("SHELTER_SVF_MAX", SHELTER_SVF_MAX as f64, band("shelter_sky_view_factor", "green")[1]);
+        check("ISRU_WATER_MIN_PCT", ISRU_WATER_MIN_PCT as f64, band("isru_h2o_wt_pct", "green")[0]);
+        check("O2_PRIMARY_AMBER_PCT", O2_PRIMARY_AMBER_PCT, band("o2_primary_pct", "green")[0]);
+        check("O2_PRIMARY_RED_PCT", O2_PRIMARY_RED_PCT, band("o2_primary_pct", "red")[0]);
+
+        assert!(failures.is_empty(), "constants diverge from P1:\n{}", failures.join("\n"));
+        assert_eq!(threshold_numbers("-85 a -100"), vec![-85.0, -100.0]);
+        assert_eq!(threshold_numbers("10-20"), vec![10.0, 20.0]);
     }
 }

@@ -1,4 +1,8 @@
-"""Enlace de radio UHF Base–traje: pérdida en espacio libre, nivel recibido y clase.
+"""Enlace de radio Base–traje: pérdida en espacio libre, nivel recibido y clase.
+
+Enlace primario de datos (sesión Zenoh): banda S, 2,4 GHz, 1 W (``RADIO_FREQ_MHZ``). Baliza
+UHF de baja tasa: 435 MHz, 1 W (``RADIO_BEACON_*``), que tras el relieve queda degradada pero
+no se pierde; el sistema no depende de ella.
 
 FSPL(dB) = 20·log10(d_km) + 20·log10(f_MHz) + 32,44. Nivel recibido (dBm) =
 potencia transmitida (dBm) + ganancias (dBi) − FSPL − pérdida adicional por difracción.
@@ -34,3 +38,9 @@ def classify_link(rssi_dbm: float, nlos_s: float = 0.0) -> str:
     from red_atlas_p1.scenario.thresholds import classify
 
     return classify("radio_rssi_dbm", rssi_dbm, nlos_s=nlos_s)
+
+
+def beacon_received_dbm(distance_m: float, diffraction_db: float = 0.0) -> float:
+    """Nivel de la baliza UHF (435 MHz, 1 W) con una pérdida por difracción dada."""
+    return received_dbm(distance_m, los=diffraction_db == 0.0, diffraction_db=diffraction_db,
+                        tx_dbm=K.RADIO_BEACON_TX_DBM, freq_mhz=K.RADIO_BEACON_FREQ_MHZ)

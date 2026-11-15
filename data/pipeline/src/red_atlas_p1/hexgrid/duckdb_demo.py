@@ -60,6 +60,7 @@ SELECT
   min(svf_effective) AS svf_min,
   avg(svf_effective) AS svf_medio,
   avg(los_base_effective) AS fraccion_con_los,
+  min(rssi_dbm) AS rssi_min_dbm,
   bit_or(hazard_bitmask) AS banderas
 FROM nb WHERE dist_m <= $r
 GROUP BY sector ORDER BY sector
@@ -69,14 +70,14 @@ CELLS_SQL = """
 WITH c AS (SELECT east_m AS e0, north_m AS n0 FROM cells WHERE h3_index = $center),
 nb AS (
   SELECT h3_index, h2o_effective, tiu_effective, slope_deg_effective, svf_effective,
-         los_base_effective,
+         rssi_dbm,
          sqrt((east_m - e0)^2 + (north_m - n0)^2) AS dist_m,
          (degrees(atan2(east_m - e0, north_m - n0)) + 360) % 360 AS bearing
   FROM cells, c
   WHERE east_m BETWEEN e0 - $r AND e0 + $r AND north_m BETWEEN n0 - $r AND n0 + $r
 )
 SELECT h3_index, bearing, h2o_effective, tiu_effective, slope_deg_effective, svf_effective,
-       los_base_effective
+       rssi_dbm
 FROM nb WHERE dist_m <= $r ORDER BY h3_index
 """
 
@@ -116,18 +117,17 @@ def spyglass(con, center: int, radius_m: float) -> list[dict]:
 def spyglass_cells(con, center: int, radius_m: float) -> dict:
     """Listas por celda con la forma de ``SpyglassTriSectorSlice`` de P3, repartidas por
     sector de 120°: norte ``(h3, h2o)``, derecha ``(h3, tiu)``, izquierda
-    ``(h3, pendiente, svf, los)``. P3 lleva RSSI en dBm en la cuarta posición; aquí va la LOS
-    geométrica 0/1, porque P1 no tiene RSSI."""
+    ``(h3, pendiente, svf, rssi_dbm)``."""
     rows = con.execute(CELLS_SQL, {"center": center, "r": radius_m}).fetchall()
     out = {"center_h3": center, "crism_water_cells": [], "themis_trap_cells": [],
            "mola_slope_svf_cells": []}
-    for h, b, h2o, tiu, slope, svf, los in rows:
+    for h, b, h2o, tiu, slope, svf, rssi in rows:
         if b >= 300 or b < 60:
             out["crism_water_cells"].append((h, h2o))
         elif b < 180:
             out["themis_trap_cells"].append((h, tiu))
         else:
-            out["mola_slope_svf_cells"].append((h, slope, svf, los))
+            out["mola_slope_svf_cells"].append((h, slope, svf, rssi))
     return out
 
 

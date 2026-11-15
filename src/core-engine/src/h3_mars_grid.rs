@@ -36,7 +36,7 @@ pub use red_atlas_shared::{
     SITE_REFERENCE_LON_DEG, CRITICAL_SLOPE_DEG,
 };
 use red_atlas_shared::{
-    is_no_data, uhf_link_rssi_dbm, CELL_NO_DATA, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG,
+    is_no_data, primary_link_rssi_dbm, CELL_NO_DATA, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG,
 };
 use crate::metabolic_dstar::pandolf_mars_metabolic_watts;
 use serde::{Deserialize, Serialize};
@@ -206,6 +206,14 @@ pub fn horizon_hash_for_cell(h3: u64) -> u32 {
     hash
 }
 
+/// Cells on the H3 grid line between two raw indices (inclusive), or `None` if either index is
+/// invalid or `h3o` cannot build the local IJ path. Used for line-of-walk checks.
+pub fn grid_line_h3(a: u64, b: u64) -> Option<Vec<u64>> {
+    let (ca, cb) = (to_cell(a)?, to_cell(b)?);
+    let cells = ca.grid_path_cells(cb).ok()?.collect::<Result<Vec<_>, _>>().ok()?;
+    Some(cells.into_iter().map(u64::from).collect())
+}
+
 /// Cells on the H3 grid line between two cells (inclusive). Falls back to the two end cells if
 /// `h3o` cannot build a local IJ path (different base cells across a pentagon).
 fn grid_line(start: CellIndex, end: CellIndex) -> Vec<CellIndex> {
@@ -373,12 +381,15 @@ impl H3MarsGrid {
     /// - `h3_index` must be a real H3 cell and all rows must share one resolution.
     /// - Parquet `NULL` in the `f32` columns becomes `CELL_NO_DATA` (NaN), never 0.
     /// - `hazard_bitmask` is kept as computed by P1 (P1 thresholds, NLOS from geometric LOS).
-    /// - Fields P1 cannot provide today (NULL / 0 in the table) are filled by the engine's own
-    ///   models; a non-null value from P1 is kept as is:
-    ///   `los_base_rssi_dbm` = `uhf_link_rssi_dbm(distance to the Base, LOS = !NLOS flag)`;
-    ///   `base_metabolic_cost` = level-ground cost at 1.0 m/s with the cell TIU (NaN TIU uses the
-    ///   documented `TIU_NO_DATA_ASSUMED`); `horizon_hash_id` = `horizon_hash_for_cell`.
-    ///   `roughness_hi` stays `CELL_NO_DATA` (no definition anywhere).
+    /// - A non-null value from P1 is kept as is; fields that are NULL / 0 in the table are filled
+    ///   by the engine's own models:
+    ///   `los_base_rssi_dbm` (P1 ships its knife-edge diffraction level, NULL only where the
+    ///   cell has no elevation) = `primary_link_rssi_dbm(distance to the Base, LOS = !NLOS flag)`,
+    ///   a different, flat 40 dB model;
+    ///   `base_metabolic_cost` (always NULL in P1) = level-ground cost at 1.0 m/s with the cell
+    ///   TIU (NaN TIU uses the documented `TIU_NO_DATA_ASSUMED`);
+    ///   `horizon_hash_id` (always 0 in P1) = `horizon_hash_for_cell`.
+    ///   `roughness_hi` is P1's value (NULL where slope is NULL).
     /// - `padding_crc` is resealed by `insert`.
     pub fn load_p1_parquet(path: impl AsRef<Path>) -> Result<Self, GridLoadError> {
         let file = std::fs::File::open(path.as_ref())?;
@@ -418,7 +429,7 @@ impl H3MarsGrid {
                     "roughness_hi" => cell.roughness_hi = field_f32_or_no_data(n, field)?,
                     "isru_h2o_pct" => cell.isru_h2o_pct = field_f32_or_no_data(n, field)?,
                     "sky_view_factor" => cell.sky_view_factor = field_f32_or_no_data(n, field)?,
-                    // Today always NULL in P1 (geometric LOS only); filled below if missing.
+                    // P1 knife-edge level; NULL only in cells without elevation (filled below).
                     "los_base_rssi_dbm" => {
                         cell.los_base_rssi_dbm = field_f32_or_no_data(n, field)?
                     }
@@ -469,7 +480,7 @@ impl H3MarsGrid {
             );
             if is_no_data(cell.los_base_rssi_dbm) {
                 let los = cell.hazard_bitmask & HAZARD_FLAG_NLOS == 0;
-                cell.los_base_rssi_dbm = uhf_link_rssi_dbm(d_base, los);
+                cell.los_base_rssi_dbm = primary_link_rssi_dbm(d_base, los);
             }
             if is_no_data(cell.base_metabolic_cost) {
                 cell.base_metabolic_cost =
@@ -512,6 +523,65 @@ impl H3MarsGrid {
             })
             .collect();
         (cells, adj)
+    }
+
+    /// Sub-grid with the cells whose centers lie within `half_width_m` (great circle, measured in
+    /// a local tangent plane at `origin`) of any straight segment `origin -> destination`.
+    /// Used to bound the D* Lite search at the T+105 decision; the corridor width is a planner
+    /// parameter and `tests/p1_hexgrid.rs` checks that it does not change the optimal routes.
+    pub fn corridor_around(&self, origin: u64, destinations: &[u64], half_width_m: f64) -> Self {
+        let mut out = Self::new(self.res);
+        let (lat0, lon0) = h3_to_lat_lon(origin);
+        if !lat0.is_finite() {
+            return out;
+        }
+        let k = MARS_RADIUS_M.to_radians();
+        let coslat = lat0.to_radians().cos();
+        let local = |h: u64| {
+            let (la, lo) = h3_to_lat_lon(h);
+            let mut dlon = lo - lon0;
+            if dlon > 180.0 {
+                dlon -= 360.0;
+            } else if dlon < -180.0 {
+                dlon += 360.0;
+            }
+            (k * coslat * dlon, k * (la - lat0))
+        };
+        let segs: Vec<(f64, f64)> = destinations.iter().map(|&d| local(d)).collect();
+        for cell in self.cells.values() {
+            let (x, y) = local(cell.h3_index);
+            let inside = segs.iter().any(|&(bx, by)| {
+                let len2 = bx * bx + by * by;
+                let t = if len2 > 0.0 { ((x * bx + y * by) / len2).clamp(0.0, 1.0) } else { 0.0 };
+                (x - t * bx).hypot(y - t * by) <= half_width_m
+            });
+            if inside {
+                out.cells.insert(cell.h3_index, *cell);
+            }
+        }
+        out
+    }
+
+    /// Deterministic 64-bit fingerprint (FNV-1a) of the fields the planner reads, over cells
+    /// sorted by index: `h3_index`, `elev_m`, `slope_deg`, `aspect_deg`, `thermal_inertia_tiu`,
+    /// `sky_view_factor`. Radio and roughness are excluded on purpose (the planner ignores them).
+    pub fn planner_fingerprint(&self) -> u64 {
+        let mut cells: Vec<&HexCellState64B> = self.cells.values().collect();
+        cells.sort_unstable_by_key(|c| c.h3_index);
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut feed = |bytes: &[u8]| {
+            for &b in bytes {
+                hash ^= u64::from(b);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+            }
+        };
+        for c in cells {
+            feed(&c.h3_index.to_le_bytes());
+            for v in [c.elev_m, c.slope_deg, c.aspect_deg, c.thermal_inertia_tiu, c.sky_view_factor] {
+                feed(&v.to_bits().to_le_bytes());
+            }
+        }
+        hash
     }
 
     /// Finds the grid cell containing the given coordinates (East longitude 0-360), or the
@@ -560,6 +630,74 @@ impl H3MarsGrid {
             themis_trap_cells,
             mola_slope_svf_cells,
         }
+    }
+
+    /// Spyglass ("Lupa") query by metric radius with the three geometric 120° sectors of P1's
+    /// `SCHEMA_HEXGRID.md` §8, by bearing from the center cell: North 300°-60° -> hydration
+    /// (`crism_water_cells`), Right 60°-180° -> thermal inertia (`themis_trap_cells`),
+    /// Left 180°-300° -> slope / SVF / radio (`mola_slope_svf_cells`). The center cell goes to
+    /// all three. Cells are those of the grid whose centers lie within `radius_m` (great circle).
+    pub fn query_spyglass_radius(&self, center_h3: u64, radius_m: f64) -> SpyglassTriSectorSlice {
+        let mut slice = SpyglassTriSectorSlice {
+            center_h3,
+            crism_water_cells: Vec::new(),
+            themis_trap_cells: Vec::new(),
+            mola_slope_svf_cells: Vec::new(),
+        };
+        let Some(center) = to_cell(center_h3) else {
+            return slice;
+        };
+        let c_ll = LatLng::from(center);
+        // Ring k is at least k · (√3/2) · spacing from the center; spacing from a real neighbor.
+        let spacing_m = center
+            .grid_disk::<Vec<_>>(1)
+            .into_iter()
+            .find(|&n| n != center)
+            .map_or(f64::NAN, |n| c_ll.distance_rads(LatLng::from(n)) * MARS_RADIUS_M);
+        // NaN-safe: an unknown spacing or radius returns the empty slice.
+        if spacing_m.is_nan() || spacing_m <= 0.0 || radius_m.is_nan() || radius_m < 0.0 {
+            return slice;
+        }
+        let k = (radius_m / (spacing_m * 3f64.sqrt() / 2.0)).ceil() as u32;
+        let (sin_lat1, cos_lat1) = c_ll.lat_radians().sin_cos();
+        for n in center.grid_disk::<Vec<_>>(k) {
+            let h3 = u64::from(n);
+            let Some(cell) = self.cells.get(&h3) else {
+                continue;
+            };
+            let ll = LatLng::from(n);
+            let d = c_ll.distance_rads(ll) * MARS_RADIUS_M;
+            if d > radius_m {
+                continue;
+            }
+            let water = (cell.h3_index, cell.isru_h2o_pct);
+            let trap = (cell.h3_index, cell.thermal_inertia_tiu);
+            let mola = (
+                cell.h3_index,
+                cell.slope_deg,
+                cell.sky_view_factor,
+                cell.los_base_rssi_dbm,
+            );
+            if n == center {
+                slice.crism_water_cells.push(water);
+                slice.themis_trap_cells.push(trap);
+                slice.mola_slope_svf_cells.push(mola);
+                continue;
+            }
+            let dlon = ll.lng_radians() - c_ll.lng_radians();
+            let (sin_lat2, cos_lat2) = ll.lat_radians().sin_cos();
+            let y = dlon.sin() * cos_lat2;
+            let x = cos_lat1 * sin_lat2 - sin_lat1 * cos_lat2 * dlon.cos();
+            let bearing = y.atan2(x).to_degrees().rem_euclid(360.0);
+            if !(60.0..300.0).contains(&bearing) {
+                slice.crism_water_cells.push(water);
+            } else if bearing < 180.0 {
+                slice.themis_trap_cells.push(trap);
+            } else {
+                slice.mola_slope_svf_cells.push(mola);
+            }
+        }
+        slice
     }
 
     /// Generates a synthetic Melas Chasma survival exploration corridor on real H3 cells.
@@ -687,11 +825,11 @@ impl H3MarsGrid {
                 7.0
             };
 
-            // 5. UHF radio level to the Base (dBm): P1 link budget; WP2 / WP3 zones have no
+            // 5. Primary S-band level to the Base (dBm): P1 link budget; WP2 / WP3 zones have no
             //    geometric line of sight (DTM margins -24.7 m and -28.2 m).
             let nlos_zone = (!wp2_site.radio_los_base && d_wp2 < 150.0)
                 || (!wp3_site.radio_los_base && d_wp3 < 80.0);
-            let los_base_rssi_dbm = uhf_link_rssi_dbm(d_base, !nlos_zone);
+            let los_base_rssi_dbm = primary_link_rssi_dbm(d_base, !nlos_zone);
 
             // 6. Sky View Factor (Psi_SVF): DTM node values; WP3 alcove scenario disc.
             let sky_view_factor = if c == wp3_cell || d_wp3 < WP3_ALCOVE_ZONE_M {
@@ -1035,6 +1173,47 @@ mod tests {
             .find(|(h3, _)| *h3 == wp1_cell.h3_index);
         assert!(wp1_in_slice.is_some());
         assert!(wp1_in_slice.unwrap().1 > 10.0);
+    }
+
+    #[test]
+    fn test_spyglass_radius_sectors() {
+        let grid = H3MarsGrid::generate_melas_chasma_corridor(12);
+        let wp1 = P1_NODE_CELLS_RES12[1];
+        assert!(grid.get_cell(wp1).is_some());
+        let slice = grid.query_spyglass_radius(wp1, 60.0);
+        let (lat0, lon0) = h3_to_lat_lon(wp1);
+        let in_radius = grid
+            .all_cells()
+            .filter(|c| {
+                let (la, lo) = h3_to_lat_lon(c.h3_index);
+                haversine_dist_m(lat0, lon0, la, lo) <= 60.0
+            })
+            .count();
+        let total = slice.crism_water_cells.len()
+            + slice.themis_trap_cells.len()
+            + slice.mola_slope_svf_cells.len();
+        // Center counted in the three sectors.
+        assert_eq!(total, in_radius + 2);
+        // Three roughly equal 120° sectors.
+        for n in [
+            slice.crism_water_cells.len(),
+            slice.themis_trap_cells.len(),
+            slice.mola_slope_svf_cells.len(),
+        ] {
+            assert!((n as f64 - in_radius as f64 / 3.0).abs() < in_radius as f64 * 0.1, "{n}/{in_radius}");
+        }
+        // The northmost cell of the disc belongs to the North sector.
+        let north = slice
+            .crism_water_cells
+            .iter()
+            .chain(slice.themis_trap_cells.iter())
+            .map(|&(h, _)| (h, h3_to_lat_lon(h).0))
+            .chain(slice.mola_slope_svf_cells.iter().map(|&(h, ..)| (h, h3_to_lat_lon(h).0)))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .unwrap()
+            .0;
+        assert!(slice.crism_water_cells.iter().any(|&(h, _)| h == north));
+        assert!(grid.query_spyglass_radius(42, 100.0).crism_water_cells.is_empty());
     }
 
     #[test]

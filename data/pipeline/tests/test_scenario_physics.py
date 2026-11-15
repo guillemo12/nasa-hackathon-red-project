@@ -50,11 +50,10 @@ def test_relocated_elevation_profile():
     assert sum(dz[leg] for leg in ("L1", "L2", "L3", "L4")) == 0
 
 
-def test_return_leg_and_detour():
+def test_return_leg_straight_line():
+    """WP2→Base: 2.150 m en recta (el camino del planificador, 2.148 m, se lee del motor)."""
     g = geo.leg_geometry("R1")
     assert g.distance_m == pytest.approx(2150, abs=DIST_TOL_M)
-    assert K.SAFE_RETURN_WP2_BASE_M / g.declared_distance_m == pytest.approx(
-        K.SAFE_RETURN_DETOUR, abs=0.005)
 
 
 # --- Atmósfera ----------------------------------------------------------------
@@ -118,8 +117,8 @@ def test_escape_power_downhill_below_canon_range():
     580–650 W del canónico (que suponía subida). Con η 2,1 (banco suelto) 593,2 W."""
     slope = geo.leg_geometry("L3").slope_deg
     assert slope < 0
-    assert met.metabolic_power_w(K.ESCAPE_SPEED_M_S, slope, 1.3) == pytest.approx(412.9, abs=0.1)
-    assert met.metabolic_power_w(K.ESCAPE_SPEED_M_S, slope, 2.1) == pytest.approx(593.2, abs=0.1)
+    assert met.metabolic_power_w(met.escape_speed_m_s(), slope, 1.3) == pytest.approx(412.9, abs=0.1)
+    assert met.metabolic_power_w(met.escape_speed_m_s(), slope, 2.1) == pytest.approx(593.2, abs=0.1)
 
 
 @pytest.mark.parametrize("tiu,eta", [(620, 1.0), (410, 1.0), (400, 1.3), (320, 1.3),
@@ -148,6 +147,12 @@ def test_wp3_rate_1_2():
     assert rad.shielding_reduction(0.15) == pytest.approx(0.85)
 
 
+def test_pace_caps_from_thresholds_json():
+    assert met.pace_caps() == {"escape_speed_cap_m_s": 1.25, "escape_power_cap_w": 650,
+                               "sustained_return_speed_cap_m_s": 1.0,
+                               "sustained_return_power_cap_w": 585}
+
+
 def test_return_base_6_4_msv_envelope():
     assert rad.dose_msv(8.0, 48.0) == pytest.approx(6.4, abs=1e-9)
     fn = rad.profile("envolvente")
@@ -173,30 +178,32 @@ def test_svf_validation():
 
 # --- Radio --------------------------------------------------------------------
 
-def test_fspl_93_2db():
+def test_fspl_93_2db_baliza_uhf():
     assert radio.fspl_db(2500.0, 435.0) == pytest.approx(93.2, abs=0.05)
+    assert radio.beacon_received_dbm(2500.0) == pytest.approx(-63.2, abs=0.1)
 
 
-def test_rssi_los_minus_63():
-    assert radio.received_dbm(2500.0) == pytest.approx(-63.2, abs=0.1)
+def test_enlace_primario_banda_s():
+    assert K.RADIO_FREQ_MHZ == 2400.0 and K.RADIO_BEACON_FREQ_MHZ == 435.0
+    assert radio.fspl_db(2500.0) == pytest.approx(108.0, abs=0.05)
+    assert radio.received_dbm(2500.0) == pytest.approx(-78.0, abs=0.1)
     assert radio.classify_link(radio.received_dbm(2500.0)) == "VERDE"
 
 
-def test_rssi_nlos_red_with_documented_diffraction():
+def test_rssi_nlos_rojo_con_difraccion_derivada():
+    assert K.RADIO_DIFFRACTION_DB == 30.0
     level = radio.received_dbm(2500.0, los=False)
-    assert level == pytest.approx(-103.2, abs=0.1)
+    assert level == pytest.approx(-108.0, abs=0.1)
     assert radio.classify_link(level) == "ROJO"
+    # En WP3 (1,6 km) también rojo por nivel, con más de 2 dB de margen.
+    assert radio.received_dbm(1600.0, los=False) < -102.0
 
 
-def test_canon_diffraction_range_is_inconsistent():
-    """−63 dBm − (20…30 dB) da −83…−93 dBm, no los −95…−110 dBm del canónico: hace falta
-    32–47 dB para llegar a ese rango. Este test fija el desfase para que no se olvide."""
-    los = radio.received_dbm(2500.0)
-    assert los - 20 == pytest.approx(-83.2, abs=0.1)
-    assert los - 30 == pytest.approx(-93.2, abs=0.1)
-    assert los - (-95) == pytest.approx(31.8, abs=0.1)
-    assert los - (-110) == pytest.approx(46.8, abs=0.1)
-    assert radio.classify_link(los - 30) == "AMBAR"   # con 30 dB el NLOS no llega a rojo por nivel
+def test_uhf_no_llega_a_rojo_con_la_difraccion_real():
+    """Con 435 MHz y la difracción de arista única del DTM real (19–26 dB en WP2 y WP3) el
+    NLOS se queda en ámbar: por eso el enlace primario pasa a banda S."""
+    los = radio.beacon_received_dbm(2150.0)
+    assert radio.classify_link(los - 26.4) != "ROJO"
 
 
 def test_distance_zero_is_finite():

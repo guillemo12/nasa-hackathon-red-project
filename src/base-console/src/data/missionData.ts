@@ -1,106 +1,171 @@
+// Fuente única de cifras de la interfaz: todo sale de los ficheros de P1 en `data/`.
+// Aquí no se escribe a mano ninguna cifra que exista en esos ficheros.
 import trianguloGeoJson from '@data/mission-scenarios/triangulo_supervivencia.geojson';
 import eva07EventsJson from '@data/mission-scenarios/eva07_events.json';
 import evaThresholdsJson from '@data/mission-scenarios/eva_thresholds.json';
+import chaosReferenceJson from '@data/mission-scenarios/chaos_mode_results.json';
+import plannerWalkbackJson from '@data/mission-scenarios/planner_walkback.json';
 import layersCatalogJson from '@data/nasa-layers/layers_catalog.json';
-import type { Eva07Event, RouteLeg, WaypointNode } from '@/types/mission';
+import type {
+  ChaosReport,
+  Eva07Event,
+  Eva07Phase,
+  NodeId,
+  RouteLeg,
+  WaypointNode,
+} from '@/types/mission';
 
-export const CANONICAL_WAYPOINTS: WaypointNode[] = [
-  {
-    id: 'BASE',
-    name: 'Base Alpha (Hábitat Melas SW)',
-    shortLabel: 'BASE ALPHA',
-    role: 'habitat',
-    lat: -9.89646,
-    lonE: 283.3892,
-    lonW: 76.6108,
-    elevMolaM: -1660,
-    slopeLocalDeg: 2.8,
-    tiu: 320,
-    svfScenario: 0.85,
-    svfDem: 0.85,
-    radioLosBase: true,
-    h2oWtPct: null,
-    geology: 'Terraza aluvial (abanico distal) en cuenca SW de Melas',
-    distFromBaseM: 0,
-  },
-  {
-    id: 'WP1',
-    name: 'WP1 — Sulfatos Hidratados ISRU',
-    shortLabel: 'WP1 SULFATOS',
-    role: 'isru_water',
-    lat: -9.9188,
-    lonE: 283.40126,
-    lonW: 76.59874,
-    elevMolaM: -1582,
-    slopeLocalDeg: 6.7,
-    tiu: 410,
-    svfScenario: 0.85,
-    svfDem: 0.85,
-    radioLosBase: true,
-    h2oWtPct: 12.0,
-    geology: 'Sulfatos monohidratados/polihidratados (kieserita ≥12% H₂O)',
-    distFromBaseM: 1500,
-  },
-  {
-    id: 'WP2',
-    name: 'WP2 — Talud Peligroso / Trampa TIU',
-    shortLabel: 'WP2 TALUD 22°',
-    role: 'hazard_slope',
-    lat: -9.93261,
-    lonE: 283.38623,
-    lonW: 76.61377,
-    elevMolaM: -1464,
-    slopeLocalDeg: 19.4,
-    rampSlopeDeg: 22.0,
-    tiu: 110,
-    svfScenario: 0.84,
-    svfDem: 0.84,
-    radioLosBase: false,
-    h2oWtPct: null,
-    geology: 'Regolito fino suelto (<150 TIU) en rampa de 22° [E] / 19.4° [D]',
-    distFromBaseM: 2700,
-  },
-  {
-    id: 'WP3',
-    name: 'WP3 — Alcoba Refugio Basáltico',
-    shortLabel: 'WP3 REFUGIO',
-    role: 'shelter',
-    lat: -9.92286,
-    lonE: 283.38349,
-    lonW: 76.61651,
-    elevMolaM: -1520,
-    slopeLocalDeg: 20.1,
-    tiu: 620,
-    svfScenario: 0.15,
-    svfDem: 0.76,
-    radioLosBase: false,
-    h2oWtPct: null,
-    geology: 'Alcoba con cornisa basáltica (>5m roca, SVF 0.15 [E], 85% aten. SPE)',
-    distFromBaseM: 3300,
-  },
-];
+interface GeoFeature {
+  type: string;
+  id?: string;
+  geometry: { type: string; coordinates: unknown };
+  properties: Record<string, unknown>;
+}
+interface GeoCollection {
+  features: GeoFeature[];
+  metadata?: { perimeter_m?: number };
+}
 
-export const CANONICAL_LEGS: RouteLeg[] = [
-  { id: 'L1', from: 'BASE', to: 'WP1', distanceM: 1500, deltaElevM: 78, bearingDeg: 152, meanSlopeDeg: 2.96, maxSlopeDeg: 8.0 },
-  { id: 'L2', from: 'WP1', to: 'WP2', distanceM: 1200, deltaElevM: 118, bearingDeg: 227, meanSlopeDeg: 5.62, maxSlopeDeg: 19.9 },
-  { id: 'L3', from: 'WP2', to: 'WP3', distanceM: 600, deltaElevM: -56, bearingDeg: 344, meanSlopeDeg: -5.26, maxSlopeDeg: 22.5 },
-  { id: 'L4', from: 'WP3', to: 'BASE', distanceM: 1600, deltaElevM: -140, bearingDeg: 12, meanSlopeDeg: -5.02, maxSlopeDeg: 20.1 },
-];
-
-export const EVA07_EVENTS: Eva07Event[] = eva07EventsJson.events as Eva07Event[];
+export const TRIANGULO_GEOJSON = trianguloGeoJson as GeoCollection;
+export const EVA07_DOC = eva07EventsJson;
+export const EVA07_EVENTS = eva07EventsJson.events as unknown as Eva07Event[];
+export const EVA07_PHASES = eva07EventsJson.phases as unknown as Eva07Phase[];
 export const EVA_THRESHOLDS = evaThresholdsJson;
 export const LAYERS_CATALOG = layersCatalogJson;
-export const TRIANGULO_GEOJSON = trianguloGeoJson;
+export const PLANNER_WALKBACK = plannerWalkbackJson;
+export const REFERENCE_FIGURES = eva07EventsJson.reference_figures;
 
-export function getNearestEvaEvent(tMin: number): Eva07Event {
-  let best = EVA07_EVENTS[0];
-  let bestDiff = Math.abs(best.t_min - tMin);
-  for (const ev of EVA07_EVENTS) {
-    const diff = Math.abs(ev.t_min - tMin);
-    if (diff < bestDiff) {
-      best = ev;
-      bestDiff = diff;
-    }
+/** Referencia de P1 del Chaos Mode: exportada por el motor Rust (10.000 pasadas, semilla 42). */
+export const CHAOS_REFERENCE = chaosReferenceJson as unknown as {
+  generator: string;
+  seed: number;
+  trials: number;
+  corridor: string;
+  criterion: string;
+  limitations: string;
+  dose_budget_msv: number;
+  report: ChaosReport;
+};
+
+const SHORT_LABELS: Record<NodeId, string> = {
+  BASE: 'BASE ALPHA',
+  WP1: 'WP1 SULFATOS',
+  WP2: 'WP2 TALUD',
+  WP3: 'WP3 REFUGIO',
+};
+
+const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
+
+/** Tramos de `triangulo_supervivencia.geojson` (L1–L4 planificados y R1 de contingencia). */
+export const CANONICAL_LEGS: RouteLeg[] = TRIANGULO_GEOJSON.features
+  .filter((ft) => ft.geometry.type === 'LineString')
+  .map((ft) => {
+    const p = ft.properties;
+    return {
+      id: String(p.leg_id),
+      from: p.from as NodeId,
+      to: p.to as NodeId,
+      kind: String(p.kind ?? 'planned'),
+      distanceM: num(p.distance_m),
+      deltaElevM: num(p.delta_elev_m),
+      bearingDeg: num(p.bearing_deg),
+      meanSlopeDeg: num(p.mean_slope_deg),
+      maxSlopeDeg: num(p.slope_max_deg),
+      losRecoveredAtM: typeof p.los_recovered_at_m === 'number' ? p.los_recovered_at_m : undefined,
+    };
+  });
+
+export const PLANNED_LEGS: RouteLeg[] = CANONICAL_LEGS.filter((l) => l.kind === 'planned');
+
+function cumulativeDistance(id: NodeId): number {
+  let d = 0;
+  for (const leg of PLANNED_LEGS) {
+    if (leg.from === id) return d;
+    d += leg.distanceM;
   }
-  return best;
+  return d;
 }
+
+/** Nodos de `triangulo_supervivencia.geojson`. */
+export const CANONICAL_WAYPOINTS: WaypointNode[] = TRIANGULO_GEOJSON.features
+  .filter((ft) => ft.geometry.type === 'Point')
+  .map((ft) => {
+    const p = ft.properties;
+    const id = p.node_id as NodeId;
+    return {
+      id,
+      name: String(p.name),
+      shortLabel: SHORT_LABELS[id] ?? id,
+      role: String(p.role),
+      lat: num(p.lat_pc_deg),
+      lonE: num(p.lon_e_deg),
+      lonW: num(p.lon_w_deg),
+      elevMolaM: num(p.elev_mola_m),
+      slopeLocalDeg: num(p.slope_local_deg),
+      tiu: num(p.thermal_inertia_tiu),
+      svfScenario: num(p.sky_view_factor),
+      svfDem: num(p.sky_view_factor_dem),
+      radioLosBase: Boolean(p.radio_los_base),
+      h2oWtPct: typeof p.h2o_wt_pct === 'number' ? p.h2o_wt_pct : null,
+      geology: String(p.geology),
+      distFromBaseM: cumulativeDistance(id),
+    };
+  });
+
+export function waypoint(id: string): WaypointNode | undefined {
+  return CANONICAL_WAYPOINTS.find((w) => w.id === id);
+}
+
+export function legBetween(from: string, to: string): RouteLeg | undefined {
+  return CANONICAL_LEGS.find((l) => l.from === from && l.to === to);
+}
+
+export const PERIMETER_M: number =
+  TRIANGULO_GEOJSON.metadata?.perimeter_m ?? PLANNED_LEGS.reduce((a, l) => a + l.distanceM, 0);
+
+export const MAX_ELEV_GAIN_M: number =
+  Math.max(...CANONICAL_WAYPOINTS.map((w) => w.elevMolaM)) -
+  Math.min(...CANONICAL_WAYPOINTS.map((w) => w.elevMolaM));
+
+export const T_START_MIN: number = EVA07_EVENTS[0].t_min;
+export const T_END_MIN: number = EVA07_EVENTS[EVA07_EVENTS.length - 1].t_min;
+export const T_DECISION_MIN: number = PLANNER_WALKBACK.decision_t_min;
+
+/** Rampa local de escenario del WP2: sale de la descripción de la fase de pico de P1. */
+export const WP2_RAMP_PHASE = EVA07_PHASES.find((p) => p.phase_id === 'A3_rampa_pico');
+
+// ---------------------------------------------------------------------------
+// Cifras que hoy solo viven en `DATOS_CANONICOS_P1.md` (no están en ningún JSON de `data/`).
+// Único sitio de la interfaz donde se escriben; cada una lleva su apartado de origen.
+// ---------------------------------------------------------------------------
+export const SUIT_SCENARIO = {
+  /** §3 «Traje [E]»: agua de refrigeración. */
+  coolingWaterKg: 4.5,
+  /** §3 «Traje [E]»: batería y consumo medio. */
+  batteryWh: 1000,
+  batteryDrawW: 140,
+  /** §3 «Traje [E]»: presión de trabajo. */
+  pressureKpa: 29.6,
+  /** §3: rampa local del WP2 [E] (22°) y TIU del banco de regolito. */
+  wp2RampDeg: 22,
+  /** §2: atenuación del refugio con SVF 0,15. */
+  shelterAttenuationPct: 85,
+  /** §2: replanificación medida del cambio de destino. */
+  replanMs: 17,
+} as const;
+
+/** Etiquetas de la demo que vienen de los documentos de UX (wireframes), no de P1. */
+export const UX_LABELS = {
+  sol: 142,
+  operator: 'Aris Thorne',
+  operatorRole: 'OPERADOR JEFE',
+  astronaut: 'Dra. Elena Rostova',
+  suit: 'xEMU-04',
+} as const;
+
+export const THREAT_LABELS: Record<string, string> = {
+  sombra_radio: 'Sombra de radio (NLOS)',
+  trampa_regolito: 'Regolito suelto en rampa',
+  spe: 'Tormenta solar (SPE)',
+  polvo: 'Frente de polvo',
+};

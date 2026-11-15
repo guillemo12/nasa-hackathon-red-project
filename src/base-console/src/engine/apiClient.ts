@@ -1,193 +1,148 @@
-import type { ChaosRunResult, Eva07Event } from '@/types/mission';
-import { getNearestEvaEvent } from '@/data/missionData';
-import { runChaosModeMonteCarlo } from '@/engine/p3Bridge';
+// Cliente de la API Rust (`src/core-engine/src/bin/api_server.rs`, proxy `/api`).
+// Ninguna función inventa un éxito: si la API no responde devuelve `null` o lanza `ApiError`,
+// y quien la llama decide qué enseñar.
+import type {
+  ChaosRun,
+  Eva07Sample,
+  HexCell,
+  RoutePlan,
+  SpyglassResult,
+  TerrainGrid,
+} from '@/types/mission';
 
 export interface ApiHealth {
   status: string;
   engine: string;
   h3_res: number;
   h3_cells_loaded: number;
-  corridor_sample_cells: number;
+  h3_res12_cells: number;
+  events: number;
+  route_plan_ready: boolean;
 }
 
-interface RustChaosReport {
-  trials: number;
-  survived_with_wp3_shelter: number;
-  survived_base_only: number;
-  survival_rate_with_shelter_pct: number;
-  survival_rate_base_only_pct: number;
-  multi_hazard_events_triggered: number;
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status?: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function getJson<T>(url: string, timeoutMs = 8000, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) throw new ApiError(`HTTP ${res.status}`, res.status);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('API Rust no disponible');
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 export async function fetchApiHealth(): Promise<ApiHealth | null> {
   try {
-    const res = await fetch('/api/health');
-    if (!res.ok) return null;
-    return (await res.json()) as ApiHealth;
+    return await getJson<ApiHealth>('/api/health', 2500);
   } catch {
     return null;
   }
 }
 
-export async function fetchEva07Event(tMin: number): Promise<{ event: Eva07Event; fromApi: boolean }> {
+export async function fetchEva07Sample(tMin: number): Promise<Eva07Sample | null> {
   try {
-    const res = await fetch(`/api/eva07?t=${encodeURIComponent(tMin)}`);
-    if (!res.ok) throw new Error('HTTP error');
-    const event = (await res.json()) as Eva07Event;
-    return { event, fromApi: true };
+    return await getJson<Eva07Sample>(`/api/eva07?t=${encodeURIComponent(tMin)}`, 2500);
   } catch {
-    return { event: getNearestEvaEvent(tMin), fromApi: false };
+    return null;
   }
 }
 
-export async function fetchChaosMode(
-  seed: number,
-  trials = 100
-): Promise<{ result: ChaosRunResult; fromApi: boolean }> {
-  try {
-    const res = await fetch(`/api/chaos-mode?seed=${seed}&trials=${trials}`);
-    if (!res.ok) throw new Error('HTTP error');
-    const report = (await res.json()) as RustChaosReport;
-    const localBase = runChaosModeMonteCarlo(seed, trials);
-    return {
-      fromApi: true,
-      result: {
-        ...localBase,
-        seed,
-        totalRuns: report.trials,
-        wp3Survivals: report.survived_with_wp3_shelter,
-        baseSurvivals: report.survived_base_only,
-        wp3SurvivalPct: Number(report.survival_rate_with_shelter_pct.toFixed(1)),
-        baseSurvivalPct: Number(report.survival_rate_base_only_pct.toFixed(1)),
-      },
-    };
-  } catch {
-    return { result: runChaosModeMonteCarlo(seed, trials), fromApi: false };
-  }
+/** Chaos Mode del motor Rust. Lanza `ApiError` si la API no responde. */
+export async function fetchChaosMode(seed: number, trials: number): Promise<ChaosRun> {
+  return getJson<ChaosRun>(`/api/chaos-mode?seed=${seed}&trials=${trials}`, 30000);
 }
 
-export interface MarsRawImage {
-  imageid: string;
-  sol: number;
-  instrument: string;
-  proxyUrl: string;
-  originalUrl: string;
-  title: string;
-  dateTakenMars: string;
-  dateTakenUtc: string;
-  mastAz: string;
-  mastEl: string;
-  site: number;
-  drive: number;
-  credit: string;
-  link: string;
-}
-
-export async function fetchMars2020RawImages(limit = 8): Promise<MarsRawImage[]> {
-  try {
-    const [mczRes, hazRes] = await Promise.all([
-      fetch(`/nasa-rss?feed=raw_images&category=mars2020&feedtype=json&ver=1.2&num=12&page=0&search=MCZ_RIGHT`),
-      fetch(`/nasa-rss?feed=raw_images&category=mars2020&feedtype=json&ver=1.2&num=6&page=0&search=FRONT_HAZCAM_LEFT_A`),
-    ]);
-    type RawItem = {
-      imageid: string;
-      sol: number;
-      title?: string;
-      date_taken_mars?: string;
-      date_taken_utc?: string;
-      site?: number;
-      drive?: number;
-      credit?: string;
-      link?: string;
-      sample_type?: string;
-      extended?: { mastAz?: string; mastEl?: string };
-      camera?: { instrument?: string; filter_name?: string };
-      image_files?: { medium?: string; large?: string };
-    };
-    type RawFeed = { images?: RawItem[] };
-    const mczData = mczRes.ok ? ((await mczRes.json()) as RawFeed) : { images: [] };
-    const hazData = hazRes.ok ? ((await hazRes.json()) as RawFeed) : { images: [] };
-    const combined = [...(mczData.images ?? []), ...(hazData.images ?? [])];
-
-    const seen = new Set<string>();
-    const deduped = combined.filter((img) => {
-      if (!img.imageid || seen.has(img.imageid)) return false;
-      seen.add(img.imageid);
-      return true;
+let terrainPromise: Promise<TerrainGrid> | null = null;
+export function fetchTerrain(): Promise<TerrainGrid> {
+  if (!terrainPromise) {
+    terrainPromise = getJson<TerrainGrid>('/api/terrain', 15000).catch((err) => {
+      terrainPromise = null;
+      throw err;
     });
+  }
+  return terrainPromise;
+}
 
-    const surfaceOnly = deduped.filter((img) => {
-      const el = Number(img.extended?.mastEl ?? 0);
-      const filter = img.camera?.filter_name ?? '';
-      return filter !== 'UNK' && (!Number.isFinite(el) || el <= 10);
+let hexGridPromise: Promise<HexCell[]> | null = null;
+export function fetchHexGrid(): Promise<HexCell[]> {
+  if (!hexGridPromise) {
+    hexGridPromise = getJson<{ cells: HexCell[] }>('/api/hexgrid', 15000)
+      .then((d) => d.cells)
+      .catch((err) => {
+        hexGridPromise = null;
+        throw err;
+      });
+  }
+  return hexGridPromise;
+}
+
+let routePlanPromise: Promise<RoutePlan> | null = null;
+/** Plan D* Lite por tramo. El motor tarda unos segundos al arrancar: reintenta si aún calcula. */
+export function fetchRoutePlan(): Promise<RoutePlan> {
+  if (!routePlanPromise) {
+    routePlanPromise = (async () => {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          return await getJson<RoutePlan>('/api/route-plan', 15000);
+        } catch (err) {
+          if (!(err instanceof ApiError) || err.status !== 503) throw err;
+          await new Promise((r) => window.setTimeout(r, 1500));
+        }
+      }
+      throw new ApiError('El plan de ruta sigue calculándose');
+    })().catch((err) => {
+      routePlanPromise = null;
+      throw err;
     });
-
-    const chosen = (surfaceOnly.length >= 2 ? surfaceOnly : deduped).slice(0, limit);
-
-    return chosen
-      .map((img) => {
-        const orig = img.image_files?.large || img.image_files?.medium || '';
-        const proxyUrl = orig.replace('https://mars.nasa.gov/mars2020-raw-images', '/nasa-raw-img');
-        return {
-          imageid: img.imageid,
-          sol: img.sol,
-          instrument: img.camera?.instrument || 'MCZ_RIGHT',
-          proxyUrl,
-          originalUrl: orig,
-          title: img.title || `Mars 2020 Sol ${img.sol}`,
-          dateTakenMars: img.date_taken_mars || `Sol-${img.sol}`,
-          dateTakenUtc: img.date_taken_utc || '',
-          mastAz: img.extended?.mastAz || '0.0',
-          mastEl: img.extended?.mastEl || '0.0',
-          site: img.site ?? 0,
-          drive: img.drive ?? 0,
-          credit: img.credit || 'NASA/JPL-Caltech/ASU',
-          link: img.link || 'https://mars.nasa.gov/mars2020/multimedia/raw-images/',
-        };
-      })
-      .filter((x) => Boolean(x.proxyUrl));
-  } catch {
-    return [];
   }
+  return routePlanPromise;
 }
 
-export interface HexCellPoint {
-  h3_hex: string;
-  lat: number;
-  lon_e: number;
-  elev_m: number;
-  slope_deg: number;
-  thermal_inertia_tiu: number;
-  isru_h2o_pct: number;
-  sky_view_factor: number;
-  los_base_rssi_dbm: number;
-}
-
-export async function fetchHexGrid(): Promise<HexCellPoint[]> {
+export async function fetchSpyglass(
+  lat: number,
+  lonE: number,
+  radiusM: number
+): Promise<SpyglassResult | 'outside' | null> {
   try {
-    const res = await fetch('/api/hexgrid');
-    if (!res.ok) return [];
-    return (await res.json()) as HexCellPoint[];
-  } catch {
-    return [];
+    return await getJson<SpyglassResult>(
+      `/api/spyglass?lat=${lat.toFixed(6)}&lon=${lonE.toFixed(6)}&radius_m=${radiusM.toFixed(0)}`,
+      4000
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return 'outside';
+    return null;
   }
 }
 
-export async function postZenohSync(): Promise<{ synced: boolean; checksum: string; cellsSynced: number }> {
-  try {
-    const res = await fetch('/api/zenoh-sync', { method: 'POST' });
-    if (!res.ok) throw new Error('HTTP error');
-    const data = (await res.json()) as {
-      synced: boolean;
-      checksum: string;
-      cells_synced: number;
-    };
-    return {
-      synced: data.synced,
-      checksum: data.checksum,
-      cellsSynced: data.cells_synced,
-    };
-  } catch {
-    return { synced: true, checksum: '0xLOCAL', cellsSynced: 0 };
-  }
+export async function fetchEnrichedGeoJson(): Promise<unknown> {
+  return getJson<unknown>('/api/geojson', 8000);
+}
+
+export interface ZenohSyncResult {
+  synced: boolean;
+  simulated: boolean;
+  checksum: string;
+  checksum_algo: string;
+  bundle_bytes: number;
+  cells_synced: number;
+  h3_res: number;
+}
+
+/** Sincronización del paquete pre-EVA. Lanza `ApiError` si la API no responde. */
+export async function postZenohSync(): Promise<ZenohSyncResult> {
+  return getJson<ZenohSyncResult>('/api/zenoh-sync', 8000, { method: 'POST' });
 }

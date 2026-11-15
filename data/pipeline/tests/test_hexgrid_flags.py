@@ -23,6 +23,8 @@ def test_umbrales_leidos_de_eva_thresholds():
     assert th["slope_red_gt_deg"] == np.float32(20.0)
     assert th["tiu_red_lt"] == np.float32(150.0)
     assert th["rssi_red_lt_dbm"] == np.float32(-100.0)
+    assert th["svf_shelter_le"] == np.float32(0.20)
+    assert th["h2o_isru_ge_pct"] == np.float32(12.0)
     assert all(isinstance(v, np.float32) for v in th.values())
 
 
@@ -77,8 +79,8 @@ def test_constantes_coinciden_con_lib_rs():
     assert np.float32(float(const("CRITICAL_SLOPE_DEG"))) == th["slope_red_gt_deg"]
     assert np.float32(float(const("LOW_TIU_TRAP_THRESHOLD"))) == th["tiu_red_lt"]
     assert np.float32(float(const("NLOS_RSSI_THRESHOLD_DBM"))) == th["rssi_red_lt_dbm"]
-    assert np.float32(float(const("SHELTER_SVF_MAX"))) == C.SHELTER_SVF_MAX
-    assert np.float32(float(const("ISRU_WATER_MIN_PCT"))) == C.ISRU_WATER_MIN_PCT
+    assert np.float32(float(const("SHELTER_SVF_MAX"))) == th["svf_shelter_le"]
+    assert np.float32(float(const("ISRU_WATER_MIN_PCT"))) == th["h2o_isru_ge_pct"]
     for name in ("SLOPE_CRITICAL", "REGOLITH_TRAP", "SHELTER", "NLOS", "ISRU_WATER"):
         m = re.search(rf"pub const HAZARD_FLAG_{name}: u16\s*= 1 << (\d+);", src)
         assert m, name

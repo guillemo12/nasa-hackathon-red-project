@@ -49,10 +49,10 @@ Las posiciones salen de la búsqueda rígida sobre el DTM CTX de 20 m `P18_00787
 |---|---|---|---|---|---|---|
 | Base→WP1 (L1) | 1.500 m | +78 m | 152° | 2,96° | 8,0° | Bajo |
 | WP1→WP2 (L2) | 1.200 m | +118 m | 227° | 5,62° | 19,9° | Alto: talud real de hasta 19,9°, <150 TIU [E], sombra de radio real |
-| WP2→WP3 (L3) | 600 m | −56 m | 344° | −5,26° | 22,5° | Medio-alto: ruta de escape cuesta abajo por ladera, 8 min a marcha urgente |
+| WP2→WP3 (L3) | 600 m | −56 m | 344° | −5,26° | 22,5° | Medio-alto: ruta de escape cuesta abajo por ladera, unos 9 min (9,4) a marcha urgente |
 | WP3→Base (L4) | 1.600 m | −140 m | 12° | −5,02° | 20,1° | Medio: descenso, recupera la LOS a ~634 m del WP3 |
 | **Perímetro** | **4.900 m** | 0 | | | | |
-| WP2→Base (R1, retorno) | 2.150 m en línea recta; **2.500 m** por ruta segura D\* Lite (rodeo 1,16 evitando bancos <150 TIU) | −196 m | 5° | −5,20° | 21,4° | Contingencia |
+| WP2→Base (R1, retorno) | 2.150 m en línea recta; **2.148 m** de camino del planificador D\* Lite («unos 2,15 km») | −196 m | 5° | −5,20° | 21,4° | Contingencia |
 
 La pendiente media del GeoJSON es la del perfil del DTM y difiere de atan(Δz/d) hasta 0,07° (L3: −5,26° frente a −5,33°). El recorrido sube 196 m de la Base al WP2, y el WP3 queda 56 m **por debajo** del WP2: el escape al refugio es cuesta abajo.
 
@@ -153,9 +153,9 @@ flowchart LR
 
     BASE -->|"L1: 1.500 m, +78 m, rumbo 152°<br/>riesgo bajo"| WP1
     WP1 -->|"L2: 1.200 m, +118 m, rumbo 227°<br/>riesgo alto: talud de hasta 19,9°,<br/>menos de 150 TIU, sombra de radio"| WP2
-    WP2 -->|"L3: 600 m, -56 m, rumbo 344°<br/>riesgo medio-alto: escape cuesta abajo, 8 min"| WP3
+    WP2 -->|"L3: 600 m, -56 m, rumbo 344°<br/>riesgo medio-alto: escape cuesta abajo, 9,4 min"| WP3
     WP3 -->|"L4: 1.600 m, -140 m, rumbo 12°<br/>riesgo medio: recupera radio a 634 m"| BASE
-    WP2 -.->|"R1 retorno: 2.150 m en recta,<br/>2.500 m por ruta segura, -196 m<br/>48 min: excede el límite de radiación"| BASE
+    WP2 -.->|"R1 retorno: 2.150 m en recta,<br/>2.148 m de camino, -196 m<br/>48 min: excede el límite de radiación"| BASE
 ```
 
 ---
@@ -271,7 +271,7 @@ El paso de los productos NASA a las capas del motor ya está implementado como p
 
 - **`terrain`.** Busca los productos en el catálogo STAC de USGS Astrogeology, mide su cobertura real píxel a píxel en cada zona de interés y lee solo la ventana necesaria (rangos HTTP sobre COG, nunca el fichero completo). Genera 13 COG en `data/pipeline/build/cog/` (no versionados): DEM CTX de 20 m (ruta y entorno), mezcla HRSC+MOLA de 200 m, MOLA de 463 m, ortoimágenes CTX de 6 m y HiRISE de 1 m, THEMIS IR día y noche de 100 m, pendiente y orientación, horizonte en 36 acimuts, SVF, línea de vista de radio con la Base y una capa de escenario con una banda de procedencia por variable (los rásteres medidos nunca llevan valores de escenario). Escribe `sources_manifest.json`, `terrain_outputs.json` (el contrato de ficheros, bandas, unidades y procedencia), `site_reality_check.json` y [`SITE_REALITY_CHECK.md`](../../data/nasa-layers/SITE_REALITY_CHECK.md); el submódulo `site_search` repite la búsqueda rígida del emplazamiento y `relocate` aplica la colocación al GeoJSON.
 - **`scenario`.** Validador de referencia de la física de las secciones 3 y 4: lee el GeoJSON y `eva_thresholds.json` y produce la cronología minuto a minuto de la EVA-07 (`eva07_timeline.parquet`, 211 filas de T−45 a T+165) y sus hitos (`eva07_events.json`), con potencia por fase, O₂ restante, tres perfiles de tasa SPE, dosis acumulada, enlace de radio, amenazas activas y los dos lados del Walkback Limit. Esquema en [`SCHEMA_EVA07.md`](../../data/mission-scenarios/SCHEMA_EVA07.md).
-- **`hexgrid`.** Agrega los COG a celdas H3 reales (índice `uint64`) sobre la ruta, a resolución 12 (141.313 celdas) y 9 (462 celdas). Cada resolución tiene dos Parquet: una tabla completa, con valor medido o derivado, valor de escenario, valor efectivo y procedencia por variable, y una tabla de contrato con exactamente los campos, tipos y orden de `HexCellState64B` del núcleo Rust: `h3_index`, `elev_m`, `slope_deg`, `aspect_deg`, `thermal_inertia_tiu`, `roughness_hi`, `isru_h2o_pct`, `sky_view_factor`, `los_base_rssi_dbm`, `base_metabolic_cost`, `horizon_hash_id`, `hazard_bitmask` y `padding_crc`. Los campos sin fuente van como nulos de Parquet, nunca como 0. Incluye una demostración de consultas DuckDB (celda, Spyglass de 3 sectores y perfil de tramo). Esquema en [`SCHEMA_HEXGRID.md`](../../data/nasa-layers/SCHEMA_HEXGRID.md).
+- **`hexgrid`.** Agrega los COG a celdas H3 reales (índice `uint64`) sobre la ruta, a resolución 12 (141.313 celdas) y 9 (462 celdas). Cada resolución tiene dos Parquet: una tabla completa, con valor medido o derivado, valor de escenario, valor efectivo y procedencia por variable, y una tabla de contrato con exactamente los campos, tipos y orden de `HexCellState64B` del núcleo Rust: `h3_index`, `elev_m`, `slope_deg`, `aspect_deg`, `thermal_inertia_tiu`, `roughness_hi`, `isru_h2o_pct`, `sky_view_factor`, `los_base_rssi_dbm`, `base_metabolic_cost`, `horizon_hash_id`, `hazard_bitmask` y `padding_crc`. `los_base_rssi_dbm` sale del modelo de enlace con difracción descrito en 3.2 y `roughness_hi` es una rugosidad derivada del DTM: la desviación típica de la cota respecto al plano ajustado en una ventana de 60 m (mediana de 0,16 m en la ruta; no ve bloques métricos). `base_metabolic_cost` y `horizon_hash_id` los calcula el motor (dependen de la arista y de su base de horizontes), y los datos que faltan van como nulos de Parquet, nunca como 0; el motor los carga como «sin dato». Incluye una demostración de consultas DuckDB (celda, Spyglass de 3 sectores y perfil de tramo). Esquema en [`SCHEMA_HEXGRID.md`](../../data/nasa-layers/SCHEMA_HEXGRID.md).
 
 Para regenerarlo todo, desde `data/pipeline/`:
 
@@ -284,6 +284,17 @@ uv run pytest
 ```
 
 `terrain` necesita red y tarda unos 3 minutos (`--reuse` aprovecha los recortes ya descargados); `scenario` y `hexgrid` son deterministas y se ejecutan sin red sobre lo que deja `terrain`. La búsqueda del emplazamiento (`uv run python -m red_atlas_p1.terrain.site_search`) tarda unos 35 minutos.
+
+**Tiempos de consulta medidos** sobre la malla de resolución 12 (141.313 celdas) en un portátil Apple M4. Son de esa máquina y esa ejecución, no una garantía para el ordenador del traje:
+
+| Consulta | DuckDB sobre el Parquet (Python) | Motor Rust con la malla en memoria |
+|---|---|---|
+| Celda por índice H3 | mediana 2,79 ms; p95 2,96 ms | mediana 0,041 µs; p95 0,125 µs |
+| Spyglass de 3 sectores, radio 100 m | mediana 7,02 ms; p95 7,34 ms | mediana 61,7 µs; p95 68,5 µs (≈ 307 celdas) |
+| Spyglass por anillo k = 10 | mediana 2,60 ms; p95 2,97 ms | mediana 10,2 µs; p95 16,6 µs |
+| Carga completa del Parquet | 14,6 ms en frío hasta la primera celda | mediana 117 ms; p95 119 ms |
+
+La columna de DuckDB sale de [`hexgrid_duckdb_benchmark.json`](../../data/nasa-layers/hexgrid_duckdb_benchmark.json) e incluye el paso de Python a DuckDB. La del motor sale del test de medición `p1_res12_query_benchmark` de `src/core-engine/tests/p1_hexgrid.rs`, compilado en modo *release*. Es decir, en la consola de Base una consulta Spyglass cuesta unos pocos milisegundos con DuckDB; en el traje, con la malla ya cargada, menos de 0,1 ms.
 
 ---
 
@@ -309,7 +320,7 @@ El coste de caminar con traje se modela como la suma de tres términos [D]: un g
 | Rampa de 10° | suelo firme, velocidad reducida | 592 | 1,77 | Rojo si se sostiene | [D] |
 | Rampa de 20° | suelo firme, velocidad reducida | 839 | 2,50 | Rojo | [D] |
 | **WP2** | 22°, 0,55 m/s, η 2,1 (110 TIU), deslizamiento 30 % | **1.073** | **3,2** | Rojo (pico) | [D] |
-| Escape a WP3 | 600 m a 1,25 m/s, **cuesta abajo** (−56 m): primer minuto en el banco de 110 TIU (η 2,1), resto η 1,3 | 593 → 413 (media 435) | 1,77 → 1,23 | Rojo 1 min, después verde | [D] |
+| Huida a WP3 | Ruta del planificador D\* Lite sobre el terreno real, **cuesta abajo** (−56 m), topes de huida de 1,25 m/s y 650 W: 9,4 min a 1,05 m/s de media | 548 (media) | 1,64 | Ámbar | [D] |
 
 Las potencias de cada fase de la EVA-07 salen del mismo modelo con la pendiente media real de cada tramo (DTM CTX), la velocidad media que imponen los hitos de la cronología y el η de la TIU media de los dos nodos del tramo; ninguna está ajustada para cuadrar el O₂ [D]:
 
@@ -320,12 +331,10 @@ Las potencias de cada fase de la EVA-07 salen del mismo modelo con la pendiente 
 | Marcha L2 | 75–98 | 539 W | 0,870 m/s, +5,62°, η 1,3 (ámbar 23 min, bajo el rojo de 585 W) |
 | Pico en la rampa del WP2 | 98–101 | **1.073 W** | 22° [E], 0,55 m/s, η 2,1, s 0,30 |
 | Rampa lenta | 101–105 | 585 W | ritmo regulado al rojo sostenido: 0,268 m/s |
-| Salida del banco blando | 105–106 | 593 W | 1,25 m/s, bajada, η 2,1 |
-| Escape L3 | 106–113 | 413 W | 1,25 m/s, bajada, η 1,3 |
-| Entrada bajo la cornisa | 113–114 | 645 W | 0,5 m/s [E] por el talud real de 20,1°, η 1,0 |
-| Refugio | 114–165 | 130 W [E] | reposo presurizado |
+| Huida a WP3 (incluye la entrada bajo la cornisa) | 105–114,4 | **548 W** | planificador D\* Lite: 9,4 min, 1,05 m/s de media |
+| Refugio | 114,4–165 | 130 W [E] | reposo presurizado |
 
-La media de la rampa del WP2 (T+98–105) es de 794 W y la del escape (T+105–113), de 435 W. Ninguna fase pasa más de 5 min seguidos por encima de 585 W. En bajada el modelo no acredita trabajo contra la gravedad ni cuenta el coste excéntrico de frenar en una ladera de hasta 22,5°: las potencias de escape son optimistas.
+La media de la rampa del WP2 (T+98–105) es de 794 W. La huida (T+105–114,4) no sale del modelo por tramos sino del planificador D\* Lite del motor Rust, que recorre celda a celda la malla H3 de resolución 12 sobre el terreno real con el mismo modelo de velocidad y los topes de huida de `eva_thresholds.json` (1,25 m/s y 650 W): 9,4 min, 1,05 m/s y 548 W de media, 15,4 L de O₂ [D]. Solo el pico del WP2 (3 min) pasa de 585 W. El modelo por tramos daba un tiempo más corto porque el L3 baja 56 m en media y no acredita pendiente; el camino real, suavizado sobre la malla, sube y baja por la ladera. Tampoco cuenta el coste excéntrico de frenar en una ladera de hasta 22,5°: la potencia de huida sigue siendo optimista.
 
 Los **3,2 L/min del WP2 no son un régimen de marcha**: son un pico transitorio cercano al VO₂máx, insostenible más de 2–3 min. Su valor operativo es de alarma: indica que el astronauta está gastando casi toda su potencia aeróbica en no hundirse, y que cada minuto adicional en la rampa contrae el margen de retorno a pie. Con las reservas del escenario (800 g útiles de O₂ primario [E]) el oxígeno **no** es el consumible limitante de la EVA-07: lo es la radiación.
 
@@ -343,7 +352,7 @@ Los **3,2 L/min del WP2 no son un régimen de marcha**: son un pico transitorio 
 | Velocidad del viento | m/s | <10 | 10–20 | >20 | [D]/[E] | Precursor de polvo: adelanta la predicción de τ; no se trata como carga mecánica |
 | Tasa de dosis | mSv/h | <0,05 | 0,05–1,0 | >1,0 | [M]/[E] | Rojo: evento «SPE»; arranca el integrador de dosis y la búsqueda de refugio por SVF |
 | Presupuesto de dosis SPE por EVA | mSv | <0,5 | 0,5–2,0 | >2,0 | [E] | Regla de vuelo. Si la dosis prevista hasta el destino supera 2,0, dispara el Dynamic Goal Switching |
-| Señal de radio (sesión Eclipse Zenoh sobre ROS 2) | dBm | > −85 | −85 a −100 | < −100 o NLOS >60 s | [D]/[E] | Ámbar: baja la tasa de telemetría. Rojo: el traje pasa a autonomía total en el borde, con almacenamiento local y reenvío diferido |
+| Señal de radio (enlace primario en banda S, 2,4 GHz: sesión Eclipse Zenoh sobre ROS 2) | dBm | > −85 | −85 a −100 | < −100 o NLOS >60 s | [D]/[E] | Ámbar: baja la tasa de telemetría. Rojo: el traje pasa a autonomía total en el borde, con almacenamiento local y reenvío diferido |
 | Presión del traje | kPa | 28,0–30,5 | 24,0–28,0 | <24,0 | [M]/[E] | Rojo: Supervivencia inmediata, con independencia de las demás variables |
 | O₂ primario | % | >50 | 30–50 | <30 | [E] | Entrada del Walkback Limit Dual (rama de consumibles) |
 | Agua de refrigeración LCVG | % | >40 | 20–40 | <20 | [E] | Limita la potencia metabólica sostenible (calor que el traje puede evacuar) |
@@ -352,7 +361,9 @@ Los **3,2 L/min del WP2 no son un régimen de marcha**: son un pico transitorio 
 
 Nota sobre el pico metabólico: la fórmula da ≈1.072,9 W; el fichero de umbrales lo guarda truncado (1.072) y el resto del documento lo redondea (1.073). Es el mismo valor.
 
-Referencias para situar los valores: el fondo de rayos cósmicos medido por RAD en Gale es ≈0,027 mSv/h [M] (verde); la SPE de diseño alcanza 8 mSv/h a cielo abierto [E]; la presión nominal del traje es 29,6 kPa [E]; el enlace UHF de 435 MHz y 1 W da ≈ −63 dBm con línea de visión a 2,5 km y cae a −95…−110 dBm tras el espolón [D].
+Referencias para situar los valores: el fondo de rayos cósmicos medido por RAD en Gale es ≈0,027 mSv/h [M] (verde); la SPE de diseño alcanza 8 mSv/h a cielo abierto [E]; la presión nominal del traje es 29,6 kPa [E]; el enlace primario de datos, en banda S (2,4 GHz, 1 W, antenas isótropas), pierde 108,0 dB en espacio libre a 2,5 km y da ≈ −78 dBm con línea de vista [D].
+
+**Señal real en la sombra de radio.** La malla H3 calcula el nivel recibido en cada celda con el perfil real del DTM CTX y difracción en filo de cuchillo sobre la arista dominante (ITU-R P.526). El enlace primario de datos, el que transporta la sesión Zenoh y se pierde tras el relieve, es **banda S a 2,4 GHz y 1 W**: **−78,2 dBm en el WP1, −103,1 dBm en el WP2 y −107,9 dBm en el WP3**, con 26,4 y 33,8 dB de difracción en el WP2 y el WP3 y unos ±2 dB de incertidumbre por el ruido del DTM [D]; en la ruta baja hasta −114,0 dBm. El WP2 y el WP3 quedan en rojo por nivel y, además, por pasar más de 60 s sin línea de vista. La **baliza UHF de 435 MHz y 1 W**, de baja tasa, solo pierde 19–26 dB tras el relieve (−81,0 dBm en el WP2 y −85,7 dBm en el WP3): sobrevive degradada y el sistema no depende de ella. Por eso la sombra de radio es la del enlace en banda S; con UHF no llegaría a rojo por nivel. La cronología de la sección 4 aplica 30 dB de difracción en NLOS (media de los dos nodos), que dan −106,7 dBm en el WP2 y −104,1 dBm en el WP3 [D]. Es un modelo de una sola arista: varias aristas, reflexiones o la rugosidad métrica que el DTM no resuelve darían más pérdida.
 
 ### 3.3 Esquema de datos de los umbrales
 
@@ -387,16 +398,16 @@ Las constantes físicas del fichero (gravedad 3,72076 m/s², masa con traje 170 
 | | Combo A: Trampa táctica | Combo B: Tormenta en el abismo | Combo C: Crisis máxima |
 |---|---|---|---|
 | Amenazas | Regolito y pendiente en WP2 + sombra de radio NLOS | Catabático y polvo local + sobreesfuerzo metabólico | SPE + NLOS + ráfagas de polvo (sobre el suelo del Combo A) |
-| Qué ocurre físicamente | Suelo de 110 TIU en rampa de 22° (talud real de 19,4°): deslizamiento del 30 %, η 2,1. El relieve que tapa la Base (rayo 24,7 m bajo el terreno) añade 20–30+ dB de difracción | τ pasa de 0,7 a 2,4 en una capa de 1–2 km: visibilidad 1,6–3 km. Viento de 10–30 m/s, solo ~8 Pa | Tasa de dosis de 8 mSv/h a cielo abierto, con el enlace caído y la visibilidad degradada |
-| Qué ocurre operativamente | Pico de 1.073 W (3,2 L/min), insostenible más de 2–3 min. Señal de −95…−110 dBm: se corta la sesión Zenoh y la Base no ve la telemetría | Marcha más lenta y más cara; el Walkback Limit se contrae. Canyon-TRN pierde los muros lejanos | La regla de 2 mSv se agota en 15 min a cielo abierto. Nadie en la Base puede ordenar ni confirmar el aborto |
-| Volver a la Base (2.500 m, 48 min) | Posible, pero a solas: la recta de 2.150 m cruza bancos de <150 TIU y el rodeo seguro se hace sin enlace | Navegación degradada casi 50 min, con la Base en el límite de la visibilidad | ≈6,4 mSv: 3,2 veces la regla de vuelo, sin radio y casi a ciegas |
-| WP3 (600 m, 8 min, SVF 0,15) | A 8 min y 56 m más abajo: el astronauta sale del banco blando en el primer minuto y baja a 413 W hasta roca firme (620 TIU [E], talud de 20,1°) | La pared, a 600 m, sigue visible: sirve de referencia para LiDAR y VIO | Dosis a la llegada ≈0,6 mSv (1,09 con la envolvente); después, 1,2 mSv/h bajo la cornisa (reducción del 85 %) |
+| Qué ocurre físicamente | Suelo de 110 TIU en rampa de 22° (talud real de 19,4°): deslizamiento del 30 %, η 2,1. El relieve que tapa la Base (rayo 24,7 m bajo el terreno) añade unos 26 dB de difracción en banda S (34 dB en el WP3) | τ pasa de 0,7 a 2,4 en una capa de 1–2 km: visibilidad 1,6–3 km. Viento de 10–30 m/s, solo ~8 Pa | Tasa de dosis de 8 mSv/h a cielo abierto, con el enlace caído y la visibilidad degradada |
+| Qué ocurre operativamente | Pico de 1.073 W (3,2 L/min), insostenible más de 2–3 min. Sin línea de vista durante más de 60 s y enlace primario en banda S a −103 dBm en el WP2 (rojo por las dos ramas): se corta la sesión Zenoh y la Base no ve la telemetría; solo queda la baliza UHF de baja tasa | Marcha más lenta y más cara; el Walkback Limit se contrae. Canyon-TRN pierde los muros lejanos | La regla de 2 mSv se agota en 15 min a cielo abierto. Nadie en la Base puede ordenar ni confirmar el aborto |
+| Volver a la Base (2,15 km, 48 min) | Posible, pero a solas: 2.148 m de camino del planificador, casi la recta, recorridos sin enlace | Navegación degradada casi 50 min, con la Base en el límite de la visibilidad | 5,30 mSv de dosis de decisión: más del doble de la regla de vuelo, sin radio y casi a ciegas |
+| WP3 (600 m, unos 9 min, SVF 0,15) | A 9,4 min y 56 m más abajo: el astronauta sale del banco blando y baja a 548 W de media hasta roca firme (620 TIU [E], talud de 20,1°) | La pared, a 600 m, sigue visible: sirve de referencia para LiDAR y VIO | Dosis de decisión de la ruta 0,89 mSv; acumulada a la llegada ≈0,7 mSv (0,72; 1,26 con la envolvente); después, 1,2 mSv/h bajo la cornisa (reducción del 85 %) |
 
-**Combo A.** Aislado, no mata a nadie: es la avería que quita margen a todo lo demás. El astronauta gasta su potencia aeróbica en una rampa que cede y, a la vez, deja de existir para la Base (NLOS de más de 60 s, rojo). El WP3 **no** devuelve la radio (tampoco tiene línea de visión con la Base: el rayo pasa 28,2 m bajo el terreno); lo que ofrece es terreno firme a 8 min, cuesta abajo, frente a 48 min de regreso en solitario. El enlace se recupera más tarde con un repetidor desplegado desde la Base.
+**Combo A.** Aislado, no mata a nadie: es la avería que quita margen a todo lo demás. El astronauta gasta su potencia aeróbica en una rampa que cede y, a la vez, deja de existir para la Base (NLOS de más de 60 s, rojo). El WP3 **no** devuelve la radio (tampoco tiene línea de visión con la Base: el rayo pasa 28,2 m bajo el terreno); lo que ofrece es terreno firme a unos 9 min, cuesta abajo, frente a 48 min de regreso en solitario. El enlace se recupera más tarde con un repetidor desplegado desde la Base.
 
-**Combo B.** La intuición de «el viento te tira» es falsa: lo que cambia es lo que se ve. Con τ = 2,4 se pierden los muros lejanos del cañón, de modo que el *Skyline Matching* de Canyon-TRN deja de tener horizonte que emparejar y la localización se degrada a VIO + LiDAR. La pared cercana, a 600 m, queda dentro del alcance visual y es el único rasgo fiable. La Base, a 2.500 m de ruta, está en el borde de la visibilidad; cada rectificación de rumbo cuesta vatios y minutos, y el margen del Walkback Limit cae hacia el ámbar. El escape al WP3 es cuesta abajo: 593 W el primer minuto para salir del banco blando y 413 W el resto (media de 435 W en 8 min), breve y con final conocido. El modelo no cuenta el coste excéntrico de bajar una ladera de hasta 22,5° con visibilidad reducida, así que esa cifra es optimista.
+**Combo B.** La intuición de «el viento te tira» es falsa: lo que cambia es lo que se ve. Con τ = 2,4 se pierden los muros lejanos del cañón, de modo que el *Skyline Matching* de Canyon-TRN deja de tener horizonte que emparejar y la localización se degrada a VIO + LiDAR. La pared cercana, a 600 m, queda dentro del alcance visual y es el único rasgo fiable. La Base, a 2,15 km de camino, está en el borde de la visibilidad; cada rectificación de rumbo cuesta vatios y minutos, y el margen del Walkback Limit cae hacia el ámbar. El escape al WP3 es cuesta abajo: 548 W de media durante 9,4 min según el planificador, por debajo del rojo sostenido, breve y con final conocido. El modelo no cuenta el coste excéntrico de bajar una ladera de hasta 22,5° con visibilidad reducida, así que esa cifra es optimista.
 
-**Combo C.** Hay que decirlo con honestidad: **la radiación sola no es letal de forma aguda en la superficie de Marte**. Los 6,4 mSv del regreso a la Base están muy lejos de un síndrome agudo y de los límites de carrera de la NASA (600 mSv). Lo inaceptable es otra cosa: triplicar una regla de vuelo (6,4 frente a 2 mSv) durante 48 min **sin radio, con visibilidad degradada y con terreno trampa en la ruta directa**, es decir, sin margen para ningún otro fallo. El WP3 convierte ese problema en uno acotado: 8 min de marcha, ≈0,6 mSv acumulados al llegar y 1,2 mSv/h bajo la cornisa mientras pasa el pico. Con el perfil nominal del evento (la tasa sube hasta 8 mSv/h en T+125, se mantiene hasta T+140 y baja a 2 mSv/h en T+165), la dosis SPE total de la EVA es **1,40 mSv** [D], por debajo de la regla. Hay que decir también el caso peor: si la envolvente de 8 mSv/h se aplicara constante desde T+105 hasta el final, el total sería **2,11 mSv** [D], un 5 % por encima de la regla. Incluso así la decisión no cambia: volver a la Base daría 6,4 mSv, tres veces más.
+**Combo C.** Hay que decirlo con honestidad: **la radiación sola no es letal de forma aguda en la superficie de Marte**. Los 5,30 mSv que el traje proyecta para el regreso a la Base están muy lejos de un síndrome agudo y de los límites de carrera de la NASA (600 mSv). Lo inaceptable es otra cosa: recibir más del doble de lo que permite una regla de vuelo (5,30 frente a 2 mSv) durante 48 min **sin radio, con visibilidad degradada y con terreno trampa en la ruta directa**, es decir, sin margen para ningún otro fallo. El WP3 convierte ese problema en uno acotado: unos 9 min de marcha (9,4), ≈0,7 mSv acumulados al llegar y 1,2 mSv/h bajo la cornisa mientras pasa el pico. Con el perfil nominal del evento (la tasa sube hasta 8 mSv/h en T+125, se mantiene hasta T+140 y baja a 2 mSv/h en T+165), la dosis SPE total de la EVA es **1,52 mSv** [D], por debajo de la regla. Hay que decir también el caso peor: si la envolvente de 8 mSv/h se aplicara constante desde T+105 hasta el final, el total sería **2,27 mSv** [D], un 13 % por encima de la regla. Incluso así la decisión no cambia: volver a la Base daría 5,30 mSv de dosis de decisión, más del doble de la regla.
 
 ### 3.6 Máquina de estados y disparo del Dynamic Goal Switching
 
@@ -406,8 +417,8 @@ flowchart TD
     P["PRECAUCIÓN<br/>una o más variables en ámbar<br/>o un rojo de terreno aislado"]
     S["SUPERVIVENCIA<br/>rojo vital o amenazas combinadas"]
     D{"¿La Base cumple las reglas?<br/>dosis prevista ≤ 2 mSv<br/>y margen de Walkback ≥ 10 min"}
-    B["Retorno a la Base<br/>2.500 m, 48 min"]
-    G["DYNAMIC GOAL SWITCHING (menos de 10 ms)<br/>nuevo destino = WP3<br/>600 m, 8 min, SVF 0,15"]
+    B["Retorno a la Base<br/>2.148 m, 48 min"]
+    G["DYNAMIC GOAL SWITCHING (17 ms medidos)<br/>nuevo destino = WP3<br/>600 m, 9,4 min, SVF 0,15"]
     R["REFUGIO ACTIVO<br/>1,2 mSv/h, espera del repetidor Zenoh"]
 
     N -->|"cualquier ámbar"| P
@@ -416,12 +427,12 @@ flowchart TD
     N -->|"presión del traje inferior a 24,0 kPa"| S
     S --> D
     D -->|"sí"| B
-    D -->|"no (6,4 mSv previstos)"| G
+    D -->|"no (5,30 mSv previstos)"| G
     G --> R
     R -->|"tasa de dosis en verde<br/>y enlace restablecido"| P
 ```
 
-La decisión es determinista: los umbrales se evalúan en el propio traje, sin depender de la Base, y el cambio de destino se resuelve en menos de 10 ms porque la ruta al WP3 ya está precalculada.
+La decisión es determinista: los umbrales se evalúan en el propio traje, sin depender de la Base, y la replanificación del cambio de destino tarda 17 ms, medidos en modo optimizado sobre un corredor de la malla real; el WP3 llega prevalidado desde T−30.
 
 **Dependencia espacial y horaria de las tasas de disparo.** El motor estocástico trata cada amenaza como un proceso de Poisson cuya tasa no es constante, sino función de la celda H3 y de la hora solar local:
 
@@ -438,7 +449,7 @@ Por eso el Combo C no es una coincidencia forzada: tres de las cuatro amenazas c
 
 Esta sección ejecuta el «Triángulo de Supervivencia» (Base → WP1 → WP2 → WP3) como una única salida extravehicular, de T−45 a T+165 min (minutos terrestres; salida a las 14:45 LMST). Cada evento se ancla a un dato físico de las secciones anteriores y a la pieza de R.E.D. ATLAS que actúa. Procedencia de las cifras: **[M]** medido o publicado, **[D]** derivado por cálculo, **[E]** supuesto del escenario de diseño.
 
-> **Nota sobre el ajuste de cronología.** El plan original situaba la «llegada» al refugio en el Acto 5 (T+140). Físicamente no es posible: con 8 min de marcha hasta WP3 y una ventana de radiación de 15 min a cielo abierto, la llegada tiene que producirse en **T+113–114**. Los cinco actos conservan sus rangos, pero el Acto 4 incluye la llegada y el refugio activo, y el Acto 5 pasa a ser la permanencia, la recuperación y la telemetría final.
+> **Nota sobre el ajuste de cronología.** El plan original situaba la «llegada» al refugio en el Acto 5 (T+140). Físicamente no es posible: con 9,4 min de huida hasta WP3 (planificador D\* Lite) y una ventana de radiación de 15 min a cielo abierto, la llegada tiene que producirse en **T+114** (T+114,4). Los cinco actos conservan sus rangos, pero el Acto 4 incluye la llegada y el refugio activo, y el Acto 5 pasa a ser la permanencia, la recuperación y la telemetría final.
 
 ### 4.1 Acto 1 (T−45 a T−00): la misión se gana en la consola de Base
 
@@ -447,10 +458,12 @@ La EVA-07 empieza sentada. En la Consola 3D de la Base, la tripulación recorre 
 | Tiempo | Qué ocurre | Dato físico | Pieza del sistema | Tecnología del stack |
 |---|---|---|---|---|
 | T−45 | Inspección de los rasters COG del triángulo: sector norte (CRISM, azul eléctrico) sobre WP1, sector derecho (THEMIS, magenta/naranja) sobre WP2, sector izquierdo (MOLA/HiRISE + SVF) sobre WP3 | WP1: mezcla de sulfatos con ≥12 % de H₂O en roca total [E]; WP2: 110 TIU y rampa de 22° [E] sobre un talud real de 19,4° [D]; WP3: SVF 0,15 de la alcoba y 620 TIU [E] (SVF real del DEM 0,76 [D]) | Spyglass de 3 sectores | Python (`data/pipeline`: GDAL vía Rasterio, rio-cogeo) → COG; React + CesiumJS + Three.js (shader WebGPU) |
-| T−45 a T−30 | Trazado de la ruta y del retorno seguro desde WP2 | Perímetro 4.900 m; retorno WP2→Base 2.500 m evitando bancos <150 TIU [D] | Planificador metabólico de ruta | Motor Rust de Base (`h3o` + DuckDB Spatial); GeoJSON |
-| T−30 | «Chaos Mode»: 10.000 simulaciones Monte Carlo, 100 trayectorias visibles en pantalla | 9.940 supervivencias = 99,4 % [D]; en los escenarios con SPE y polvo, el destino viable es WP3 | Chaos Mode (motor estocástico Markov/Poisson) | Rust compilado a WASM en la consola |
+| T−45 a T−30 | Trazado de la ruta y del retorno seguro desde WP2 | Perímetro 4.900 m; retorno WP2→Base 2.148 m de camino del planificador («unos 2,15 km») [D] | Planificador metabólico de ruta | Motor Rust de Base (`h3o` + DuckDB Spatial); GeoJSON |
+| T−30 | «Chaos Mode»: 10.000 simulaciones Monte Carlo (semilla fija), 100 trayectorias visibles en pantalla | **96,0 %** de misión segura con cambio automático al refugio frente a **23,8 %** si solo se permite volver a la Base [D] | Chaos Mode (motor estocástico Markov/Poisson) | Rust compilado a WASM en la consola |
 | T−10 | Sincronización de la sub-malla hexagonal al nodo del traje | Arista de celda ≈ 93 m en res 9 y ≈ 5 m en res 12 [D] | Caché local del traje | `h3o` en Apache Parquet + GeoJSON por Eclipse Zenoh; ROS 2 (`rclrs`) |
-| T−00 | Esclusa despresurizada; «go» de la tripulación | Traje a 29,6 kPa; O₂ primario 800 g útiles (100 %) [E] | HUD AR en estado nominal | Enlace UHF 435 MHz sobre Zenoh |
+| T−00 | Esclusa despresurizada; «go» de la tripulación | Traje a 29,6 kPa; O₂ primario 800 g útiles (100 %) [E] | HUD AR en estado nominal | Enlace primario en banda S (2,4 GHz) sobre Zenoh; baliza UHF de baja tasa |
+
+**Qué mide el Chaos Mode.** Una simulación cuenta como **misión segura** si el astronauta llega a un destino (la Base o, cuando se permite el cambio, el refugio del WP3) con una dosis SPE de 2 mSv o menos y O₂ primario disponible; si no, se clasifica por el fallo más grave: consumibles agotados, destino no alcanzado o regla de vuelo incumplida (más de 2 mSv). Con cambio automático al refugio, 9.602 de 10.000 simulaciones son seguras; las demás son, casi todas, incumplimientos de la regla de dosis (396). Solo con la Base son seguras 2.384: 4.484 no llegan y 3.132 superan los 2 mSv. El resultado lo exporta el motor Rust (`chaos_mode_results.json`) y tiene una limitación que el propio fichero declara: corre sobre un **corredor sintético** de Melas (H3 de resolución 11), con las celdas muestreadas por su posición en el corredor y no a lo largo de la ruta planificada, solo el O₂ primario como consumible y la huida al refugio modelada como un tramo al 55 % de la dosis a cielo abierto. Mide la ventaja de poder cambiar de destino, no la probabilidad de éxito de esta EVA concreta.
 
 ### 4.2 Acto 2 (T+00 a T+75): salida y éxito ISRU en WP1
 
@@ -471,7 +484,7 @@ El tramo hacia WP2 sube 118 m en 1.200 m con rumbo 227°, trepa por el pie de la
 | Tiempo | Qué ocurre | Dato físico | Pieza del sistema | Tecnología del stack |
 |---|---|---|---|---|
 | T+75–92 | Aproximación al lóbulo de WP2 | 1.200 m, +118 m, pendiente media 5,62° y máxima 19,9° [D]; 539 W (1,61 L/min) a 0,87 m/s: ámbar durante 23 min, bajo el rojo de 585 W [D] | Sendero AR cian; aviso de ritmo | D\* Lite Metabólico |
-| **T+92** | **Amenaza 1: sombra de radio (NLOS).** El relieve de la ladera corta la línea de visión (en el WP2 el rayo pasa 24,7 m bajo el terreno [D]) | La señal cae de ≈ −63 dBm a menos de −100 dBm: la difracción añade 20–30+ dB [D]; umbral rojo: < −100 dBm o NLOS > 60 s | Paso automático a modo 100 % offline; icono «Canyon-TRN» | ROS 2 (`rclrs`); Zenoh pasa a cola local a la espera de reconexión |
+| **T+92** | **Amenaza 1: sombra de radio (NLOS).** El relieve de la ladera corta la línea de visión (en el WP2 el rayo pasa 24,7 m bajo el terreno [D]) | El enlace primario en banda S cae de ≈ −76 dBm a ≈ −106 dBm con 30 dB de difracción [D] (el modelo de una arista sobre el DTM da −103,1 dBm en el nodo WP2): rojo por nivel y, pasado un minuto, también por NLOS > 60 s. La baliza UHF sigue en ≈ −81 dBm, sin capacidad para la sesión Zenoh | Paso automático a modo 100 % offline; icono «Canyon-TRN» | ROS 2 (`rclrs`); Zenoh pasa a cola local a la espera de reconexión |
 | T+92 | Posicionamiento sin GPS ni radio | *Skyline Matching* de la silueta de los muros contra el DEM (CTX 20 m en campo cercano, HRSC+MOLA 200 m en campo lejano); relieve local de pared ≈ 5–6 km [D] | Canyon-TRN | EKF en `nalgebra` (IMU + VIO + LiDAR) |
 | **T+98** | **Amenaza 2: regolito suelto en pendiente** | 110 TIU y rampa de 22° [E] sobre un talud real de 19,4° [D]; η = 2,1, deslizamiento del 30 %, 0,55 m/s → 1.073 W = **3,2 L/min** [D]; O₂ restante 80,5 % [D] | Walkback Limit Dual en ámbar; aviso metabólico | D\* Lite Metabólico (coste por celda `h3o`) |
 | T+98–105 | Progresión lenta por la rampa del lóbulo: 3 min de pico y después ritmo regulado a 0,268 m/s (585 W, el límite del rojo sostenido); media de 794 W | O₂ restante 77,5 % en T+105 [D] | Copiloto IA Neuro-Simbólico en vigilancia | Máquina de estados determinista en Rust |
@@ -486,29 +499,31 @@ En T+105, sin radio y con las botas todavía en terreno blando, el dosímetro lo
 
 | Magnitud | Volver a Base | Ir a WP3 (refugio) |
 |---|---|---|
-| Distancia | 2.500 m (ruta segura D\* Lite) [D] | 600 m [E] |
-| Tiempo estimado | 48 min [D] | 8 min [D] |
+| Distancia | 2.148 m de camino del planificador («unos 2,15 km») [D] | 595 m de camino (600 m en línea recta) [D] |
+| Tiempo estimado | 48 min (47,6 del planificador, 0,75 m/s, 354 W) [D] | 9,4 min (1,05 m/s, 548 W) [D] |
 | Ventana de radiación a cielo abierto | 15 min (regla de 2 mSv a 8 mSv/h) [E] | 15 min [E] |
-| Dosis SPE proyectada por el traje (envolvente de 8 mSv/h) | 6,4 mSv = 3,2× la regla [D] | 1,07 mSv en ruta [D] (≈ 0,6 mSv con el perfil nominal) |
+| O₂ necesario | 50,3 L (71,9 g) [D] | 15,4 L (22,1 g) [D] |
+| Dosis de decisión (motor: envolvente de 8 mSv/h constante × SVF de cada celda del camino) | **5,30 mSv** = 2,65× la regla [D] | **0,89 mSv** [D] |
 | O₂ disponible | 77,5 % (no es el limitante) [D] | 77,5 % (no es el limitante) [D] |
-| Veredicto | **Bloqueada**: 48 min > 15 min | **Viable**: 8 min < 15 min |
+| Margen | −32,6 min [D] | 5,6 min (rojo por umbral; la regla de 10 min solo se aplica a la Base) [D] |
+| Veredicto | **Bloqueada**: 48 min > 15 min | **Viable**: 9,4 min < 15 min |
 
-El traje proyecta con la envolvente, como manda la regla: al detectar la SPE supone 8 mSv/h constantes durante todo el trayecto. La decisión no depende del perfil temporal del evento: con cualquiera de los tres perfiles que calcula el validador, en T+105 la Base da 4,7–6,4 mSv (no viable) y el WP3, 0,21–1,07 mSv (viable).
+El traje decide con la **dosis de decisión** del motor: al detectar la SPE supone lo peor que ha medido, la envolvente de 8 mSv/h constante desde el primer minuto, y la multiplica por el Sky View Factor de cada celda del camino que propone el planificador. La Base da 5,30 mSv, más del doble de la regla de 2 mSv; el refugio, 0,89 mSv. La dosis que la cronología acumula de verdad es otra (0,72 mSv al llegar al WP3 con el perfil nominal; 1,26 con la envolvente), porque sigue la rampa temporal de la tormenta y toma cielo abierto durante la marcha, mientras que la proyección supone la tasa máxima desde T+105 y el SVF de cada celda.
 
-El D\* Lite Metabólico ejecuta el **Dynamic Goal Switching en <10 ms**: el destino deja de ser la Base y pasa a ser WP3. El HUD aplica el «Triaje de Fusión de Alerta Única»: en lugar de cuatro avisos, el tramo de Base de la barra queda tachado y el sendero AR pasa de cian a chevrones rojo/ámbar pulsantes que apuntan a la pared del cañón. El Copiloto IA Neuro-Simbólico emite una única orden de voz de menos de 8 segundos (situación + acción + tiempo al refugio):
+El D\* Lite Metabólico ejecuta el **Dynamic Goal Switching** (la replanificación tarda 17 ms medidos): el destino deja de ser la Base y pasa a ser WP3. El HUD aplica el «Triaje de Fusión de Alerta Única»: en lugar de cuatro avisos, el tramo de Base de la barra queda tachado y el sendero AR pasa de cian a chevrones rojo/ámbar pulsantes que apuntan a la pared del cañón. El Copiloto IA Neuro-Simbólico emite una única orden de voz de menos de 8 segundos (situación + acción + tiempo al refugio):
 
-> «Tormenta solar y polvo. Base fuera de alcance. Sigue el sendero rojo al refugio WP3, a ocho minutos.»
+> «Tormenta solar y polvo. Base fuera de alcance. Sigue el sendero rojo al refugio WP3, a nueve minutos.»
 
 | Tiempo | Qué ocurre | Dato físico | Pieza del sistema | Tecnología del stack |
 |---|---|---|---|---|
 | **T+105** | **Amenazas 3 y 4: alerta SPE + frente de polvo**, sumadas a NLOS y suelo blando | Envolvente de diseño: pico de 8 mSv/h a cielo abierto [E]; τ 0,7 → 2,4 [E]; vientos de ladera de 10–30 m/s [M, modelado] | Motor estocástico multi-amenaza; dosímetro local | Nodo ROS 2 (`rclrs`) |
-| T+105 | Cambio de destino a WP3 | 48 min frente a 15 min; decisión en <10 ms | Dynamic Goal Switching | D\* Lite Metabólico en Rust |
+| T+105 | Cambio de destino a WP3 | 48 min frente a 15 min; replanificación en 17 ms | Dynamic Goal Switching | D\* Lite Metabólico en Rust |
 | T+105 | Fusión de cuatro alarmas en una sola salida | Sendero de cian a rojo/ámbar pulsante | Triaje de Fusión de Alerta Única | Three.js en el visor |
 | T+105 | Orden de voz única | Duración inferior a 8 s | Copiloto IA Neuro-Simbólico | Candle / `ort` + `whisper-rs` |
-| T+105–113 | Marcha de escape con rumbo 344°, cuesta abajo | 600 m, −56 m, 1,25 m/s: 593 W el primer minuto (salida del banco de 110 TIU) y 413 W el resto [D]; visibilidad ~1,6–3 km [D] | Canyon-TRN degradado | EKF `nalgebra` con VIO + LiDAR |
-| **T+113–114** | **Llegada a WP3** y entrada bajo la cornisa (1 min a 0,5 m/s [E] por el talud real de 20,1°: 645 W) | Dosis SPE acumulada ≈ 0,6 mSv (0,59 con el perfil nominal; 1,09 con la envolvente) [D]; O₂ restante 75,3 % [D] | Walkback Limit Dual: refugio alcanzado | Máquina de estados determinista |
-| T+125 | Pico del SPE | 8 mSv/h a cielo abierto; 1,2 mSv/h en la alcoba [E], aún por encima del umbral rojo de tasa (> 1,0 mSv/h); dosis acumulada 0,79 mSv [D] | Monitor de dosis | Nodo ROS 2 del traje |
-| T+114–140 | Refugio activo: reposo, vigilancia y telemetría en cola | Reposo presurizado, 130 W [E]; enlace aún en NLOS | Copiloto en vigilancia silenciosa | Cola local Zenoh |
+| T+105–114,4 | Marcha de escape hacia el rumbo 344°, cuesta abajo, por la ruta del planificador | 600 m, −56 m: 9,4 min a 1,05 m/s y 548 W de media (topes de huida 1,25 m/s y 650 W), incluida la entrada bajo la cornisa por el talud real de 20,1° [D]; visibilidad ~1,6–3 km [D] | Canyon-TRN degradado | EKF `nalgebra` con VIO + LiDAR |
+| **T+114** | **Llegada a WP3** bajo la cornisa (T+114,4), dentro de la ventana de 15 min | Dosis SPE acumulada ≈ 0,7 mSv (0,72 con el perfil nominal; 1,26 con la envolvente) [D], frente a 0,89 mSv de dosis de decisión de la ruta; O₂ restante 74,9 % [D] | Walkback Limit Dual: refugio alcanzado | Máquina de estados determinista |
+| T+125 | Pico del SPE | 8 mSv/h a cielo abierto; 1,2 mSv/h en la alcoba [E], aún por encima del umbral rojo de tasa (> 1,0 mSv/h); dosis acumulada 0,91 mSv [D] | Monitor de dosis | Nodo ROS 2 del traje |
+| T+115–140 | Refugio activo: reposo, vigilancia y telemetría en cola | Reposo presurizado, 130 W [E]; en T+115, O₂ restante 74,7 % y dosis acumulada 0,73 mSv [D]; enlace aún en NLOS | Copiloto en vigilancia silenciosa | Cola local Zenoh |
 
 > **Nota sobre la navegación con polvo.** Con τ = 2,4 concentrado en la capa límite, la visibilidad baja a ~1,6–3 km: los muros lejanos se pierden y el *Skyline Matching* de Canyon-TRN deja de aportar. El filtro continúa con VIO + LiDAR, y la pared cercana, a 600 m, sigue visible y sirve de referencia directa. A 30 m/s el viento solo ejerce ~8 Pa de presión dinámica: el peligro es la visibilidad y el polvo, no el empuje.
 
@@ -520,26 +535,26 @@ El refugio funciona por geometría. La alcoba de WP3 solo deja ver el 15 % del c
 
 | Tiempo | Qué ocurre | Dato físico | Pieza del sistema | Tecnología del stack |
 |---|---|---|---|---|
-| T+140 | Remite el pico del SPE | La tasa a cielo abierto desciende desde los 8 mSv/h [E]; dosis acumulada 1,09 mSv [D] | Walkback Limit Dual: sigue en refugio | Máquina de estados determinista |
+| T+140 | Remite el pico del SPE | La tasa a cielo abierto desciende desde los 8 mSv/h [E]; dosis acumulada 1,21 mSv [D] | Walkback Limit Dual: sigue en refugio | Máquina de estados determinista |
 | T+140–158 | Permanencia protegida | ≤ 1,2 mSv/h en la alcoba, en descenso [E] | Copiloto en vigilancia | Candle / `ort` |
-| **T+158** | **Se restablece el enlace Zenoh** a través del repetidor desplegado por el rover desde la Base | Vuelve la línea de visión; fin del NLOS iniciado en T+92 (66 min, derivado); dosis acumulada 1,35 mSv [D] | Reconexión y volcado de la telemetría en cola | Eclipse Zenoh + ROS 2 (`rclrs`) |
-| T+165 | Telemetría final recibida en la consola | O₂ restante 71,8 % (574 g) [D] | Consola 3D de Base | React + CesiumJS |
+| **T+158** | **Se restablece el enlace Zenoh** a través del repetidor desplegado por el rover desde la Base | Vuelve la línea de visión; fin del NLOS iniciado en T+92 (66 min, derivado); dosis acumulada 1,47 mSv [D] | Reconexión y volcado de la telemetría en cola | Eclipse Zenoh + ROS 2 (`rclrs`) |
+| T+165 | Telemetría final recibida en la consola | O₂ restante 71,2 % (570 g) [D] | Consola 3D de Base | React + CesiumJS |
 
 **Telemetría final en T+165**
 
 | Magnitud | Perfil nominal | Envolvente de 8 mSv/h constantes | Procedencia |
 |---|---|---|---|
-| O₂ primario restante | 71,8 % (574 g de 800 g) | — | [D] (reserva inicial [E]) |
-| Dosis SPE en ruta (T+105 a T+114) | 0,59 mSv (≈ 0,6) | 1,09 mSv | [D] |
-| Dosis SPE en refugio (T+114 a T+165) | 0,81 mSv | 1,02 mSv (51 min a 1,2 mSv/h) | [D] |
-| **Dosis SPE total acumulada** | **1,40 mSv**, por debajo de la regla de 2 mSv por EVA | 2,11 mSv, un 5 % por encima de la regla | [D] |
+| O₂ primario restante | 71,2 % (570 g de 800 g) | — | [D] (reserva inicial [E]) |
+| Dosis SPE en ruta (T+105 a T+114,4) | 0,72 mSv | 1,26 mSv | [D] |
+| Dosis SPE en refugio (T+114,4 a T+165) | 0,80 mSv | 1,01 mSv (50,6 min a 1,2 mSv/h) | [D] |
+| **Dosis SPE total acumulada** | **1,52 mSv**, por debajo de la regla de 2 mSv por EVA | 2,27 mSv, un 13 % por encima de la regla | [D] |
 | Fondo GCR durante la EVA (165 min a ≈ 0,027 mSv/h) | 0,074 mSv, contabilizado aparte de la regla SPE | — | [D] |
-| Contrafactual: volver a Base | 5,36 mSv | 6,4 mSv = 3,2× la regla | [D] |
+| Contrafactual: volver a Base (dosis de decisión del motor: 2.148 m en 47,6 min) | — | 5,30 mSv (envolvente × SVF de cada celda) = 2,65× la regla | [D] |
 | Enlace con la Base | Restablecido en T+158 | — | [E] |
 
-El perfil nominal sube de 0 a 5 mSv/h en tres minutos, llega a 8 mSv/h en T+125, se mantiene hasta T+140 y baja a 2 mSv/h en T+165; su primer nudo es un parámetro ajustado para reproducir los ≈ 0,6 mSv de la llegada, no una predicción. La envolvente es el caso peor que usa el traje para decidir. La reubicación del triángulo no cambia ninguna dosis: dependen de la cronología y del SVF 0,15 de la alcoba, no de la geometría.
+El perfil nominal sube de 0 a 5 mSv/h en tres minutos, llega a 8 mSv/h en T+125, se mantiene hasta T+140 y baja a 2 mSv/h en T+165; su primer nudo es un parámetro que se ajustó para reproducir los ≈ 0,6 mSv de la llegada con el escape más corto de la versión anterior y no se ha recalibrado: con la huida de 9,4 min da 0,72 mSv. No es una predicción. La envolvente es el caso peor que usa el traje para decidir. La reubicación del triángulo no cambia ninguna dosis: dependen de la cronología y del SVF 0,15 de la alcoba, no de la geometría.
 
-El oxígeno nunca fue el limitante: sobra casi el 72 % del depósito, aunque la ruta real suba 196 m hasta el WP2. Lo fue la radiación, y la resolvió una decisión de ruta tomada en menos de 10 ms con datos cargados 115 minutos antes (derivado: de T−10 a T+105).
+El oxígeno nunca fue el limitante: sobra más del 71 % del depósito, aunque la ruta real suba 196 m hasta el WP2. Lo fue la radiación, y la resolvió un cambio de destino replanificado en 17 ms con datos cargados 115 minutos antes (derivado: de T−10 a T+105).
 
 ### 4.6 Diagrama de secuencia de la misión EVA-07
 
@@ -560,7 +575,7 @@ sequenceDiagram
     MR-->>C3: CRISM, THEMIS, MOLA/HiRISE y SVF
     TB->>C3: T−30 Chaos Mode
     C3->>MR: 10.000 simulaciones Monte Carlo
-    MR-->>C3: 99,4 % de supervivencia<br/>100 trayectorias visibles, WP3 prevalidado
+    MR-->>C3: 96,0 % de misión segura con refugio<br/>frente a 23,8 % solo con la Base, WP3 prevalidado
     MR->>TE: T−10 Sub-malla h3o en Parquet + GeoJSON por Eclipse Zenoh
     TE-->>MR: Sincronización confirmada
     end
@@ -579,7 +594,7 @@ sequenceDiagram
     Note over TB,EN: ACTO 3 · T+75 a T+105 · Avance a WP2 y primera anomalía
     AS->>EN: T+75 Avance hacia WP2
     EN--xTE: T+92 Espolón de roca, sombra de radio NLOS
-    TE--xMR: Señal de −63 dBm a menos de −100 dBm
+    TE--xMR: Banda S de −76 dBm a −106 dBm, NLOS de más de 60 s
     MR-->>C3: Telemetría perdida
     C3-->>TB: Aviso de enlace caído
     TE->>TE: Modo offline y Canyon-TRN
@@ -591,13 +606,13 @@ sequenceDiagram
     Note over TB,EN: ACTO 4 · T+105 a T+140 · Multi-amenaza y Dynamic Goal Switching
     EN-->>TE: T+105 Alerta SPE en el dosímetro local
     EN-->>TE: T+105 Frente de polvo, tau de 0,7 a 2,4
-    TE->>TE: Walkback Limit Dual<br/>Base 48 min frente a ventana de 15 min
-    TE->>TE: Dynamic Goal Switching a WP3 en menos de 10 ms
+    TE->>TE: Walkback Limit Dual<br/>Base 48 min y 5,30 mSv frente a 15 min y 2 mSv
+    TE->>TE: Dynamic Goal Switching a WP3, replanificado en 17 ms
     TE->>AS: Triaje de Fusión de Alerta Única<br/>sendero de cian a rojo/ámbar pulsante
     TE->>AS: Orden de voz única de menos de 8 s
-    AS->>EN: Marcha de 600 m en 8 min, 56 m cuesta abajo
+    AS->>EN: Marcha de 600 m en 9,4 min, 56 m cuesta abajo
     TE->>TE: Canyon-TRN con VIO + LiDAR y pared cercana
-    AS->>EN: T+113–114 Llegada a WP3, dosis de 0,6 mSv
+    AS->>EN: T+114 Llegada a WP3, dosis de 0,72 mSv
     TB->>EN: Despacho de rover con repetidor
     EN-->>TE: T+125 Pico SPE, 8 mSv/h fuera y 1,2 mSv/h en la alcoba
     Note over TE,AS: Refugio activo hasta T+140
@@ -608,7 +623,7 @@ sequenceDiagram
     EN-->>TE: T+140 Remite el pico, SVF 0,15 bloquea el 85 %
     EN-->>TE: T+158 Repetidor del rover en línea de visión
     TE->>MR: Enlace Zenoh restablecido y volcado de telemetría en cola
-    MR-->>C3: T+165 Telemetría final<br/>O₂ 71,8 % y dosis SPE nominal de 1,40 mSv
+    MR-->>C3: T+165 Telemetría final<br/>O₂ 71,2 % y dosis SPE nominal de 1,52 mSv
     C3-->>TB: EVA-07 a salvo en WP3
     TB->>AS: Confirmación por voz y plan de retorno
     end
@@ -624,9 +639,13 @@ Esta sección es para los compañeros de P2, P3 y Fase 4, que citan las mismas c
 
 | Tema | Plan original | Entregable 1 | Motivo |
 | :--- | :--- | :--- | :--- |
-| Llegada al refugio | "Llegada" en el Acto 5 (T+140) | Llegada en T+113–114, dentro del Acto 4; el Acto 5 es permanencia y recuperación | Con 8 min de marcha y 15 min de ventana, llegar en T+140 incumpliría el límite |
-| Distancia WP2 → Base | "2,5 km" | 2.150 m en línea recta; 2.500 m por la ruta segura de D\* Lite | La geometría del triángulo (perímetro 4.900 m) no admite 2,5 km en línea recta |
-| Chaos Mode | 100 escenarios, 99,4 % | 10.000 simulaciones (100 visibles), 9.940 supervivencias | 99,4 % no es un resultado posible con 100 casos |
+| Llegada al refugio | "Llegada" en el Acto 5 (T+140) | Llegada en T+114 (T+114,4), dentro del Acto 4; el Acto 5 es permanencia y recuperación | Con 9,4 min de huida y 15 min de ventana, llegar en T+140 incumpliría el límite |
+| Tiempo al refugio WP3 | 8 min (600 m a 1,25 m/s; versión anterior de este entregable) | **9,4 min («unos 9 min»)**, 1,05 m/s y 548 W de media; llegada en T+114,4 con 0,72 mSv | Lo calcula el planificador D\* Lite del motor Rust sobre la malla H3 real: el camino suavizado sobre el terreno es más largo y accidentado que la recta, y los topes de huida (1,25 m/s y 650 W) bajan la velocidad media. La Base queda en 48 min (47,6) |
+| Distancia WP2 → Base | "2,5 km"; 2.500 m por una «ruta segura» con rodeo de 1,16 (versión anterior de este entregable) | 2.150 m en línea recta; **2.148 m** de camino del planificador («unos 2,15 km») en 47,6 min | La geometría (perímetro 4.900 m) no admite 2,5 km en línea recta, y el planificador del motor sobre la malla real no confirma el rodeo: su camino es casi la recta |
+| Chaos Mode | 100 escenarios, 99,4 % (la versión anterior de este entregable lo mantenía con 10.000 simulaciones) | **96,0 %** de misión segura con cambio al refugio frente a **23,8 %** solo con la Base (10.000 simulaciones, semilla 42) | El 99,4 % no salía de ninguna simulación; la cifra la exporta ahora el motor Rust (`chaos_mode_results.json`), sobre un corredor sintético |
+| Replanificación del cambio de destino | Menos de 10 ms | **17 ms** medidos | Medida del motor en modo optimizado sobre un corredor de la malla real |
+| Dosis de decisión en T+105 | 6,4 mSv volviendo a la Base (8 mSv/h durante 48 min a cielo abierto) | **5,30 mSv** a la Base y **0,89 mSv** al refugio | Modelo del motor: envolvente constante × SVF de cada celda del camino; la cronología conserva aparte la dosis acumulada (0,72 mSv al llegar) |
+| Banda del enlace de datos | UHF 435 MHz, ≈ −63 dBm con línea de vista a 2,5 km | Enlace primario en **banda S** (2,4 GHz, 1 W): 108,0 dB en espacio libre, ≈ −78 dBm con línea de vista; UHF queda como baliza de baja tasa | Con UHF, la difracción real solo resta 19–26 dB y la sombra de radio no llegaba a rojo por nivel |
 | O₂ a 3,2 L/min | Consumo en el talud | Pico transitorio (≈1.073 W), insostenible más de 2–3 min; el umbral rojo sostenido es 1,75 L/min | 3,2 L/min está cerca del VO₂máx humano |
 | Radiación SPE | Volver a la Base "resulta letal" | Regla de vuelo de 2 mSv por EVA frente a una envolvente de diseño de 8 mSv/h | En superficie, lo medido por RAD en 2017 fue 2–3 veces el fondo; la letalidad viene de la combinación de amenazas |
 | Blindaje del 85 % | Pared de roca | Alcoba con cornisa (SVF 0,15); con albedo, 70–85 % | Una pared sin techo deja SVF ≈ 0,5 |
@@ -638,9 +657,10 @@ Esta sección es para los compañeros de P2, P3 y Fase 4, que citan las mismas c
 | Cotas, pendientes, SVF y radio de los nodos | Escenario de diseño [E] | Cotas medidas [M]; pendientes, SVF y línea de vista derivadas del DTM CTX de 20 m [D] | El pipeline lee el DTM real |
 | Pendiente del WP2 | 22° (rampas de 18–26°) | Talud real de 19,4° a 20 m [D]; la rampa local de 22° se conserva como escenario [E] | Es la cifra compartida con la que salen 1.073 W y 3,2 L/min |
 | WP3 | Alcoba al pie de un escarpe, 30 m por encima del WP2 (escenario anterior) | Talud de 20,1°, 56 m **por debajo** del WP2; alcoba con cornisa [E]; SVF real 0,76 | El escape es cuesta abajo |
-| Potencia del escape | 580–650 W (versión anterior de este entregable) | 593 W el primer minuto y 413 W el resto (media 435 W) | El modelo no acredita trabajo en bajada |
-| Potencias de marcha y O₂ | Llano de 300 W; O₂ restante 75,0 % al final (versión anterior de este entregable) | L1 447 W, L2 539 W; O₂ restante 71,8 % al final | Pendiente media real de cada tramo y velocidades que imponen los hitos |
-| Dosis SPE total | ≤ 1,6 mSv (versión anterior de este entregable) | 1,40 mSv con el perfil nominal; 2,11 mSv con la envolvente constante | El 1,6 sumaba dos perfiles distintos; el validador los separa |
+| Potencia del escape | 580–650 W (versión anterior de este entregable) | 548 W de media en 9,4 min (planificador D\* Lite) | Ruta real celda a celda, con topes de 1,25 m/s y 650 W |
+| Señal en la sombra de radio | −95…−110 dBm (versión anterior de este entregable) | −103,1 dBm en el WP2 y −107,9 dBm en el WP3 en banda S, con difracción sobre el DTM real [D]; la cronología usa 30 dB en NLOS | La malla H3 calcula el nivel en cada celda; con UHF, −63 dBm menos 19–26 dB no llegaba a −95 dBm |
+| Potencias de marcha y O₂ | Llano de 300 W; O₂ restante 75,0 % al final (versión anterior de este entregable) | L1 447 W, L2 539 W; O₂ restante 71,2 % al final | Pendiente media real de cada tramo y velocidades que imponen los hitos |
+| Dosis SPE total | ≤ 1,6 mSv (versión anterior de este entregable) | 1,52 mSv con el perfil nominal; 2,27 mSv con la envolvente constante | El 1,6 sumaba dos perfiles distintos; el validador los separa |
 
 **Valores unificados con P3.** Cifras que el núcleo Rust de P3 (`src/shared/`) y este documento comparten ya con el mismo valor:
 
@@ -652,6 +672,13 @@ Esta sección es para los compañeros de P2, P3 y Fase 4, que citan las mismas c
 | Equivalente energético del O₂ | 20.100 J por litro de O₂ | 1 L/min = 335 W |
 | Umbral rojo de radio | −100 dBm (ámbar a −85 dBm) | Más NLOS > 60 s |
 | Envolvente SPE de diseño | 8 mSv/h a cielo abierto | Presupuesto de 2 mSv por EVA: 15 min |
+| Índices de celda | H3 reales: el motor usa `h3o` y carga directamente el Parquet de P1 (`hexgrid_route_res12_hexcell64b.parquet`) | Los nulos de Parquet entran como «sin dato» (NaN), no como 0 |
+| Topes de ritmo | Huida: 1,25 m/s y 650 W; retorno sostenido: 1,0 m/s y 585 W | En `eva_thresholds.json` (`constants`); con ellos el planificador da 9,4 min al WP3 y 47,6 min a la Base |
+| Umbrales de refugio e ISRU | Refugio si SVF ≤ 0,20; ISRU apto si H₂O ≥ 12 % | Ahora también en `eva_thresholds.json` (`shelter_sky_view_factor`, `isru_h2o_wt_pct`); las banderas de la malla se calculan desde ahí |
+| Tiempo al refugio y a la Base | 9,4 min («unos 9 min») y 48 min (47,6, por 2.148 m de camino) | Planificador D\* Lite del motor sobre la malla H3 real |
+| Cifras de decisión | Walkback en T+105 (0,89 / 5,30 mSv), T_vital (17,9 min) y Chaos Mode (96,0 / 23,8 %) | `planner_walkback.json` y `chaos_mode_results.json`, exportados por el motor |
+
+**Origen de las cifras de decisión.** El Walkback Limit Dual en T+105 (caminos, tiempos, velocidades, potencias, O₂ y dosis de decisión), T_vital y el Chaos Mode se regeneran con `cargo run --release --bin export_mission_results` en `src/core-engine`, que escribe `data/mission-scenarios/planner_walkback.json` y `data/mission-scenarios/chaos_mode_results.json`. El validador de P1 lee esos ficheros (no copia las cifras) y falla si faltan o no cuadran. Los 17 ms de replanificación son una medida aparte del motor y no están en esos JSON.
 
 ### 5.2 Supuestos abiertos
 
@@ -661,10 +688,11 @@ Esta sección es para los compañeros de P2, P3 y Fase 4, que citan las mismas c
 - **Línea de vista al WP1 y en el L1:** el margen al WP1 (+0,6 m; +0,8 a +3,5 m en los otros pares) está dentro del ruido de ±5 m del DTM, así que es indeterminada; y el tramo L1 pierde la línea de vista geométrica en el 51 % de sus celdas, aunque el escenario lo trate como tramo con radio.
 - **Inercias térmicas (320, 410, 110 y 620 TIU):** valores de escenario coherentes con los rangos publicados. En el sitio solo hay mosaicos THEMIS IR cualitativos; no existe un mapa cuantitativo de inercia térmica accesible.
 - **Hidratación del WP1 (≥ 12 % de agua):** escenario. No hay producto CRISM en el pipeline; los IDs de escena CRISM y SHARAD siguen por confirmar en PDS ODE para la huella 9,88–9,95°S, 283,36–283,42°E.
-- **Dosis con la envolvente:** si la tasa de 8 mSv/h se mantuviera constante toda la EVA, el total (2,11 mSv) superaría la regla de 2 mSv; el margen del WP3 en T+105 es de 7 min (15 − 8), por debajo de los 10 min que se exigen a la Base.
+- **Dosis con la envolvente:** si la tasa de 8 mSv/h se mantuviera constante toda la EVA, el total (2,27 mSv) superaría la regla de 2 mSv; el margen del WP3 en T+105 es de 5,6 min (15 − 9,4), por debajo de los 10 min que se exigen a la Base.
+- **Chaos Mode sobre un corredor sintético:** el 96,0 % no recorre la ruta planificada de la EVA-07; falta correrlo sobre la malla real y con el resto de consumibles.
+- **Modelo de radio:** una sola arista de difracción sobre un DTM de 20 m, sin reflexiones ni rugosidad métrica; puede quedarse corto en pérdida. La bandera NLOS del motor está documentada solo como RSSI < −100 dBm, mientras que la malla de P1 la activa también por falta de línea de vista geométrica: P3 tiene que alinear ese criterio.
 - **Vientos:** proceden de modelos mesoescalares de Valles Marineris; no hay estación meteorológica en Melas.
 - **Modelo metabólico:** paramétrico, ajustado a 300 W en llano firme; no cuenta el coste excéntrico de bajar laderas, y la TIU media del L2 (260) está a 10 TIU del corte de η entre 1,3 y 1,6. P3 debe calibrarlo antes de usarlo en la función de coste de D\* Lite.
-- **Índice de celda:** el núcleo Rust empaqueta sus propias coordenadas axiales en `h3_index`; las tablas Parquet del pipeline usan índices H3 reales. Hace falta adoptar `h3o` en el motor o una tabla de correspondencia.
 
 ### 5.3 Referencias
 

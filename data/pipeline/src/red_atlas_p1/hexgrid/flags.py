@@ -9,10 +9,10 @@ Bandera                    Condición                       Fuente del umbral
 =========================  ==============================  ==================================
 SLOPE_CRITICAL (0x01)      pendiente efectiva > 20°        eva_thresholds.json slope_deg.red
 REGOLITH_TRAP (0x02)       TIU efectiva < 150              thermal_inertia_tiu.red
-SHELTER (0x04)             SVF efectivo <= 0,20            lib.rs SHELTER_SVF_MAX
-NLOS (0x08)                sin LOS geométrica con la Base, radio_rssi_dbm.red (<−100 dBm);
-                           o RSSI < −100 dBm               P1 no tiene RSSI: se usa la LOS
-ISRU_WATER (0x10)          H₂O efectiva >= 12 %            lib.rs ISRU_WATER_MIN_PCT
+SHELTER (0x04)             SVF efectivo <= 0,20            shelter_sky_view_factor.green
+NLOS (0x08)                sin LOS geométrica con la Base, radio_rssi_dbm.red (<−100 dBm)
+                           o RSSI < −100 dBm               + LOS geométrica (terrain)
+ISRU_WATER (0x10)          H₂O efectiva >= 12 %            isru_h2o_wt_pct.green
 =========================  ==============================  ==================================
 """
 from __future__ import annotations

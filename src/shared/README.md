@@ -22,7 +22,7 @@ Todos los subsistemas (pipeline Python `GDAL`, motor en Rust `core-engine` nativ
 | **Masa Total Astronauta + Traje EVA** | $m_{\text{total}}$ | `170.0` ($80\text{ kg} + 90\text{ kg}$ traje con mochila de soporte vital) | $\text{kg}$ | Modelo metabólico de referencia de P1 (`D* Lite`) |
 | **Equivalente Energético del Oxígeno** | $k_{O_2}$ | `20100` ($1\text{ L/min} = 335\text{ W}$) | $\text{J / L}_{O_2}\text{ (STPD)}$ | Conversión de tasa metabólica ($\text{W}$) a consumo $\dot{V}_{O_2}$ |
 | **Modelo Metabólico (P1)** | $\dot{M}$ | $120 + \eta \cdot 0.285 \cdot W v + W v \sin\theta / (0.25(1-s))$, $W = m_{\text{total}} g_M$; $\eta$ = 1,0 / 1,3 / 1,6 / 2,1 para TIU > 400 / 250–400 / 150–250 / < 150; sin crédito de pendiente en bajada | $\text{W}$ | Llano 1 m/s = 300 W; WP2 (22°, 0,55 m/s, $s = 0.30$) = 1.073 W = 3,2 L/min |
-| **Umbrales de Radio UHF** | $\text{RSSI}$ | Verde $> -85$; ámbar $-85$ a $-100$; rojo $< -100$ | $\text{dBm}$ | `eva_thresholds.json` (P1) |
+| **Umbrales de Radio (enlace primario en banda S, 2,4 GHz)** | $\text{RSSI}$ | Verde $> -85$; ámbar $-85$ a $-100$; rojo $< -100$ (WP2 $-103$, WP3 $-108\text{ dBm}$ en la malla de P1) | $\text{dBm}$ | `eva_thresholds.json` (P1); `RADIO_PRIMARY_FREQ_MHZ` 2400, baliza UHF `RADIO_BEACON_FREQ_MHZ` 435 |
 | **Radiación SPE** | $\dot{D}_{\text{SPE}}$ | Pico de la envolvente `8` a cielo abierto; ámbar `0.05 – 1.0`; rojo $> 1.0$; presupuesto `2` mSv por EVA ($\Rightarrow 15\text{ min}$ a cielo abierto) | $\text{mSv/h}$ | Entregable 1 / `eva_thresholds.json` (P1) |
 | **Pendiente / Inercia Térmica** | $\theta$, $I$ | Pendiente ámbar 10–20°, rojo $> 20°$; TIU ámbar 150–400, rojo $< 150$ | °, TIU | `eva_thresholds.json` (P1) |
 | **Polvo y Viento** | $\tau$, $u$ | $\tau$ ámbar 1,0–2,0, rojo $> 2.0$ (escenario 0,7 → 2,4); viento ámbar 10–20, rojo $> 20$ m/s | —, m/s | `eva_thresholds.json` (P1) |
@@ -37,19 +37,19 @@ Para evitar divergencias entre el backend en **Rust**, el pipeline de **Python**
 | Formato Estándar | Entidad de Datos | Consumidores Principales | Contenido y Restricciones |
 | :--- | :--- | :--- | :--- |
 | **Cloud-Optimized GeoTIFF (`COG`)** | Rasters continuos de Melas Chasma (`MOLA/HRSC`, `HiRISE`, `THEMIS`, `CRISM`) | `CesiumJS`, `Three.js`, `Python GDAL` | Proyección IAU Mars 2000, pirámides internas (*overviews*) para *streaming* de teselas por rangos HTTP. |
-| **Apache Parquet + Struct 64B** | Vector de Estado Tensorial por celda hexagonal `h3o` (`Res 7–14`) | `Rust Core`, `DuckDB Spatial`, `WASM Spyglass` | 12 atributos físicos empaquetados (`u64` `h3_index`, `f32` elevación, pendiente, TIU, $\% \text{H}_2\text{O}$, $\Psi_{\text{SVF}}$, RSSI, coste base) + `padding_crc` contra SEU. |
+| **Apache Parquet + Struct 64B** | Vector de Estado Tensorial por celda hexagonal `h3o` (`Res 7–14`) | `Rust Core`, `DuckDB Spatial`, `WASM Spyglass` | 12 atributos físicos empaquetados (`u64` `h3_index` = índice H3 real de `h3o`, el mismo que el Parquet de P1; `f32` elevación, pendiente, TIU, $\% \text{H}_2\text{O}$, $\Psi_{\text{SVF}}$, RSSI, coste base) + `padding_crc` contra SEU. |
 | **GeoJSON (RFC 7946 adaptado)** | Nodos del *"Triángulo de Supervivencia"* y rutas exportadas (`A*` / `D* Lite`) | `React HUD`, `Tablet de Muñeca`, `ROS 2 rclrs` | Geometrías `Point` / `LineString` con propiedades de coste metabólico acumulado, dosis SPE esperada y tiempo estimado por tramo. |
 
 ---
 
 ## 3. Contratos de Mensajes y Tópicos sobre Eclipse Zenoh / ROS 2 (`rclrs`)
 
-La comunicación entre la Consola de Base (Nodo 1) y el Traje EVA (Nodo 2), así como la comunicación interna entre procesos del traje, utiliza el bus **ROS 2 (`rclrs`)** puenteado hacia radio UHF mediante **Eclipse Zenoh**:
+La comunicación entre la Consola de Base (Nodo 1) y el Traje EVA (Nodo 2), así como la comunicación interna entre procesos del traje, utiliza el bus **ROS 2 (`rclrs`)** puenteado hacia el enlace primario en banda S (2,4 GHz, 1 W; baliza UHF de baja tasa) mediante **Eclipse Zenoh**:
 
 | Tópico / *Key Expression* Zenoh | Dirección | Frecuencia | Tamaño Máx. | QoS & Comportamiento en Sombra de Radio (`NLOS`) |
 | :--- | :--- | :--- | :--- | :--- |
 | `redatlas/eva07/mission/bundle_sync` | Base $\to$ Traje | Pre-EVA (1 vez) | $\le 48\text{ MB}$ | *Reliable + SHA-256.* Transfiere sub-malla `h3o`, horizontes `Skyline Matching` y GeoJSON inicial. |
-| `redatlas/eva07/trn/pose_state` | Traje interno / $\to$ Base | `50 Hz` (local) / `1 Hz` (UHF) | `96 bytes` | *Best-Effort* en UHF. Pose `Canyon-TRN` (`nalgebra` EKF) + covarianza; en NLOS se graba en *ring-buffer* CRDT. |
+| `redatlas/eva07/trn/pose_state` | Traje interno / $\to$ Base | `50 Hz` (local) / `1 Hz` (banda S) | `96 bytes` | *Best-Effort* en banda S. Pose `Canyon-TRN` (`nalgebra` EKF) + covarianza; en NLOS se graba en *ring-buffer* CRDT. |
 | `redatlas/eva07/plss/telemetry` | Traje $\to$ Base | `1 Hz` | `128 bytes` | Biometría ($O_2$, LCVG, batería), tasa $\dot{V}_{O_2}$, dosis RAD y estado del Guardrail. Replay automático al reconectar. |
 | `redatlas/eva07/nav/walkback_dual` | `D* Lite` $\to$ HUD / Base | `1 Hz` | `256 bytes` | Valores $T_{\text{vital}}$, $T_{\text{walkback, Base}}$, $T_{\text{walkback, WP3}}$, destino activo $G_{\text{target}}$ y polilínea de escape. |
 | `redatlas/eva07/guardrail/single_alert` | Guardrail $\to$ `Candle` & HUD | Por evento (`< 1 ms`) | `192 bytes` | Frame validado determinista para el **Triaje de Fusión de Alerta Única** (causa prioritaria, color AR, slots para voz). |

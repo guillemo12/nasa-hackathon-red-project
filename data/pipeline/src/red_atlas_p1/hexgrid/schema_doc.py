@@ -25,11 +25,11 @@ FLAGS = [
     ("REGOLITH_TRAP", HAZARD_FLAG_REGOLITH_TRAP, "tiu_effective < {tiu_red_lt} TIU",
      "eva_thresholds.json → thermal_inertia_tiu.red"),
     ("SHELTER", HAZARD_FLAG_SHELTER, "svf_effective ≤ {svf_shelter_le}",
-     "lib.rs → SHELTER_SVF_MAX (no está en eva_thresholds.json)"),
+     "eva_thresholds.json → shelter_sky_view_factor.green (= lib.rs SHELTER_SVF_MAX)"),
     ("NLOS", HAZARD_FLAG_NLOS, "los_base_effective = 0 (o RSSI < {rssi_red_lt_dbm} dBm)",
-     "eva_thresholds.json → radio_rssi_dbm.red; P1 no tiene RSSI: se usa la LOS geométrica"),
+     "eva_thresholds.json → radio_rssi_dbm.red; además, sin LOS geométrica"),
     ("ISRU_WATER", HAZARD_FLAG_ISRU_WATER, "h2o_effective ≥ {h2o_isru_ge_pct} %",
-     "lib.rs → ISRU_WATER_MIN_PCT (no está en eva_thresholds.json)"),
+     "eva_thresholds.json → isru_h2o_wt_pct.green (= lib.rs ISRU_WATER_MIN_PCT)"),
 ]
 
 RUST_SIZES = {"u64": 8, "f32": 4, "u32": 4, "u16": 2, "[u8; 14]": 14}
@@ -111,6 +111,50 @@ def _node_value(o: Output, node: str, col: str):
     h = node_cells(o.res)[node]
     i = np.where(o.full["h3_index"].to_numpy() == h)[0]
     return o.full[col][int(i[0])].as_py() if i.size else None
+
+
+def _link_comparison() -> dict:
+    """Las tres configuraciones de radio.LINK_CONFIGS en los nodos y en los tramos L2 y L3."""
+    from ..scenario.radio import received_dbm
+    from . import radio
+
+    nodes = config.scenario_nodes()
+    names = list(nodes)
+    lat = np.array([nodes[k]["lat_pc_deg"] for k in names])
+    lon = np.array([nodes[k]["lon_e_deg"] for k in names])
+    prof = radio.base_profile(lat, lon)
+    legs = {}
+    for leg in ("L2", "L3"):
+        lg = config.scenario_legs()[leg]
+        a, b = (geo.cell_of(nodes[k]["lat_pc_deg"], nodes[k]["lon_e_deg"], 12)
+                for k in (lg["from"], lg["to"]))
+        la, lo = geo.centers(geo.grid_path(a, b))
+        legs[leg] = radio.base_profile(la, lo)
+    d_wp1 = float(prof["distance_m"][names.index("WP1")])
+    out = {"d_wp1": d_wp1, "configs": {}}
+    for key, cfg in radio.LINK_CONFIGS.items():
+        kw = radio.link_kwargs(key)
+        r = radio.rssi_from_profile(prof, **kw)["rssi_dbm"]
+        leg_stats = {}
+        for leg, p in legs.items():
+            x = radio.rssi_from_profile(p, **kw)["rssi_dbm"]
+            leg_stats[leg] = {"min": float(np.nanmin(x)), "median": float(np.nanmedian(x)),
+                              "pct_red": float(100 * np.nanmean(x < -100.0))}
+        out["configs"][key] = {
+            "label": cfg["label"],
+            "nodes": {k: float(r[i]) for i, k in enumerate(names)},
+            "los_wp1": received_dbm(d_wp1, los=True, **kw),
+            "legs": leg_stats,
+        }
+    return out
+
+
+def _rssi_class(v) -> str:
+    """Clase con el clasificador del validador (eva_thresholds.json → radio_rssi_dbm)."""
+    if v is None:
+        return "sin dato"
+    from ..scenario.radio import classify_link
+    return {"VERDE": "verde", "AMBAR": "ámbar", "ROJO": "rojo"}[classify_link(v)]
 
 
 def _wp3_cover(o: Output | None) -> str:
@@ -262,8 +306,8 @@ def render(outs: list[Output], bench: dict) -> str:
 
     a("## 6. Tabla de contrato `HexCellState64B`\n")
     a("Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, align(64))`). "
-      "Los flotantes sin dato son `NULL` de Parquet: P3 no tiene campos opcionales ni lector "
-      "de Parquet, y el 0,0 de `Default` mentiría (0 TIU activaría la trampa de regolito).\n")
+      "Los flotantes sin dato son `NULL` de Parquet; el cargador del motor "
+      "(`H3MarsGrid::load_p1_parquet`) los convierte en `CELL_NO_DATA` (NaN), no en 0.\n")
     a("| Offset | Campo | Rust | Arrow | Nulos | Origen en la tabla completa | Nota |")
     a("|---|---|---|---|---|---|---|")
     off = 0
@@ -272,9 +316,8 @@ def render(outs: list[Output], bench: dict) -> str:
         off += RUST_SIZES[rust]
     a("")
     if o12:
-        a("Campos que no se pueden rellenar con datos reales ni de escenario: `roughness_hi`, "
-          "`los_base_rssi_dbm`, `base_metabolic_cost` (siempre nulos), `horizon_hash_id` "
-          "(siempre 0) y `padding_crc` (14 bytes a cero). Parcialmente nulos: "
+        a("Campos que calcula el motor: `base_metabolic_cost` (siempre nulo), `horizon_hash_id` "
+          "(siempre 0) y `padding_crc` (14 bytes a cero); ver §9. Parcialmente nulos: "
           f"`thermal_inertia_tiu` ({_n(o12.contract['thermal_inertia_tiu'].null_count)} de "
           f"{_n(o12.contract.num_rows)} celdas a res. 12) e `isru_h2o_pct` "
           f"({_n(o12.contract['isru_h2o_pct'].null_count)}).\n")
@@ -345,32 +388,96 @@ def render(outs: list[Output], bench: dict) -> str:
       f"{_f(100 * min(zz), 1)} % y un {_f(100 * max(zz), 1)} % más larga que la recta; por eso "
       "la tabla da la recta entre los centros de las celdas de los nodos.\n")
 
-    a("## 9. Incompatibilidades con el contrato de P3 (no se ha editado `src/`)\n")
-    a("1. **`h3_index` no es H3 en el motor.** `h3_mars_grid.rs` empaqueta coordenadas axiales "
-      "propias (`res << 56 | q << 28 | r`) sobre una proyección local centrada en "
-      "`SITE_REFERENCE_LAT/LON_DEG`. `nearest_cell`, `neighbors`, `k_ring` y "
-      "`geodesic_distance_m` no entienden los índices H3 reales de estas tablas. El README de "
-      "`shared` habla de `h3o`: o el motor adopta `h3o`, o hace falta una tabla de "
-      "correspondencia que P3 genere con su propio origen.")
-    a("2. **`los_base_rssi_dbm` está en dBm**, y P1 solo tiene LOS geométrica (booleano y "
-      "margen en metros). El campo va nulo y la bandera NLOS se calcula con la geometría. "
-      "Pasar a dBm exige un modelo de enlace (potencia, ganancias, difracción) que no existe.")
-    a("3. **Sin campos opcionales.** Los `f32` de P3 no tienen representación de «sin dato». "
-      "`Default` pone 0,0 y SVF 1,0. Con NaN, `soil_sinkage_eta` cae en la rama de η = 2,1, y "
-      "`serde_json` escribe NaN como `null` y, según su comportamiento documentado, no lo "
-      "vuelve a leer como `f32` (no comprobado aquí: no se ha ejecutado Rust). Aquí se usan "
-      "nulos de Parquet; el cargador de P3 debe decidir su centinela.")
-    a("4. **Umbrales solo en Rust.** `SHELTER_SVF_MAX` (0,20) e `ISRU_WATER_MIN_PCT` (12 %) "
-      "no están en `eva_thresholds.json`.")
-    a("5. **Métrica fija.** `resolution_metrics` da 5,01 m y 92,86 m de arista (res. 12 y 9); "
-      f"la media de la librería H3 escalada da {_f(geo.mars_edge_length_m(12), 2)} m y "
-      f"{_f(geo.mars_edge_length_m(9), 1)} m.")
-    a("6. **`roughness_hi`, `horizon_hash_id`, `base_metabolic_cost`:** sin definición de "
-      "unidad (`roughness_hi`), específico de Canyon-TRN (`horizon_hash_id`, hash FNV) o "
-      "dependiente de velocidad, sentido y deslizamiento (`base_metabolic_cost`).")
-    a("7. **`padding_crc`** va a cero: `H3MarsGrid::insert` vuelve a sellar el CRC al cargar.\n")
+    a("## 9. Señal de radio, rugosidad y campos que calcula el motor\n")
+    a("**`los_base_rssi_dbm` (derivado): enlace primario en banda S.** Enlace del validador "
+      "(`scenario/radio.py`: antenas isótropas, pérdida en espacio libre con la distancia real a "
+      "la Base, mínimo de 10 m) menos la pérdida por difracción de la arista dominante del "
+      "perfil Base→celda, J(ν) de ITU-R P.526 con ν = h·√(2d/(λ·d1·d2)). El perfil es el mismo "
+      "que el de la LOS de `terrain` (DTM CTX de 20 m, antenas a 3 y 2 m, curvatura; un test "
+      "comprueba que el margen coincide con la banda `los_margin_m`); con ν ≤ −0,78 no hay "
+      "pérdida adicional. Con antenas tan bajas, el propio suelo invade el primer elipsoide de "
+      "Fresnel y resta unos pocos dB aunque haya LOS. Incertidumbre: `rssi_dbm_low`/"
+      "`rssi_dbm_high` con la arista ±5 m (ruido del DTM). Modelo de arista única: varias "
+      "aristas, reflexiones o la rugosidad no resuelta por el DTM darían más pérdida.\n")
+    a("### Elección del enlace primario\n")
+    a("Mismo modelo y misma malla para tres configuraciones del enlace Base–traje. Clase con "
+      "`eva_thresholds.json` (`radio_rssi_dbm`: verde > −85, rojo < −100 dBm).\n")
+    cmp = _link_comparison()
+    a("| Configuración | Base | WP1 | WP2 | WP3 | LOS a la distancia del WP1 | L2: mín. / mediana / % < −100 | L3: mín. / mediana / % < −100 |")
+    a("|---|---|---|---|---|---|---|---|")
+    for key, c in cmp["configs"].items():
+        cells = " | ".join(f"{_f(c['nodes'][n])} ({_rssi_class(c['nodes'][n])})"
+                           for n in ("BASE", "WP1", "WP2", "WP3"))
+        legs = " | ".join(f"{_f(c['legs'][lg]['min'])} / {_f(c['legs'][lg]['median'])} / "
+                          f"{_f(c['legs'][lg]['pct_red'], 0)} %" for lg in ("L2", "L3"))
+        a(f"| ({key}) {c['label']} | {cells} | {_f(c['los_wp1'])} | {legs} |")
+    a("")
+    a(f"Niveles en dBm, en las coordenadas exactas de los nodos (la tabla siguiente usa el "
+      f"píxel de la celda de resolución 12 y puede diferir en unas décimas). Distancia "
+      f"Base–WP1: {_f(cmp['d_wp1'], 0)} m. En (c), 5 dB de pérdidas "
+      "por antena y cuerpo en cada extremo (10 dB en total). L2 y L3 se muestrean en las celdas "
+      "de resolución 12 de `grid_path_cells` entre los nodos.\n")
+    b = cmp["configs"]["b"]["nodes"]
+    a("**Regla de decisión:** si en banda S el WP2 y el WP3 quedan por debajo de −100 dBm con al "
+      f"menos 2 dB de margen, el enlace primario de datos pasa a banda S. Resultado: WP2 "
+      f"{_f(b['WP2'])} dBm y WP3 {_f(b['WP3'])} dBm (márgenes de {_f(-100 - b['WP2'])} y "
+      f"{_f(-100 - b['WP3'])} dB). **Decisión aplicada:** el enlace primario de R.E.D. ATLAS, el "
+      "que transporta la sesión Zenoh y se pierde tras el relieve, es banda S a 2,4 GHz y 1 W; "
+      "UHF a 435 MHz queda como baliza de baja tasa que sobrevive degradada (verde en el WP2 y "
+      "ámbar en el WP3, sin bajar nunca de −100 dBm en la ruta) y de la que el sistema no "
+      "depende. `los_base_rssi_dbm` lleva el enlace primario; "
+      "`rssi_uhf_dbm` (tabla completa) lleva la baliza.\n")
+    if o12:
+        a("| Nodo | Banda S (dBm) | Intervalo ±5 m (dBm) | Difracción (dB) | Clase | Baliza UHF (dBm) | Clase UHF |")
+        a("|---|---|---|---|---|---|---|")
+        for node in ("BASE", "WP1", "WP2", "WP3"):
+            v = {c: _node_value(o12, node, c) for c in
+                 ("rssi_dbm", "rssi_dbm_low", "rssi_dbm_high", "diffraction_db", "rssi_uhf_dbm")}
+            a(f"| {node} | {_f(v['rssi_dbm'])} | {_f(v['rssi_dbm_low'])} a "
+              f"{_f(v['rssi_dbm_high'])} | {_f(v['diffraction_db'])} | {_rssi_class(v['rssi_dbm'])} | "
+              f"{_f(v['rssi_uhf_dbm'])} | {_rssi_class(v['rssi_uhf_dbm'])} |")
+        a("")
+        r = o12.full["rssi_dbm"].to_numpy()
+        u = o12.full["rssi_uhf_dbm"].to_numpy()
+        a(f"En la ruta (res. 12), el enlace primario va de {_f(np.nanmin(r))} a "
+          f"{_f(np.nanmax(r))} dBm, con {_n(int((r < float(th['rssi_red_lt_dbm'])).sum()))} "
+          f"celdas bajo {_g(th['rssi_red_lt_dbm'])} dBm; la baliza UHF, de {_f(np.nanmin(u))} a "
+          f"{_f(np.nanmax(u))} dBm, con {_n(int((u < float(th['rssi_red_lt_dbm'])).sum()))}.\n")
+    a("**`roughness_hi` (derivado, metros).** Desviación típica de los residuos de la cota "
+      "respecto al plano de mínimos cuadrados ajustado en la ventana 3×3 (60 m) del DTM CTX "
+      "de 20 m, calculada a su resolución nativa sobre el DTM del entorno cercano y asignada "
+      "después a las celdas (píxel del centro a res. 12, media a res. 9). Se quita la "
+      "pendiente: un plano inclinado liso da 0. Escala de 20-60 m: no ve bloques métricos.\n")
+    if o12:
+        rr = o12.full["roughness_m"].to_numpy()
+        a(f"En la ruta (res. 12): de {_f(np.nanmin(rr), 2)} a {_f(np.nanmax(rr), 2)} m; mediana "
+          f"{_f(np.nanmedian(rr), 2)} m; percentil 95 {_f(np.nanpercentile(rr, 95), 2)} m.\n")
+    a("**Campos que calcula el motor y van sin dato o a cero:**\n")
+    a("- `base_metabolic_cost`: depende de la velocidad, del sentido de la marcha (subir o "
+      "bajar la misma celda cuesta distinto) y del deslizamiento; es una propiedad de la "
+      "arista, no de la celda. Lo calcula `metabolic_dstar.rs` con el modelo de P1.")
+    a("- `horizon_hash_id`: identificador de Canyon-TRN (hash FNV sobre la base de horizontes "
+      "del motor); P1 no tiene esa base. Los ángulos de horizonte de P1 están en "
+      "`horizon_max_deg` y en el COG de 36 acimuts.")
+    a("- `padding_crc`: a cero; `H3MarsGrid::insert` lo sella al cargar.\n")
 
-    a("## 10. Observaciones sobre los datos\n")
+    a("## 10. Contrato con P3\n")
+    a("**Resuelto en el motor:**\n")
+    a("- Índices H3 reales: el motor usa `h3o` y carga directamente "
+      "`hexgrid_route_res12_hexcell64b.parquet` (`src/core-engine/tests/p1_hexgrid.rs`).")
+    a("- «Sin dato» explícito: `CELL_NO_DATA` (NaN) en los `f32`; los NULL de Parquet se "
+      "cargan así, no como 0.")
+    a("- Métrica: `resolution_metrics` ya calcula arista y área con `h3o` escalado "
+      f"({_f(geo.mars_edge_length_m(12), 2)} m de arista media en res. 12).")
+    a("- Umbrales de refugio e ISRU: ahora están también en `eva_thresholds.json` "
+      "(`shelter_sky_view_factor`, `isru_h2o_wt_pct`) y las banderas se calculan desde ahí.\n")
+    a("**Pendiente o a revisar por P3:**\n")
+    a("- La bandera NLOS de P1 se activa por LOS geométrica o por RSSI < −100 dBm del enlace "
+      "primario; en Rust, `HAZARD_FLAG_NLOS` está documentada solo como RSSI < −100 dBm. Con "
+      "banda S, el WP2 y el WP3 cumplen las dos condiciones.\n")
+
+
+    a("## 11. Observaciones sobre los datos\n")
     if o12:
         wp2 = _node_value(o12, "WP2", "slope_deg_effective")
         a(f"- La pendiente real del WP2 ({_f(wp2)}° a res. 12) "

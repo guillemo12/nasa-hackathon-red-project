@@ -8,9 +8,9 @@ Agrega los COG de terreno descritos en `terrain_outputs.json` (DTM CTX de 20 m y
 
 | Fichero | Vista | Res. | Filas | Tamaño (zstd) |
 |---|---|---|---|---|
-| `data/nasa-layers/hexgrid_route_res12.parquet` | completa | 12 | 141.313 | 11,15 MB |
-| `data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet` | `HexCellState64B` | 12 | 141.313 | 1,86 MB |
-| `data/nasa-layers/hexgrid_route_res9.parquet` | completa | 9 | 462 | 0,10 MB |
+| `data/nasa-layers/hexgrid_route_res12.parquet` | completa | 12 | 141.313 | 15,56 MB |
+| `data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet` | `HexCellState64B` | 12 | 141.313 | 2,58 MB |
+| `data/nasa-layers/hexgrid_route_res9.parquet` | completa | 9 | 462 | 0,14 MB |
 | `data/nasa-layers/hexgrid_route_res9_hexcell64b.parquet` | `HexCellState64B` | 9 | 462 | 0,02 MB |
 
 Límite para versionar la tabla completa: 20,00 MB. Si la de resolución 12 lo supera, en el repositorio queda un corredor de 150 m alrededor de los tramos y la completa va a `build/hexgrid/`. Filas ordenadas por `h3_index`; grupos de 65.536 filas con estadísticas mín./máx. para que DuckDB pode por índice. Cada Parquet lleva en sus metadatos (`red_atlas`) la procedencia, las entradas y las constantes de escala.
@@ -66,6 +66,8 @@ A resolución 9 hay 462 celdas; mediana de 89 píxeles por celda (máx. 92); 77 
 | `h2o` | 20,041 |
 | `themis_day` | 100,000 |
 | `themis_night` | 100,000 |
+| `roughness` | 20,041 |
+| `rssi` | 20,041 |
 
 El SVF y el horizonte combinan un campo cercano de 20 m (CTX) con uno lejano de 200 m (HRSC+MOLA). Las zonas de escenario son vectoriales, rasterizadas a 20 m por `terrain`.
 
@@ -161,11 +163,24 @@ Mismas columnas y tipos en las dos resoluciones; cambia la estadística.
 | `themis_night_dn` | `double` | sí | DN uint8 | píxel del centro | ídem | medido | THEMIS IR nocturno: DN cualitativo (más claro = más inercia), no calibrado. |
 | `themis_night_prov` | `uint8` | no | código 0-3 | — | — | metadato | Procedencia. |
 | `themis_night_src_res_m` | `float` | no | m | — | — | metadato | Resolución de la fuente (100 m). |
+| `roughness_m` | `double` | sí | m | píxel del centro | media | derivado | Rugosidad: desviación típica de los residuos de la cota respecto al plano ajustado en la ventana 3×3 (60 m) del DTM CTX, a su resolución nativa. Sin la pendiente: un plano inclinado liso da 0. |
+| `roughness_m_max` | `double` | sí | m | píxel del centro | máximo | derivado | Rugosidad máxima. |
+| `roughness_prov` | `uint8` | no | código 0-3 | — | — | metadato | Procedencia de la rugosidad. |
+| `roughness_src_res_m` | `float` | no | m | — | — | metadato | Resolución del DTM fuente (ventana de 3 píxeles). |
+| `rssi_dbm` | `double` | sí | dBm | píxel del centro | mínimo (peor caso) | derivado | Nivel recibido del enlace primario de datos (banda S, 2,4 GHz, 1 W, antenas isótropas): espacio libre con la distancia real a la Base y difracción en filo de cuchillo (ITU-R P.526, arista dominante del perfil). |
+| `rssi_dbm_mean` | `double` | sí | dBm | píxel del centro | media | derivado | Nivel recibido medio. |
+| `rssi_dbm_low` | `double` | sí | dBm | arista dominante 5 m más alta | mínimo | derivado | Extremo bajo con el ruido vertical del DTM (±5 m) en la arista dominante. |
+| `rssi_dbm_high` | `double` | sí | dBm | arista dominante 5 m más baja | mínimo | derivado | Extremo alto con el ruido vertical del DTM. |
+| `diffraction_db` | `double` | sí | dB | píxel del centro | máximo | derivado | Pérdida por difracción J(ν) restada al espacio libre. |
+| `rssi_uhf_dbm` | `double` | sí | dBm | píxel del centro | mínimo (peor caso) | derivado | Nivel recibido de la baliza UHF (435 MHz, 1 W) con el mismo perfil y modelo. |
+| `diffraction_uhf_db` | `double` | sí | dB | píxel del centro | máximo | derivado | Pérdida por difracción de la baliza UHF. |
+| `rssi_prov` | `uint8` | no | código 0-3 | — | — | metadato | Procedencia del nivel recibido. |
+| `rssi_src_res_m` | `float` | no | m | — | — | metadato | Resolución del DTM del perfil. |
 | `hazard_bitmask` | `uint16` | no | bits | desde las efectivas | desde las efectivas | efectivo | Banderas HAZARD_FLAG_* de P3. |
 
 ## 6. Tabla de contrato `HexCellState64B`
 
-Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, align(64))`). Los flotantes sin dato son `NULL` de Parquet: P3 no tiene campos opcionales ni lector de Parquet, y el 0,0 de `Default` mentiría (0 TIU activaría la trampa de regolito).
+Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, align(64))`). Los flotantes sin dato son `NULL` de Parquet; el cargador del motor (`H3MarsGrid::load_p1_parquet`) los convierte en `CELL_NO_DATA` (NaN), no en 0.
 
 | Offset | Campo | Rust | Arrow | Nulos | Origen en la tabla completa | Nota |
 |---|---|---|---|---|---|---|
@@ -174,16 +189,16 @@ Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, a
 | 12 | `slope_deg` | `f32` | `float` | sí | `slope_deg_effective` | Derivado (p90 a res 9) o escenario. |
 | 16 | `aspect_deg` | `f32` | `float` | sí | `aspect_deg` | Derivado (media circular a res 9). |
 | 20 | `thermal_inertia_tiu` | `f32` | `float` | sí | `tiu_effective` | Solo escenario; nulo fuera de las zonas. |
-| 24 | `roughness_hi` | `f32` | `float` | sí | `nulo` | Sin fuente ni definición: siempre nulo. |
+| 24 | `roughness_hi` | `f32` | `float` | sí | `roughness_m` | Rugosidad en m (σ de residuos al plano 3×3 del DTM de 20 m); derivado. |
 | 28 | `isru_h2o_pct` | `f32` | `float` | sí | `h2o_effective` | Solo escenario; nulo fuera de la zona del WP1. |
 | 32 | `sky_view_factor` | `f32` | `float` | sí | `svf_effective` | Derivado (media a res 9) o escenario. |
-| 36 | `los_base_rssi_dbm` | `f32` | `float` | sí | `nulo` | P1 solo tiene LOS geométrica (booleano y margen en m), no dBm: siempre nulo. |
-| 40 | `base_metabolic_cost` | `f32` | `float` | sí | `nulo` | Depende de velocidad, sentido y deslizamiento: lo calcula el motor; siempre nulo. |
-| 44 | `horizon_hash_id` | `u32` | `uint32` | no | `0` | Hash FNV de Canyon-TRN (P3); sin equivalente en P1: valor de Default (0). |
+| 36 | `los_base_rssi_dbm` | `f32` | `float` | sí | `rssi_dbm` | Enlace primario en banda S (2,4 GHz, 1 W): espacio libre + difracción en filo de cuchillo; derivado. Incertidumbre en rssi_dbm_low/high y baliza UHF en rssi_uhf_dbm de la tabla completa. |
+| 40 | `base_metabolic_cost` | `f32` | `float` | sí | `nulo` | Lo calcula el motor por arista: depende de velocidad, sentido de la marcha y deslizamiento, no solo de la celda. |
+| 44 | `horizon_hash_id` | `u32` | `uint32` | no | `0` | Lo calcula el motor: hash FNV de Canyon-TRN sobre su base de horizontes; valor de Default (0). |
 | 48 | `hazard_bitmask` | `u16` | `uint16` | no | `hazard_bitmask` | Calculado con los umbrales de P1. |
 | 50 | `padding_crc` | `[u8; 14]` | `fixed_size_binary[14]` | no | `14 bytes a cero` | H3MarsGrid::insert vuelve a sellar el CRC al cargar. |
 
-Campos que no se pueden rellenar con datos reales ni de escenario: `roughness_hi`, `los_base_rssi_dbm`, `base_metabolic_cost` (siempre nulos), `horizon_hash_id` (siempre 0) y `padding_crc` (14 bytes a cero). Parcialmente nulos: `thermal_inertia_tiu` (139.978 de 141.313 celdas a res. 12) e `isru_h2o_pct` (141.020).
+Campos que calcula el motor: `base_metabolic_cost` (siempre nulo), `horizon_hash_id` (siempre 0) y `padding_crc` (14 bytes a cero); ver §9. Parcialmente nulos: `thermal_inertia_tiu` (139.978 de 141.313 celdas a res. 12) e `isru_h2o_pct` (141.020).
 
 ## 7. Banderas de peligro
 
@@ -193,9 +208,9 @@ Comparación en `float32` por los dos lados, como en Rust. Un nulo nunca activa 
 |---|---|---|---|---|---|
 | `0x01` | `SLOPE_CRITICAL` | slope_deg_effective > 20° | eva_thresholds.json → slope_deg.red | 20.196 | 96 |
 | `0x02` | `REGOLITH_TRAP` | tiu_effective < 150 TIU | eva_thresholds.json → thermal_inertia_tiu.red | 696 | 5 |
-| `0x04` | `SHELTER` | svf_effective ≤ 0,2 | lib.rs → SHELTER_SVF_MAX (no está en eva_thresholds.json) | 47 | 1 |
-| `0x08` | `NLOS` | los_base_effective = 0 (o RSSI < -100 dBm) | eva_thresholds.json → radio_rssi_dbm.red; P1 no tiene RSSI: se usa la LOS geométrica | 92.489 | 362 |
-| `0x10` | `ISRU_WATER` | h2o_effective ≥ 12 % | lib.rs → ISRU_WATER_MIN_PCT (no está en eva_thresholds.json) | 293 | 4 |
+| `0x04` | `SHELTER` | svf_effective ≤ 0,2 | eva_thresholds.json → shelter_sky_view_factor.green (= lib.rs SHELTER_SVF_MAX) | 47 | 1 |
+| `0x08` | `NLOS` | los_base_effective = 0 (o RSSI < -100 dBm) | eva_thresholds.json → radio_rssi_dbm.red; además, sin LOS geométrica | 92.489 | 362 |
+| `0x10` | `ISRU_WATER` | h2o_effective ≥ 12 % | eva_thresholds.json → isru_h2o_wt_pct.green (= lib.rs ISRU_WATER_MIN_PCT) | 293 | 4 |
 
 ### Nodos a resolución 12
 
@@ -223,16 +238,16 @@ Tiempos medidos sobre `data/nasa-layers/hexgrid_route_res12.parquet` (141.313 fi
 
 | Consulta | Repeticiones | Mediana | p95 |
 |---|---|---|---|
-| En frío: conexión nueva + vista + primera celda (Parquet ya en la caché del sistema) | 1 | 13,4 ms | — |
-| Celda por `h3_index` | 200 | 2,32 ms | 2,52 ms |
-| Spyglass, 3 sectores, radio 100 m | 50 | 6,31 ms | 6,64 ms |
-| Spyglass por celda (listas como `SpyglassTriSectorSlice`), radio 100 m | 50 | 5,75 ms | 6,10 ms |
-| Spyglass, anillo k = 10 | 50 | 2,35 ms | 2,49 ms |
-| Perfil del tramo L1 | 10 | 5,13 ms | 5,54 ms |
-| Perfil del tramo L2 | 10 | 4,70 ms | 4,92 ms |
-| Perfil del tramo L3 | 10 | 4,05 ms | 4,28 ms |
-| Perfil del tramo L4 | 10 | 5,26 ms | 5,57 ms |
-| Perfil del tramo R1 | 10 | 5,25 ms | 5,58 ms |
+| En frío: conexión nueva + vista + primera celda (Parquet ya en la caché del sistema) | 1 | 89,7 ms | — |
+| Celda por `h3_index` | 200 | 2,68 ms | 2,80 ms |
+| Spyglass, 3 sectores, radio 100 m | 50 | 6,58 ms | 6,74 ms |
+| Spyglass por celda (listas como `SpyglassTriSectorSlice`), radio 100 m | 50 | 6,02 ms | 6,32 ms |
+| Spyglass, anillo k = 10 | 50 | 2,48 ms | 2,64 ms |
+| Perfil del tramo L1 | 10 | 5,39 ms | 6,60 ms |
+| Perfil del tramo L2 | 10 | 4,68 ms | 5,09 ms |
+| Perfil del tramo L3 | 10 | 4,01 ms | 4,20 ms |
+| Perfil del tramo L4 | 10 | 5,18 ms | 5,25 ms |
+| Perfil del tramo R1 | 10 | 5,27 ms | 5,35 ms |
 
 Los tiempos en caliente incluyen el paso de Python a DuckDB y la conversión del resultado; los perfiles incluyen el cálculo del camino con `h3`.
 
@@ -259,17 +274,57 @@ Los tiempos en caliente incluyen el paso de Python a DuckDB y la conversión del
 
 La suma de pasos entre centros de celda sigue el zigzag de la malla y sale entre un 6,7 % y un 14,6 % más larga que la recta; por eso la tabla da la recta entre los centros de las celdas de los nodos.
 
-## 9. Incompatibilidades con el contrato de P3 (no se ha editado `src/`)
+## 9. Señal de radio, rugosidad y campos que calcula el motor
 
-1. **`h3_index` no es H3 en el motor.** `h3_mars_grid.rs` empaqueta coordenadas axiales propias (`res << 56 | q << 28 | r`) sobre una proyección local centrada en `SITE_REFERENCE_LAT/LON_DEG`. `nearest_cell`, `neighbors`, `k_ring` y `geodesic_distance_m` no entienden los índices H3 reales de estas tablas. El README de `shared` habla de `h3o`: o el motor adopta `h3o`, o hace falta una tabla de correspondencia que P3 genere con su propio origen.
-2. **`los_base_rssi_dbm` está en dBm**, y P1 solo tiene LOS geométrica (booleano y margen en metros). El campo va nulo y la bandera NLOS se calcula con la geometría. Pasar a dBm exige un modelo de enlace (potencia, ganancias, difracción) que no existe.
-3. **Sin campos opcionales.** Los `f32` de P3 no tienen representación de «sin dato». `Default` pone 0,0 y SVF 1,0. Con NaN, `soil_sinkage_eta` cae en la rama de η = 2,1, y `serde_json` escribe NaN como `null` y, según su comportamiento documentado, no lo vuelve a leer como `f32` (no comprobado aquí: no se ha ejecutado Rust). Aquí se usan nulos de Parquet; el cargador de P3 debe decidir su centinela.
-4. **Umbrales solo en Rust.** `SHELTER_SVF_MAX` (0,20) e `ISRU_WATER_MIN_PCT` (12 %) no están en `eva_thresholds.json`.
-5. **Métrica fija.** `resolution_metrics` da 5,01 m y 92,86 m de arista (res. 12 y 9); la media de la librería H3 escalada da 5,77 m y 107,0 m.
-6. **`roughness_hi`, `horizon_hash_id`, `base_metabolic_cost`:** sin definición de unidad (`roughness_hi`), específico de Canyon-TRN (`horizon_hash_id`, hash FNV) o dependiente de velocidad, sentido y deslizamiento (`base_metabolic_cost`).
-7. **`padding_crc`** va a cero: `H3MarsGrid::insert` vuelve a sellar el CRC al cargar.
+**`los_base_rssi_dbm` (derivado): enlace primario en banda S.** Enlace del validador (`scenario/radio.py`: antenas isótropas, pérdida en espacio libre con la distancia real a la Base, mínimo de 10 m) menos la pérdida por difracción de la arista dominante del perfil Base→celda, J(ν) de ITU-R P.526 con ν = h·√(2d/(λ·d1·d2)). El perfil es el mismo que el de la LOS de `terrain` (DTM CTX de 20 m, antenas a 3 y 2 m, curvatura; un test comprueba que el margen coincide con la banda `los_margin_m`); con ν ≤ −0,78 no hay pérdida adicional. Con antenas tan bajas, el propio suelo invade el primer elipsoide de Fresnel y resta unos pocos dB aunque haya LOS. Incertidumbre: `rssi_dbm_low`/`rssi_dbm_high` con la arista ±5 m (ruido del DTM). Modelo de arista única: varias aristas, reflexiones o la rugosidad no resuelta por el DTM darían más pérdida.
 
-## 10. Observaciones sobre los datos
+### Elección del enlace primario
+
+Mismo modelo y misma malla para tres configuraciones del enlace Base–traje. Clase con `eva_thresholds.json` (`radio_rssi_dbm`: verde > −85, rojo < −100 dBm).
+
+| Configuración | Base | WP1 | WP2 | WP3 | LOS a la distancia del WP1 | L2: mín. / mediana / % < −100 | L3: mín. / mediana / % < −100 |
+|---|---|---|---|---|---|---|---|
+| (a) UHF 435 MHz, 1 W | -15,2 (verde) | -64,2 (verde) | -81,0 (verde) | -85,7 (ámbar) | -58,7 | -89,0 / -65,3 / 0 % | -91,3 / -89,4 / 0 % |
+| (b) Banda S 2,4 GHz, 1 W | -30,0 (verde) | -78,2 (verde) | -103,1 (rojo) | -107,9 (rojo) | -73,6 | -111,3 / -80,7 / 45 % | -113,6 / -111,7 / 100 % |
+| (c) UHF 435 MHz, 100 mW, −5 dB por antena y cuerpo | -35,2 (verde) | -84,2 (verde) | -101,0 (rojo) | -105,7 (rojo) | -78,7 | -109,0 / -85,3 / 43 % | -111,3 / -109,4 / 100 % |
+
+Niveles en dBm, en las coordenadas exactas de los nodos (la tabla siguiente usa el píxel de la celda de resolución 12 y puede diferir en unas décimas). Distancia Base–WP1: 1500 m. En (c), 5 dB de pérdidas por antena y cuerpo en cada extremo (10 dB en total). L2 y L3 se muestrean en las celdas de resolución 12 de `grid_path_cells` entre los nodos.
+
+**Regla de decisión:** si en banda S el WP2 y el WP3 quedan por debajo de −100 dBm con al menos 2 dB de margen, el enlace primario de datos pasa a banda S. Resultado: WP2 -103,1 dBm y WP3 -107,9 dBm (márgenes de 3,1 y 7,9 dB). **Decisión aplicada:** el enlace primario de R.E.D. ATLAS, el que transporta la sesión Zenoh y se pierde tras el relieve, es banda S a 2,4 GHz y 1 W; UHF a 435 MHz queda como baliza de baja tasa que sobrevive degradada (verde en el WP2 y ámbar en el WP3, sin bajar nunca de −100 dBm en la ruta) y de la que el sistema no depende. `los_base_rssi_dbm` lleva el enlace primario; `rssi_uhf_dbm` (tabla completa) lleva la baliza.
+
+| Nodo | Banda S (dBm) | Intervalo ±5 m (dBm) | Difracción (dB) | Clase | Baliza UHF (dBm) | Clase UHF |
+|---|---|---|---|---|---|---|
+| BASE | -30,0 | -30,0 a -30,0 | 0,0 | verde | -15,2 | verde |
+| WP1 | -78,5 | -86,9 a -73,5 | 4,9 | verde | -64,3 | verde |
+| WP2 | -103,0 | -104,6 a -101,0 | 26,3 | rojo | -80,9 | verde |
+| WP3 | -107,7 | -109,2 a -105,9 | 33,6 | rojo | -85,4 | ámbar |
+
+En la ruta (res. 12), el enlace primario va de -114,0 a -30,0 dBm, con 17.870 celdas bajo -100 dBm; la baliza UHF, de -91,7 a -15,2 dBm, con 0.
+
+**`roughness_hi` (derivado, metros).** Desviación típica de los residuos de la cota respecto al plano de mínimos cuadrados ajustado en la ventana 3×3 (60 m) del DTM CTX de 20 m, calculada a su resolución nativa sobre el DTM del entorno cercano y asignada después a las celdas (píxel del centro a res. 12, media a res. 9). Se quita la pendiente: un plano inclinado liso da 0. Escala de 20-60 m: no ve bloques métricos.
+
+En la ruta (res. 12): de 0,00 a 2,11 m; mediana 0,16 m; percentil 95 0,47 m.
+
+**Campos que calcula el motor y van sin dato o a cero:**
+
+- `base_metabolic_cost`: depende de la velocidad, del sentido de la marcha (subir o bajar la misma celda cuesta distinto) y del deslizamiento; es una propiedad de la arista, no de la celda. Lo calcula `metabolic_dstar.rs` con el modelo de P1.
+- `horizon_hash_id`: identificador de Canyon-TRN (hash FNV sobre la base de horizontes del motor); P1 no tiene esa base. Los ángulos de horizonte de P1 están en `horizon_max_deg` y en el COG de 36 acimuts.
+- `padding_crc`: a cero; `H3MarsGrid::insert` lo sella al cargar.
+
+## 10. Contrato con P3
+
+**Resuelto en el motor:**
+
+- Índices H3 reales: el motor usa `h3o` y carga directamente `hexgrid_route_res12_hexcell64b.parquet` (`src/core-engine/tests/p1_hexgrid.rs`).
+- «Sin dato» explícito: `CELL_NO_DATA` (NaN) en los `f32`; los NULL de Parquet se cargan así, no como 0.
+- Métrica: `resolution_metrics` ya calcula arista y área con `h3o` escalado (5,77 m de arista media en res. 12).
+- Umbrales de refugio e ISRU: ahora están también en `eva_thresholds.json` (`shelter_sky_view_factor`, `isru_h2o_wt_pct`) y las banderas se calculan desde ahí.
+
+**Pendiente o a revisar por P3:**
+
+- La bandera NLOS de P1 se activa por LOS geométrica o por RSSI < −100 dBm del enlace primario; en Rust, `HAZARD_FLAG_NLOS` está documentada solo como RSSI < −100 dBm. Con banda S, el WP2 y el WP3 cumplen las dos condiciones.
+
+## 11. Observaciones sobre los datos
 
 - La pendiente real del WP2 (19,4° a res. 12) no supera los 20°: no lleva `SLOPE_CRITICAL`. No se ha forzado.
 - El tramo L1 no tiene LOS geométrica en el 51 % de sus celdas (margen mínimo -7,4 m; ruido del DTM ±5 m), aunque el GeoJSON lo describe «con línea de vista a la Base». La columna `los_indeterminate` marca los márgenes dentro del ruido.

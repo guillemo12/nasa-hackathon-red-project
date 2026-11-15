@@ -8,7 +8,11 @@
     "o2_energy_equiv_w_per_l_min": 335,
     "o2_density_g_per_l_stpd": 1.429,
     "surface_pressure_pa_site": 708,
-    "co2_column_g_cm2_site": 19.0
+    "co2_column_g_cm2_site": 19.0,
+    "escape_speed_cap_m_s": 1.25,
+    "escape_power_cap_w": 650,
+    "sustained_return_speed_cap_m_s": 1.0,
+    "sustained_return_power_cap_w": 585
   },
   "thresholds": [
     {
@@ -138,6 +142,24 @@
       "amber": "10-30",
       "red": "<10",
       "prov": "E"
+    },
+    {
+      "id": "shelter_sky_view_factor",
+      "unit": "-",
+      "green": "0-0.20",
+      "amber": ">0.20",
+      "red": ">0.20",
+      "prov": "D/E",
+      "note": "Criterio binario de refugio topografico (HAZARD_FLAG_SHELTER): refugio si SVF <= 0.20 (rango verde cerrado). Ambar y rojo coinciden: sin refugio."
+    },
+    {
+      "id": "isru_h2o_wt_pct",
+      "unit": "% en peso",
+      "green": "12-100",
+      "amber": "<12",
+      "red": "<12",
+      "prov": "E",
+      "note": "Criterio binario de recurso ISRU (HAZARD_FLAG_ISRU_WATER): apto si H2O >= 12 % en peso (rango verde cerrado). Ambar y rojo coinciden: no apto."
     }
   ]
 }

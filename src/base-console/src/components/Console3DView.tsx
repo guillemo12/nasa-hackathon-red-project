@@ -1,817 +1,997 @@
-import React, { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { Check, ChevronLeft, ChevronRight, Eye, Layers, Lock, RefreshCw, Unlock } from 'lucide-react';
-import { CANONICAL_WAYPOINTS } from '@/data/missionData';
-import { fetchHexGrid, type HexCellPoint, type MarsRawImage } from '@/engine/apiClient';
-import { getTrekTileUrl } from '@/engine/marsTrekTiles';
-import type { Eva07Event, SpyglassMode, WaypointNode } from '@/types/mission';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Loader2, Minus, Plus, RotateCcw } from 'lucide-react';
+import {
+  CANONICAL_WAYPOINTS,
+  CHAOS_REFERENCE,
+  EVA07_DOC,
+  LAYERS_CATALOG,
+  PERIMETER_M,
+  PLANNED_LEGS,
+  PLANNER_WALKBACK,
+  SUIT_SCENARIO,
+  UX_LABELS,
+  waypoint,
+} from '@/data/missionData';
+import { fetchHexGrid, fetchRoutePlan, fetchSpyglass, fetchTerrain } from '@/engine/apiClient';
+import { CHAOS_VISIBLE_TRIALS, certify } from '@/engine/chaos';
+import { formatT } from '@/engine/evaModel';
+import { compassPoint, fmt, haversineM, insideAoi } from '@/engine/geo';
+import { ISRU_H2O_MIN_PCT, P1_CONSTANTS, classify, limits, type Level } from '@/engine/thresholds';
+import { TwinScene, VERTICAL_EXAGGERATION, type RoutePath, type TwinLayers } from '@/engine/twinScene';
+import { NODE_COLOR, PALETTE, RADIO_CLASS_LEVEL, STATE_STYLE } from '@/theme';
+import { RouteProfileChart } from '@/components/RouteProfileChart';
+import { SpyglassLens, type LensData } from '@/components/SpyglassLens';
+import { Button, Disclosure, Notice, Panel, Row, Segmented, Stat, StatusDot, levelTextClass } from '@/components/ui';
+import type {
+  ChaosState,
+  Eva07Sample,
+  HexCell,
+  NodeId,
+  Notify,
+  RoutePlan,
+  SpyglassMode,
+  SyncState,
+  TerrainGrid,
+} from '@/types/mission';
 
 interface Console3DViewProps {
-  currentEvent: Eva07Event;
-  zenohSynced: boolean;
+  sample: Eva07Sample;
+  apiOnline: boolean;
+  sync: SyncState;
+  certified: boolean;
   onSyncZenoh: () => void | Promise<void>;
-  marsImages: MarsRawImage[];
-  selectedImageIdx: number;
-  onChangeImageIdx: (idx: number) => void;
-  onNotify?: (title: string, detail?: string, tone?: 'cyan' | 'green' | 'amber' | 'red') => void;
+  chaos: ChaosState;
+  onRunChaos: (trials: number, seed?: number) => void | Promise<void>;
+  onNotify: Notify;
 }
 
-interface ProjectedMarker {
-  node: WaypointNode;
-  x: number;
-  y: number;
-  visible: boolean;
-}
-
-interface SpyglassSample {
-  elevM: number;
-  slopeDeg: number;
-  crismH2oPct: number;
-  themisTiu: number;
-  svf: number;
-  rssiDbm: number;
+interface Pin {
+  id: number;
+  label: string;
   lat: number;
   lonE: number;
-  h3Hex: string | null;
-  nearestWp: string;
+  data: LensData;
 }
 
-// Convert canonical lat/lonE around Melas SW basin into local scene coords
-function geoToScene(lat: number, lonE: number): { x: number; z: number } {
-  const centerLat = -9.915;
-  const centerLon = 283.391;
-  const x = (lonE - centerLon) * 140; // ~[-1.6, 1.6]
-  const z = -(lat - centerLat) * 140; // ~[-2.6, 2.6]
-  return { x, z };
+interface Anchor {
+  el: HTMLElement;
+  lat: number;
+  lonE: number;
+  liftM: number;
+  /** Las etiquetas de nodo se separan del marcador alejándose del centro del triángulo. */
+  radial?: boolean;
 }
 
-function sceneToGeo(x: number, z: number): { lat: number; lonE: number } {
-  const centerLat = -9.915;
-  const centerLon = 283.391;
-  return {
-    lat: centerLat - z / 140,
-    lonE: centerLon + x / 140,
-  };
-}
+/** Tamaño de la lupa en pantalla (diámetro), px: límites de `strategic-3d-console.md` §1.2. */
+const LENS_MIN_PX = 100;
+const LENS_MAX_PX = 400;
+const LENS_DEFAULT_PX = 220;
+const LENS_DEFAULT_OPACITY = 0.85;
+const MAX_PINS = 3;
+/** Radio en el terreno que consulta la lupa, m (límites de la API). */
+const QUERY_MIN_M = 15;
+const QUERY_MAX_M = 200;
+/** Sin API, la lupa solo tiene dato a menos de esta distancia de un nodo del GeoJSON, m. */
+const NODE_SNAP_M = 60;
 
-function sampleTerrainProps(
-  vx: number,
-  vz: number,
-  molaScale = 1,
-  hexCells: HexCellPoint[] = []
-): SpyglassSample {
-  const { lat, lonE } = sceneToGeo(vx, vz);
+const AOI = LAYERS_CATALOG.aoi;
+const CENTROID = {
+  lat: CANONICAL_WAYPOINTS.reduce((a, w) => a + w.lat, 0) / CANONICAL_WAYPOINTS.length,
+  lonE: CANONICAL_WAYPOINTS.reduce((a, w) => a + w.lonE, 0) / CANONICAL_WAYPOINTS.length,
+};
+const WB = PLANNER_WALKBACK;
+const NLOS_WINDOW = EVA07_DOC.threat_windows_t_min.sombra_radio;
+const RADIO_TEXT: Record<string, string> = { VERDE: 'bueno', AMBAR: 'débil', ROJO: 'cortado' };
 
-  let nearestWp = 'CUENCA SW';
-  let minD = 999;
-  for (const wp of CANONICAL_WAYPOINTS) {
-    const p = geoToScene(wp.lat, wp.lonE);
-    const d = Math.hypot(vx - p.x, vz - p.z);
-    if (d < minD) {
-      minD = d;
-      nearestWp = d < 0.75 ? wp.id : `~${wp.id}`;
+/** Los nombres cortos llegan en mayúsculas de los datos de la misión; aquí se escriben como nombres. */
+const nodeName = (shortLabel: string) =>
+  shortLabel
+    .split(' ')
+    .map((w) => (/\d/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()))
+    .join(' ');
+
+/** El identificador «BASE» se escribe como nombre al mostrarlo; los WP son siglas. */
+const shownId = (id: string) => (id === 'BASE' ? 'Base' : id);
+
+function nearestNode(lat: number, lonE: number): { label: string; node: (typeof CANONICAL_WAYPOINTS)[number]; distM: number } {
+  let best = CANONICAL_WAYPOINTS[0];
+  let d = Infinity;
+  for (const w of CANONICAL_WAYPOINTS) {
+    const dw = haversineM(lat, lonE, w.lat, w.lonE);
+    if (dw < d) {
+      d = dw;
+      best = w;
     }
   }
-
-  const nx = vx / 4.75;
-  const nz = vz / 4.75;
-  const eps = 0.04;
-  const y0 = terrainElevationOffset(nx, nz) * molaScale;
-  const yx = terrainElevationOffset(nx + eps, nz) * molaScale;
-  const yz = terrainElevationOffset(nx, nz + eps) * molaScale;
-  const grad = Math.hypot((yx - y0) / (eps * 4.75), (yz - y0) / (eps * 4.75));
-  const slopeFallback = Number(Math.min(34, Math.max(1.2, Math.atan(grad) * (180 / Math.PI) * 1.15)).toFixed(1));
-  const elevFallback = Math.round(-1640 + y0 * 110);
-
-  const dWp1 = Math.hypot(vx - 1.4, vz - 0.5);
-  const crismFallback = Number((3.8 + Math.exp(-(dWp1 * dWp1) / 0.85) * 9.8).toFixed(1));
-
-  const dWp2 = Math.hypot(vx + 0.65, vz - 2.4);
-  const themisFallback = Math.round(335 - Math.exp(-(dWp2 * dWp2) / 1.1) * 225);
-
-  const dWp3 = Math.hypot(vx + 1.33, vz + 0.85);
-  const svfFallback = Number(Math.max(0.15, Math.min(0.94, 0.78 - Math.exp(-(dWp3 * dWp3) / 0.7) * 0.63)).toFixed(2));
-
-  // Query real H3 Parquet cell from Rust backend if loaded
-  if (hexCells.length > 0) {
-    let bestCell: HexCellPoint | null = null;
-    let bestDist = Infinity;
-    for (const c of hexCells) {
-      const d = (c.lat - lat) ** 2 + (c.lon_e - lonE) ** 2;
-      if (d < bestDist) {
-        bestDist = d;
-        bestCell = c;
-      }
-    }
-    if (bestCell) {
-      return {
-        elevM: typeof bestCell.elev_m === 'number' ? Math.round(bestCell.elev_m) : elevFallback,
-        slopeDeg: typeof bestCell.slope_deg === 'number' ? Number(bestCell.slope_deg.toFixed(1)) : slopeFallback,
-        crismH2oPct: typeof bestCell.isru_h2o_pct === 'number' ? Number(bestCell.isru_h2o_pct.toFixed(1)) : crismFallback,
-        themisTiu: typeof bestCell.thermal_inertia_tiu === 'number' ? Math.round(bestCell.thermal_inertia_tiu) : themisFallback,
-        svf: typeof bestCell.sky_view_factor === 'number' ? Number(bestCell.sky_view_factor.toFixed(2)) : svfFallback,
-        rssiDbm: typeof bestCell.los_base_rssi_dbm === 'number' ? Number(bestCell.los_base_rssi_dbm.toFixed(1)) : -63.0,
-        lat: bestCell.lat,
-        lonE: bestCell.lon_e,
-        h3Hex: bestCell.h3_hex,
-        nearestWp,
-      };
-    }
-  }
-
-  return {
-    elevM: elevFallback,
-    slopeDeg: slopeFallback,
-    crismH2oPct: crismFallback,
-    themisTiu: themisFallback,
-    svf: svfFallback,
-    rssiDbm: -63.0,
-    lat,
-    lonE,
-    h3Hex: null,
-    nearestWp,
-  };
-}
-
-function terrainElevationOffset(nx: number, nz: number): number {
-  // Deterministic Melas Chasma SW basin + steep SW canyon wall relief
-  const wallSlope = Math.max(0, -nz - 0.15) * 2.4;
-  const ridge = Math.sin(nx * 3.1 + nz * 1.9) * 0.22 + Math.cos(nx * 5.2 - nz * 4.1) * 0.1;
-  const wp2Ramp = Math.exp(-((nx - 0.18) ** 2 + (nz - 0.35) ** 2) / 0.14) * 0.55;
-  const wp3Alcove = Math.exp(-((nx + 0.28) ** 2 + (nz + 0.18) ** 2) / 0.1) * 0.25;
-  return wallSlope + ridge + wp2Ramp - wp3Alcove;
+  return { label: d <= NODE_SNAP_M ? best.id : d < 400 ? `A ${fmt(d)} m de ${shownId(best.id)}` : 'Cuenca suroeste', node: best, distM: d };
 }
 
 export const Console3DView: React.FC<Console3DViewProps> = ({
-  currentEvent,
-  zenohSynced,
+  sample,
+  apiOnline,
+  sync,
+  certified,
   onSyncZenoh,
-  marsImages,
-  selectedImageIdx,
-  onChangeImageIdx,
+  chaos,
+  onRunChaos,
   onNotify,
 }) => {
-  const activeMarsImage = marsImages[selectedImageIdx] ?? null;
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [focusedWaypointId, setFocusedWaypointId] = useState<WaypointNode['id'] | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const terrainMeshRef = useRef<THREE.Mesh | null>(null);
-  const raycasterRef = useRef(new THREE.Raycaster());
-  const [spyglassMode, setSpyglassMode] = useState<SpyglassMode>('tri-sector');
-  const [spyglassPinned, setSpyglassPinned] = useState(false);
-  const [spyglassPos, setSpyglassPos] = useState({ x: 530, y: 210 });
-  const [spyglassSample, setSpyglassSample] = useState<SpyglassSample>(() => sampleTerrainProps(0.4, 0.2, 1));
-  const [hexCells, setHexCells] = useState<HexCellPoint[]>([]);
-  const [textureSource, setTextureSource] = useState<'trek-viking' | 'trek-mola'>('trek-viking');
-  const [layers, setLayers] = useState({
-    mola: true,
-    crism: true,
-    themis: false,
-    h3o: true,
-  });
-  const [markers, setMarkers] = useState<ProjectedMarker[]>([]);
+  const sceneRef = useRef<TwinScene | null>(null);
+  const anchors = useRef(new Map<string, Anchor>());
+  const mainEl = useRef<HTMLDivElement | null>(null);
+  const cursor = useRef({ x: 0, y: 0 });
+  const pendingMove = useRef<{ x: number; y: number } | null>(null);
+  const moveFrame = useRef(0);
+  const downAt = useRef({ x: 0, y: 0 });
+  const clickTimer = useRef(0);
+  const spyBusy = useRef(false);
+  const spyNext = useRef<{ lat: number; lonE: number; radiusM: number } | null>(null);
+  const pinSeq = useRef(0);
+  const spyToken = useRef(0);
 
+  const [terrain, setTerrain] = useState<TerrainGrid | null>(null);
+  const [hexCells, setHexCells] = useState<HexCell[]>([]);
+  const [plan, setPlan] = useState<RoutePlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sceneVersion, setSceneVersion] = useState(0);
+
+  const [layers, setLayers] = useState<TwinLayers>({ mola: true, crism: true, themis: true, h3o: true });
+  const [mode, setMode] = useState<SpyglassMode>('tri-sector');
+  const [lastXray, setLastXray] = useState<SpyglassMode>('xray-crism');
+  const [lensSize, setLensSize] = useState(LENS_DEFAULT_PX);
+  const [lensOpacity, setLensOpacity] = useState(LENS_DEFAULT_OPACITY);
+  const [mainGeo, setMainGeo] = useState<{ lat: number; lonE: number } | null>(null);
+  const [mainData, setMainData] = useState<LensData>({ status: 'outside' });
+  const [mainRadiusM, setMainRadiusM] = useState<number | null>(null);
+  const [frozen, setFrozen] = useState(false);
+  const [lensVisible, setLensVisible] = useState(false);
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [cam, setCam] = useState({ azimuthDeg: 0, elevationDeg: 45, mPerPx: 5 });
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
+
+  const lensSizeRef = useRef(lensSize);
+  lensSizeRef.current = lensSize;
+  const frozenRef = useRef(frozen);
+  frozenRef.current = frozen;
+  const apiRef = useRef(apiOnline);
+  apiRef.current = apiOnline;
+
+  // ------------------------------------------------------------------ datos de la misión
   useEffect(() => {
+    if (!apiOnline) {
+      setLoading(false);
+      return;
+    }
     let active = true;
-    fetchHexGrid().then((cells) => {
-      if (active && cells.length > 0) {
-        setHexCells(cells);
-        setSpyglassSample(sampleTerrainProps(0.4, 0.2, 1, cells));
-      }
-    });
+    setLoading(true);
+    fetchTerrain()
+      .then((t) => active && setTerrain(t))
+      .catch(() => undefined)
+      .finally(() => active && setLoading(false));
+    fetchHexGrid().then((c) => active && setHexCells(c)).catch(() => undefined);
+    fetchRoutePlan().then((p) => active && setPlan(p)).catch(() => undefined);
     return () => {
       active = false;
     };
-  }, []);
+  }, [apiOnline]);
+
+  // ------------------------------------------------------------------ escena
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    const scene = new TwinScene(mount, AOI, terrain);
+    sceneRef.current = scene;
+    let lastCam = '';
+    scene.onFrame = () => {
+      const centroid = scene.project(scene.worldOf(CENTROID.lat, CENTROID.lonE));
+      anchors.current.forEach((a) => {
+        const p = scene.project(scene.worldOf(a.lat, a.lonE, a.liftM));
+        let { x, y } = p;
+        if (a.radial) {
+          const dx = x - centroid.x;
+          const dy = y - centroid.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const reach = 18 + (Math.abs(dx / len) * a.el.offsetWidth) / 2 + (Math.abs(dy / len) * a.el.offsetHeight) / 2;
+          x += (dx / len) * reach;
+          y += (dy / len) * reach;
+        }
+        a.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        a.el.style.visibility = p.visible ? 'visible' : 'hidden';
+      });
+      const info = scene.cameraInfo();
+      const key = `${info.azimuthDeg.toFixed(0)}|${info.elevationDeg.toFixed(0)}|${info.mPerPx.toFixed(2)}`;
+      if (key !== lastCam) {
+        lastCam = key;
+        setCam(info);
+      }
+    };
+    setSceneVersion((v) => v + 1);
+    return () => {
+      scene.dispose();
+      sceneRef.current = null;
+    };
+  }, [terrain]);
 
   useEffect(() => {
-    const container = mountRef.current;
-    if (!container) return;
+    sceneRef.current?.setLayers(layers);
+  }, [layers, sceneVersion]);
 
-    const width = container.clientWidth || 900;
-    const height = container.clientHeight || 540;
+  useEffect(() => {
+    sceneRef.current?.setHexCells(hexCells);
+  }, [hexCells, sceneVersion]);
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#090D14');
-    scene.fog = new THREE.FogExp2('#090D14', 0.085);
-
-    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 100);
-    camera.position.set(0.4, 5.4, 6.2);
-    camera.lookAt(0, 0.1, 0);
-    cameraRef.current = camera;
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
-
-    // Lighting
-    scene.add(new THREE.AmbientLight('#8ba3c7', 0.55));
-    const dirLight = new THREE.DirectionalLight('#ffd7b5', 1.4);
-    dirLight.position.set(6, 8, 4);
-    scene.add(dirLight);
-
-    // Terrain Mesh (Melas Chasma SW Basin)
-    const molaScale = layers.mola ? 1 : 0.12;
-    const segs = 96;
-    const planeGeo = new THREE.PlaneGeometry(9.5, 9.5, segs, segs);
-    planeGeo.rotateX(-Math.PI / 2);
-
-    const posAttr = planeGeo.attributes.position;
-    const colors: number[] = [];
-    for (let i = 0; i < posAttr.count; i++) {
-      const vx = posAttr.getX(i);
-      const vz = posAttr.getZ(i);
-      const y = terrainElevationOffset(vx / 4.75, vz / 4.75) * molaScale;
-      posAttr.setY(i, y);
-
-      // Subtle Martian basalt + orbital layer tinting
-      const shade = Math.min(1, Math.max(0.18, 0.28 + y * 0.22));
-      let r = shade * 0.42;
-      let g = shade * 0.44;
-      let b = shade * 0.48;
-
-      if (layers.crism) {
-        const dWp1 = Math.hypot(vx - 1.4, vz - 0.5);
-        if (dWp1 < 1.1) {
-          const w = (1 - dWp1 / 1.1) * 0.45;
-          g += w * 0.5;
-          b += w * 0.7;
-        }
-      }
-      if (layers.themis) {
-        const dWp2 = Math.hypot(vx + 0.65, vz - 2.4);
-        if (dWp2 < 1.2) {
-          const w = (1 - dWp2 / 1.2) * 0.55;
-          r += w * 0.85;
-          g += w * 0.35;
-        }
-      }
-      colors.push(r, g, b);
-    }
-    planeGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    planeGeo.computeVertexNormals();
-
-    const terrainMat = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.9,
-      metalness: 0.08,
+  useEffect(() => {
+    const routes: RoutePath[] = PLANNED_LEGS.map((leg) => {
+      const planned = plan?.legs.find((l) => l.leg_id === leg.id && !l.error);
+      const a = waypoint(leg.from);
+      const b = waypoint(leg.to);
+      return {
+        id: leg.id,
+        // Ruta del planificador en cian; el tramo de escape WP2 → WP3, en verde (wireframe 3d-console).
+        color: leg.id === 'L3' ? PALETTE.green : PALETTE.cyan,
+        points: planned
+          ? planned.profile.map((p) => ({ lat: p.lat, lonE: p.lon_e }))
+          : a && b
+            ? [{ lat: a.lat, lonE: a.lonE }, { lat: b.lat, lonE: b.lonE }]
+            : [],
+      };
     });
-    const texUrl =
-      textureSource === 'trek-viking'
-        ? getTrekTileUrl('viking', 5, 17, 16)
-        : getTrekTileUrl('mola', 5, 17, 16);
-    if (texUrl) {
-      const loader = new THREE.TextureLoader();
-      loader.load(texUrl, (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        terrainMat.map = tex;
-        terrainMat.bumpMap = tex;
-        terrainMat.bumpScale = 0.25;
-        terrainMat.displacementMap = tex;
-        terrainMat.displacementScale = 0.35;
-        terrainMat.needsUpdate = true;
-      });
-    }
-    const terrainMesh = new THREE.Mesh(planeGeo, terrainMat);
-    terrainMeshRef.current = terrainMesh;
-    scene.add(terrainMesh);
+    sceneRef.current?.setRoutes(
+      routes,
+      CANONICAL_WAYPOINTS.map((w) => ({ lat: w.lat, lonE: w.lonE, color: NODE_COLOR[w.id] }))
+    );
+  }, [plan, sceneVersion]);
 
-    // Optional h3o wireframe overlay
-    if (layers.h3o) {
-      const wireMat = new THREE.MeshBasicMaterial({
-        color: '#00F5D4',
-        wireframe: true,
-        transparent: true,
-        opacity: 0.08,
-      });
-      const wireMesh = new THREE.Mesh(planeGeo, wireMat);
-      wireMesh.position.y = 0.01;
-      scene.add(wireMesh);
-    }
-
-    // Survival Triangle Route Lines
-    const pts: THREE.Vector3[] = [];
-    const nodeVectors = CANONICAL_WAYPOINTS.map((wp) => {
-      const { x, z } = geoToScene(wp.lat, wp.lonE);
-      const y = terrainElevationOffset(x / 4.75, z / 4.75) * molaScale + 0.08;
-      return { wp, vec: new THREE.Vector3(x, y, z) };
-    });
-
-    for (const item of nodeVectors) {
-      pts.push(item.vec);
-    }
-    pts.push(nodeVectors[0].vec); // Close triangle WP3 -> BASE
-
-    const routeGeo = new THREE.BufferGeometry().setFromPoints(pts);
-    const routeMat = new THREE.LineBasicMaterial({ color: '#FF9100', linewidth: 2 });
-    scene.add(new THREE.Line(routeGeo, routeMat));
-
-    // Escape leg WP2 -> WP3 highlighted in Bio-Green
-    const escGeo = new THREE.BufferGeometry().setFromPoints([
-      nodeVectors[2].vec.clone().setY(nodeVectors[2].vec.y + 0.03),
-      nodeVectors[3].vec.clone().setY(nodeVectors[3].vec.y + 0.03),
-    ]);
-    scene.add(new THREE.Line(escGeo, new THREE.LineBasicMaterial({ color: '#00FFA3' })));
-
-    // Waypoint Spheres
-    nodeVectors.forEach(({ wp, vec }) => {
-      const color =
-        wp.id === 'BASE'
-          ? '#e2e8f0'
-          : wp.id === 'WP1'
-            ? '#00F5D4'
-            : wp.id === 'WP2'
-              ? '#FF9100'
-              : '#00FFA3';
-      const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.1, 16, 16),
-        new THREE.MeshBasicMaterial({ color })
+  // Respuesta visual de la simulación de imprevistos en el mapa.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const wp2 = waypoint('WP2');
+    const base = waypoint('BASE');
+    const wp3 = waypoint('WP3');
+    if (chaos.status === 'done' && chaos.run && wp2 && base && wp3) {
+      scene.playChaos(
+        { lat: wp2.lat, lonE: wp2.lonE },
+        { lat: base.lat, lonE: base.lonE },
+        { lat: wp3.lat, lonE: wp3.lonE },
+        Math.min(chaos.run.trials, CHAOS_VISIBLE_TRIALS),
+        chaos.run.report.survival_rate_with_shelter_pct / 100
       );
-      sphere.position.copy(vec);
-      scene.add(sphere);
-    });
-
-    const projectMarkers = () => {
-      const w = container.clientWidth || width;
-      const h = container.clientHeight || height;
-      const projected = nodeVectors.map(({ wp, vec }) => {
-        const v = vec.clone().project(camera);
-        return {
-          node: wp,
-          x: (v.x * 0.5 + 0.5) * w,
-          y: (-v.y * 0.5 + 0.5) * h,
-          visible: v.z < 1,
-        };
-      });
-      setMarkers(projected);
-    };
-
-    let animId = 0;
-    let t = 0;
-    const animate = () => {
-      t += 0.004;
-      camera.position.x = 0.4 + Math.sin(t) * 0.25;
-      camera.lookAt(0, 0.1, 0);
-      renderer.render(scene, camera);
-      projectMarkers();
-      animId = requestAnimationFrame(animate);
-    };
-    animate();
-
-    const handleResize = () => {
-      if (!container) return;
-      const nw = container.clientWidth;
-      const nh = container.clientHeight;
-      camera.aspect = nw / nh;
-      camera.updateProjectionMatrix();
-      renderer.setSize(nw, nh);
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', handleResize);
-      renderer.dispose();
-    };
-  }, [layers, textureSource, activeMarsImage?.proxyUrl]);
-
-  const sampleAtScreenPos = (clientOffsetX: number, clientOffsetY: number) => {
-    const container = mountRef.current;
-    const cam = cameraRef.current;
-    const mesh = terrainMeshRef.current;
-    if (!container || !cam || !mesh) return;
-    const w = container.clientWidth || 900;
-    const h = container.clientHeight || 640;
-    const ndc = new THREE.Vector2((clientOffsetX / w) * 2 - 1, -(clientOffsetY / h) * 2 + 1);
-    raycasterRef.current.setFromCamera(ndc, cam);
-    const hits = raycasterRef.current.intersectObject(mesh, false);
-    if (hits.length > 0) {
-      const p = hits[0].point;
-      setSpyglassSample(sampleTerrainProps(p.x, p.z, layers.mola ? 1 : 0.12, hexCells));
+    } else {
+      scene.clearChaos();
     }
+  }, [chaos.status, chaos.finishedAt, chaos.run, sceneVersion]);
+
+  const setAnchor = useCallback((id: string, lat: number, lonE: number, liftM: number, radial = false) => {
+    return (el: HTMLElement | null) => {
+      if (el) anchors.current.set(id, { el, lat, lonE, liftM, radial });
+      else anchors.current.delete(id);
+      sceneRef.current?.invalidate();
+    };
+  }, []);
+
+  // ------------------------------------------------------------------ lupa
+  const lensDataFor = useCallback(
+    async (lat: number, lonE: number, radiusM: number): Promise<LensData> => {
+      const near = nearestNode(lat, lonE);
+      const nodeOnly: LensData = { status: 'noapi', node: near.distM <= NODE_SNAP_M ? near.node : null };
+      if (!apiRef.current) return nodeOnly;
+      const res = await fetchSpyglass(lat, lonE, radiusM);
+      if (res === 'outside') return { status: 'outside' };
+      if (res === null) return nodeOnly;
+      return { status: 'ok', result: res };
+    },
+    []
+  );
+
+  const pumpSpyglass = useCallback(async () => {
+    if (spyBusy.current || !spyNext.current) return;
+    spyBusy.current = true;
+    const q = spyNext.current;
+    spyNext.current = null;
+    const token = spyToken.current;
+    const data = await lensDataFor(q.lat, q.lonE, q.radiusM);
+    spyBusy.current = false;
+    // Si mientras tanto se ha movido la lupa, manda la última posición; una respuesta que
+    // llega cuando la lupa ya ha salido del terreno se descarta.
+    if (spyNext.current) void pumpSpyglass();
+    else if (token === spyToken.current) setMainData(data);
+  }, [lensDataFor]);
+
+  const moveLens = useCallback(
+    (x: number, y: number) => {
+      const scene = sceneRef.current;
+      if (!scene || frozenRef.current) return;
+      cursor.current = { x, y };
+      if (mainEl.current) mainEl.current.style.transform = `translate(${x}px, ${y}px)`;
+      setLensVisible(true);
+      const hit = scene.raycast(x, y);
+      if (!hit || !insideAoi({ aoi: AOI } as TerrainGrid, hit.lat, hit.lonE)) {
+        // Fuera del terreno la lupa no conserva la lectura anterior.
+        spyToken.current += 1;
+        spyNext.current = null;
+        setMainGeo(null);
+        setMainRadiusM(null);
+        setMainData({ status: 'outside' });
+        return;
+      }
+      const radiusM = Math.min(QUERY_MAX_M, Math.max(QUERY_MIN_M, (hit.mPerPx * lensSizeRef.current) / 2));
+      setMainGeo({ lat: hit.lat, lonE: hit.lonE });
+      setMainRadiusM(radiusM);
+      spyNext.current = { lat: hit.lat, lonE: hit.lonE, radiusM };
+      void pumpSpyglass();
+    },
+    [pumpSpyglass]
+  );
+
+  const pinsRef = useRef<Pin[]>([]);
+  pinsRef.current = pins;
+  const addPin = useCallback(
+    (lat: number, lonE: number, label?: string) => {
+      if (pinsRef.current.length >= MAX_PINS) {
+        onNotify('Ya hay 3 lupas fijadas', 'Quita una con su aspa o con la tecla Escape antes de fijar otra.', 'amber');
+        return;
+      }
+      const id = ++pinSeq.current;
+      const name = label ?? nearestNode(lat, lonE).label;
+      const radiusM = Math.min(QUERY_MAX_M, Math.max(QUERY_MIN_M, (sceneRef.current?.cameraInfo().mPerPx ?? 1) * (lensSizeRef.current / 2)));
+      const pin: Pin = { id, label: name, lat, lonE, data: { status: 'loading' } };
+      pinsRef.current = [...pinsRef.current, pin];
+      setPins((prev) => (prev.length >= MAX_PINS ? prev : [...prev, pin]));
+      void lensDataFor(lat, lonE, radiusM).then((data) =>
+        setPins((cur) => cur.map((p) => (p.id === id ? { ...p, data } : p)))
+      );
+    },
+    [lensDataFor, onNotify]
+  );
+
+  const toggleNodePin = (id: NodeId) => {
+    const existing = pins.find((p) => p.label === id);
+    if (existing) {
+      setPins((prev) => prev.filter((p) => p.id !== existing.id));
+      return;
+    }
+    const w = waypoint(id);
+    if (w) addPin(w.lat, w.lonE, id);
+  };
+
+  const toggleFreeze = useCallback(() => {
+    if (frozen) {
+      // Al soltarla, la lupa libre reaparece donde estaba congelada (no en la esquina).
+      const scene = sceneRef.current;
+      if (scene && mainGeo) {
+        const p = scene.project(scene.worldOf(mainGeo.lat, mainGeo.lonE));
+        cursor.current = { x: p.x, y: p.y };
+      }
+      setFrozen(false);
+    } else if (mainGeo) {
+      setFrozen(true);
+    }
+  }, [frozen, mainGeo]);
+
+  const toggleMode = useCallback(() => {
+    setMode((m) => {
+      if (m === 'tri-sector') return lastXray;
+      setLastXray(m);
+      return 'tri-sector';
+    });
+  }, [lastXray]);
+
+  // Al cambiar el tamaño, la lupa libre vuelve a medir con su nuevo radio.
+  useEffect(() => {
+    if (!frozen && lensVisible) moveLens(cursor.current.x, cursor.current.y);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lensSize]);
+
+  // Rueda: tamaño de la lupa (100–400 px). Con Ctrl, zoom de la cámara. Oyente no pasivo.
+  useEffect(() => {
+    const el = mountRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) sceneRef.current?.zoom(e.deltaY > 0 ? 1.12 : 0.89);
+      else setLensSize((s) => Math.min(LENS_MAX_PX, Math.max(LENS_MIN_PX, s + (e.deltaY < 0 ? 20 : -20))));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const localXY = (e: { clientX: number; clientY: number }) => {
+    const rect = mountRef.current?.getBoundingClientRect();
+    return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (spyglassPinned) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const nx = Math.max(115, Math.min(rect.width - 115, e.clientX - rect.left));
-    const ny = Math.max(115, Math.min(rect.height - 115, e.clientY - rect.top));
-    setSpyglassPos({ x: nx, y: ny });
-    sampleAtScreenPos(nx, ny);
+    if (e.buttons !== 0) return; // arrastrando: órbita de la cámara
+    pendingMove.current = localXY(e);
+    if (moveFrame.current) return;
+    moveFrame.current = requestAnimationFrame(() => {
+      moveFrame.current = 0;
+      const p = pendingMove.current;
+      if (p) moveLens(p.x, p.y);
+    });
   };
 
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (Math.hypot(e.clientX - downAt.current.x, e.clientY - downAt.current.y) > 5) return;
+    window.clearTimeout(clickTimer.current);
+    // Espera por si es un doble clic (que fija una lupa comparativa en vez de congelar).
+    clickTimer.current = window.setTimeout(toggleFreeze, 240);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    window.clearTimeout(clickTimer.current);
+    const { x, y } = localXY(e);
+    const hit = sceneRef.current?.raycast(x, y);
+    if (hit) addPin(hit.lat, hit.lonE);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 48 : 12;
+    const el = mountRef.current;
+    const w = el?.clientWidth ?? 0;
+    const h = el?.clientHeight ?? 0;
+    const nudge = (dx: number, dy: number) => {
+      e.preventDefault();
+      if (frozen) toggleFreeze();
+      frozenRef.current = false;
+      const start = lensVisible ? cursor.current : { x: w / 2, y: h / 2 };
+      moveLens(Math.min(w, Math.max(0, start.x + dx)), Math.min(h, Math.max(0, start.y + dy)));
+    };
+    switch (e.key) {
+      case 'ArrowLeft': return nudge(-step, 0);
+      case 'ArrowRight': return nudge(step, 0);
+      case 'ArrowUp': return nudge(0, -step);
+      case 'ArrowDown': return nudge(0, step);
+      case ' ':
+        e.preventDefault();
+        return toggleMode();
+      case 'Enter':
+        e.preventDefault();
+        if (mainGeo) addPin(mainGeo.lat, mainGeo.lonE);
+        return;
+      case 'f':
+      case 'F':
+        return toggleFreeze();
+      case 'Escape':
+        if (frozen) toggleFreeze();
+        else setPins((prev) => prev.slice(0, -1));
+        return;
+      case '+':
+      case '=':
+        return setLensSize((s) => Math.min(LENS_MAX_PX, s + 20));
+      case '-':
+        return setLensSize((s) => Math.max(LENS_MIN_PX, s - 20));
+      case 'PageUp':
+        e.preventDefault();
+        return sceneRef.current?.zoom(0.85);
+      case 'PageDown':
+        e.preventDefault();
+        return sceneRef.current?.zoom(1.18);
+      case 'a':
+      case 'A':
+        return sceneRef.current?.orbit(-10, 0);
+      case 'd':
+      case 'D':
+        return sceneRef.current?.orbit(10, 0);
+      case 'w':
+      case 'W':
+        return sceneRef.current?.orbit(0, -6);
+      case 's':
+      case 'S':
+        return sceneRef.current?.orbit(0, 6);
+      default:
+        if (['1', '2', '3', '4'].includes(e.key)) toggleNodePin(CANONICAL_WAYPOINTS[Number(e.key) - 1].id);
+    }
+  };
+
+  // ------------------------------------------------------------------ cifras de los paneles
+  const v = sample.values;
+  const state = STATE_STYLE[sample.guardrail.state];
+  const isPreEva = sample.guardrail.state === 'PRE_EVA';
+  const radioLevel = RADIO_CLASS_LEVEL[v.radio_class] ?? 'none';
+  const dusty = sample.active_threats.includes('polvo');
+  const run = chaos.status === 'done' ? chaos.run : null;
+  const cert = run ? certify(run) : null;
+  const near = mainGeo ? nearestNode(mainGeo.lat, mainGeo.lonE) : null;
+  const scaleBarM = useMemo(
+    () => [50, 100, 200, 500, 1000, 2000].find((m) => m / cam.mPerPx >= 60) ?? 2000,
+    [cam.mPerPx]
+  );
+  const maxSlopeLeg = PLANNED_LEGS.reduce((a, l) => (l.maxSlopeDeg > a.maxSlopeDeg ? l : a), PLANNED_LEGS[0]);
+  const wp2 = waypoint('WP2');
+  const base = waypoint('BASE');
+  const wp3 = waypoint('WP3');
+  const mid = (a?: { lat: number; lonE: number }, b?: { lat: number; lonE: number }) =>
+    a && b ? { lat: (a.lat + b.lat) / 2, lonE: (a.lonE + b.lonE) / 2 } : null;
+
+  const layerItems: Array<{ key: keyof TwinLayers; title: string; sub: string }> = [
+    { key: 'mola', title: 'Relieve (MOLA)', sub: `Pendientes de más de ${limits('slope_deg').red}° y refugios` },
+    { key: 'crism', title: 'Sulfatos (CRISM)', sub: `Zonas con ${fmt(ISRU_H2O_MIN_PCT)} % de agua o más` },
+    { key: 'themis', title: 'Inercia térmica (THEMIS)', sub: `Trampas de polvo, menos de ${limits('thermal_inertia_tiu').red} TIU` },
+    { key: 'h3o', title: 'Malla hexagonal', sub: hexCells.length ? `${fmt(hexCells.length)} celdas sobre el terreno` : 'Necesita el motor de cálculo' },
+  ];
+
+  const handleSync = async () => {
+    if (!certified) {
+      onNotify('Aún no se puede enviar la ruta', 'Simula la ruta antes de enviarla al traje.', 'amber');
+      return;
+    }
+    if (sync.status === 'ok' || syncBusy) return;
+    setSyncBusy(true);
+    await onSyncZenoh();
+    setSyncBusy(false);
+  };
+
+  // Lo normal va sin color: solo precaución y evacuación tiñen el estado.
+  const stateLevel: Level =
+    sample.guardrail.state === 'EVAC_SHELTER'
+      ? 'red'
+      : sample.guardrail.state === 'CAUTION' || sample.guardrail.state === 'MULTI_HAZARD'
+        ? 'amber'
+        : 'none';
+  const tint = (level: Level) => (level === 'red' || level === 'amber' ? levelTextClass(level) : undefined);
+  const syncBlocked = !certified || sync.status === 'ok' || sync.status === 'syncing';
+  const destLevel: Level = !isPreEva && v.viable_destination === 'WP3' ? 'red' : 'none';
+  const mapLabel = 'px-1.5 py-0.5 rounded bg-ground/85 t-label tabular-nums whitespace-nowrap';
+  const iconBtn = 'w-8 h-8 flex items-center justify-center rounded-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer';
+  const column = 'space-y-3 xl:absolute xl:top-2 xl:w-80 xl:max-h-[calc(100%-4.5rem)] xl:overflow-y-auto xl:p-1';
+
   return (
-    <div className="relative w-full h-[640px] rounded-2xl overflow-hidden border border-[#1E2738] bg-[#090D14]">
-      {/* Three.js 3D Melas Chasma Canvas */}
-      <div
-        ref={mountRef}
-        onPointerMove={handlePointerMove}
-        onClick={() => setSpyglassPinned((p) => !p)}
-        className="w-full h-full cursor-crosshair"
-        title="Mueve el cursor para inspeccionar con la Lupa Spyglass (clic para fijar/soltar)"
-      />
+    <div className="relative flex flex-col gap-3 xl:block xl:h-full xl:min-h-[540px]">
+      <h1 className="sr-only">Cartografía de la cuenca suroeste de Melas Chasma</h1>
 
-      {/* Waypoint Projected Labels (positioned cleanly around markers) */}
-      <div className="pointer-events-none absolute inset-0">
-        {markers.map(({ node, x, y, visible }) => {
-          if (!visible) return null;
-          const badgeColor =
-            node.id === 'BASE'
-              ? 'border-slate-400/50 text-slate-100'
-              : node.id === 'WP1'
-                ? 'border-[#00F5D4]/60 text-[#00F5D4]'
-                : node.id === 'WP2'
-                  ? 'border-[#FF9100]/70 text-[#FF9100]'
-                  : 'border-[#00FFA3]/70 text-[#00FFA3]';
-          // Offset WP2 slightly down-right and WP3 up-right so Spyglass never overlaps
-          const dx = node.id === 'WP2' ? 14 : node.id === 'WP3' ? 14 : -50;
-          const dy = node.id === 'WP2' ? 16 : -28;
-          return (
-            <div
-              key={node.id}
-              style={{ transform: `translate(${x + dx}px, ${y + dy}px)` }}
-              className={`absolute top-0 left-0 px-2 py-0.5 rounded bg-[#0B0E14]/90 border font-mono-tech text-[10px] font-semibold whitespace-nowrap shadow-lg ${badgeColor}`}
-            >
-              {node.shortLabel} · {(node.distFromBaseM / 1000).toFixed(1)} KM
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Lupa Espacial "Spyglass" Tri-Sectorial 120° (Three.js Raycasted Overlay) */}
-      <div
-        style={{
-          left: `${spyglassPos.x}px`,
-          top: `${spyglassPos.y}px`,
-          transform: 'translate(-50%, -50%)',
-        }}
-        className="pointer-events-none absolute flex flex-col items-center"
-      >
+      {/* Mapa 3D */}
+      <div className="relative h-[68vh] min-h-[440px] xl:h-full rounded-lg overflow-hidden border border-line bg-sunken">
         <div
-          className={`w-56 h-56 rounded-full border-2 shadow-[0_0_35px_rgba(0,245,212,0.22)] overflow-hidden backdrop-brightness-125 ${
-            spyglassPinned ? 'border-[#FF9100]' : 'border-[#00F5D4]/80'
-          }`}
-        >
-          {spyglassMode === 'tri-sector' ? (
-            <svg viewBox="0 0 200 200" className="w-full h-full">
-              {/* Sector Norte (0° to 120° top): CRISM Sulfatos */}
-              <path
-                d="M100,100 L13.4,50 A100,100 0 0,1 186.6,50 Z"
-                fill="rgba(0, 245, 212, 0.22)"
-                stroke="#00F5D4"
-                strokeWidth="1.2"
-              />
-              {/* Sector Derecho (120° to 240°): THEMIS Inercia Térmica */}
-              <path
-                d="M100,100 L186.6,50 A100,100 0 0,1 100,200 Z"
-                fill="rgba(255, 145, 0, 0.22)"
-                stroke="#FF9100"
-                strokeWidth="1.2"
-              />
-              {/* Sector Izquierdo (240° to 360°): MOLA/HiRISE + SVF */}
-              <path
-                d="M100,100 L100,200 A100,100 0 0,1 13.4,50 Z"
-                fill="rgba(0, 255, 163, 0.18)"
-                stroke="#00FFA3"
-                strokeWidth="1.2"
-              />
-              <circle cx="100" cy="100" r="4" fill="#FF9100" />
-              <text x="100" y="34" textAnchor="middle" fill="#00F5D4" fontSize="9" fontFamily="JetBrains Mono" fontWeight="700">
-                CRISM {spyglassSample.crismH2oPct}% H2O
-              </text>
-              <text x="148" y="132" textAnchor="middle" fill="#FF9100" fontSize="8.5" fontFamily="JetBrains Mono" fontWeight="700">
-                THEMIS {spyglassSample.themisTiu} TIU
-              </text>
-              <text x="52" y="132" textAnchor="middle" fill="#00FFA3" fontSize="8.5" fontFamily="JetBrains Mono" fontWeight="700">
-                SVF {spyglassSample.svf} / {spyglassSample.slopeDeg}°
-              </text>
-            </svg>
+          ref={mountRef}
+          tabIndex={0}
+          role="application"
+          aria-label="Mapa 3D del terreno con lupa. Flechas: mover la lupa. Espacio: cambiar entre tres capas y una capa. Intro: fijar una lupa para comparar. F: congelar o soltar. Más y menos: tamaño. A, D, W, S: girar el mapa. Re Pág y Av Pág: zoom. 1 a 4: lupas en Base, WP1, WP2 y WP3."
+          onPointerDown={(e) => (downAt.current = { x: e.clientX, y: e.clientY })}
+          onPointerMove={handlePointerMove}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onKeyDown={handleKeyDown}
+          className="absolute inset-0 cursor-crosshair"
+        />
+
+        {/* Etiquetas ancladas al terreno */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {CANONICAL_WAYPOINTS.map((node) => (
+            <div key={node.id} ref={setAnchor(`node-${node.id}`, node.lat, node.lonE, 12, true)} className="absolute top-0 left-0" style={{ willChange: 'transform' }}>
+              <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium`}>
+                {nodeName(node.shortLabel)} · {fmt(node.elevMolaM)} m
+              </div>
+            </div>
+          ))}
+          {PLANNED_LEGS.map((leg) => {
+            const m = mid(waypoint(leg.from), waypoint(leg.to));
+            if (!m) return null;
+            return (
+              <div key={leg.id} ref={setAnchor(`leg-${leg.id}`, m.lat, m.lonE, 20)} className="absolute top-0 left-0">
+                <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink-2`}>
+                  {leg.id} · {fmt(leg.distanceM / 1000, 2)} km
+                </div>
+              </div>
+            );
+          })}
+          {run && (() => {
+            const mb = mid(wp2, base);
+            const ms = mid(wp2, wp3);
+            return (
+              <>
+                {mb && (
+                  <div ref={setAnchor('chaos-base', mb.lat, mb.lonE, 40)} className="absolute top-0 left-0">
+                    <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium flex items-center gap-1.5`}>
+                      <StatusDot level="red" />
+                      Solo con la Base: {fmt(run.report.survival_rate_base_only_pct, 1)} % a salvo
+                    </div>
+                  </div>
+                )}
+                {ms && (
+                  <div ref={setAnchor('chaos-wp3', ms.lat, ms.lonE, 40)} className="absolute top-0 left-0">
+                    <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium`}>
+                      Con el refugio WP3: {fmt(run.report.survival_rate_with_shelter_pct, 1)} % a salvo
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
+          {/* Lupas comparativas fijadas al terreno (hasta 3) */}
+          {pins.map((pin) => (
+            <div key={pin.id} ref={setAnchor(`pin-${pin.id}`, pin.lat, pin.lonE, 0)} className="absolute top-0 left-0">
+              <div className="-translate-x-1/2" style={{ marginTop: -lensSize * 0.3 }}>
+                <SpyglassLens
+                  size={Math.round(lensSize * 0.6)}
+                  opacity={lensOpacity}
+                  mode={mode}
+                  data={pin.data}
+                  nearest={shownId(pin.label)}
+                  label={shownId(pin.label)}
+                  lat={pin.lat}
+                  lonE={pin.lonE}
+                  radiusM={null}
+                  frozen
+                  onClose={() => setPins((prev) => prev.filter((p) => p.id !== pin.id))}
+                />
+              </div>
+            </div>
+          ))}
+
+          {/* Lupa principal: sigue al cursor o queda congelada sobre el terreno */}
+          {frozen && mainGeo ? (
+            <div ref={setAnchor('main-lens', mainGeo.lat, mainGeo.lonE, 0)} className="absolute top-0 left-0">
+              <div className="-translate-x-1/2" style={{ marginTop: -lensSize / 2 }}>
+                <SpyglassLens size={lensSize} opacity={lensOpacity} mode={mode} data={mainData} nearest={near ? shownId(near.label) : '—'} lat={mainGeo.lat} lonE={mainGeo.lonE} radiusM={mainRadiusM} frozen />
+              </div>
+            </div>
           ) : (
             <div
-              className={`w-full h-full flex flex-col items-center justify-center gap-1 font-mono-tech text-xs font-bold ${
-                spyglassMode === 'xray-crism'
-                  ? 'bg-[#00F5D4]/20 text-[#00F5D4]'
-                  : spyglassMode === 'xray-themis'
-                    ? 'bg-[#FF9100]/20 text-[#FF9100]'
-                    : 'bg-[#00FFA3]/20 text-[#00FFA3]'
-              }`}
+              ref={mainEl}
+              className="absolute top-0 left-0"
+              style={{
+                transform: `translate(${cursor.current.x}px, ${cursor.current.y}px)`,
+                visibility: lensVisible ? 'visible' : 'hidden',
+                willChange: 'transform',
+              }}
             >
-              <span className="text-[10px] opacity-80">
-                {spyglassMode === 'xray-crism' && 'X-RAY: CRISM SULFATOS'}
-                {spyglassMode === 'xray-themis' && 'X-RAY: THEMIS INERCIA'}
-                {spyglassMode === 'xray-mola' && 'X-RAY: MOLA / SVF'}
-              </span>
-              <span className="text-xl font-extrabold">
-                {spyglassMode === 'xray-crism' && `${spyglassSample.crismH2oPct}% H₂O`}
-                {spyglassMode === 'xray-themis' && `${spyglassSample.themisTiu} TIU`}
-                {spyglassMode === 'xray-mola' && `${spyglassSample.elevM}m · ${spyglassSample.slopeDeg}°`}
-              </span>
-              <span className="text-[10px] opacity-90">
-                {spyglassMode === 'xray-crism' &&
-                  (spyglassSample.crismH2oPct >= 10 ? 'ISRU VIABLE' : 'BAJA HIDRATACIÓN')}
-                {spyglassMode === 'xray-themis' &&
-                  (spyglassSample.themisTiu < 150 ? 'TRAMPA POLVO' : 'BASALTO FIRME')}
-                {spyglassMode === 'xray-mola' && `SVF ${spyglassSample.svf}`}
-              </span>
+              <div className="-translate-x-1/2" style={{ marginTop: -lensSize / 2 }}>
+                <SpyglassLens size={lensSize} opacity={lensOpacity} mode={mode} data={mainData} nearest={near ? shownId(near.label) : ''} lat={mainGeo?.lat ?? null} lonE={mainGeo?.lonE ?? null} radiusM={mainRadiusM} />
+              </div>
             </div>
           )}
         </div>
-        <div className="mt-1 px-2.5 py-0.5 rounded bg-[#0B0E14]/92 border border-[#1E2738] font-mono-tech text-[9.5px] text-slate-200 whitespace-nowrap flex items-center gap-1.5">
-          <span className="text-[#00F5D4] font-bold">{spyglassSample.nearestWp}</span>
-          <span>· {spyglassSample.lat.toFixed(3)}°, {spyglassSample.lonE.toFixed(3)}°E</span>
-          <span>· {spyglassSample.elevM}m · {spyglassSample.slopeDeg}°</span>
-          {spyglassSample.h3Hex && <span className="text-[#00FFA3]">· H3:{spyglassSample.h3Hex.slice(-5)}</span>}
-          {spyglassPinned && <span className="text-[#FF9100] font-bold">· FIJA</span>}
+
+        {/* Norte */}
+        <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2" aria-hidden>
+          <svg width="44" height="44" viewBox="-22 -22 44 44" style={{ transform: `rotate(${-cam.azimuthDeg}deg)` }}>
+            <circle r="21" fill={PALETTE.ground} fillOpacity="0.85" stroke={PALETTE.borderStrong} />
+            <polygon points="0,-5 4,7 -4,7" fill={PALETTE.text} />
+            <polygon points="0,17 4,7 -4,7" fill={PALETTE.muted} />
+            <text y="-8" textAnchor="middle" fill={PALETTE.text} fontSize="12" fontWeight="600">N</text>
+          </svg>
+        </div>
+
+        {(loading || !terrain) && (
+          <Notice level={loading ? 'none' : 'amber'} role="status" className="absolute top-16 left-1/2 -translate-x-1/2 w-[min(26rem,calc(100%-1.5rem))]">
+            {loading
+              ? 'Cargando el terreno…'
+              : 'Sin conexión con el motor de cálculo. Se dibuja un plano con los puntos de la ruta, y la lupa solo tiene datos sobre ellos. El relieve y la malla vuelven al recuperar la conexión.'}
+          </Notice>
+        )}
+
+        {/* Barra inferior: escala, cámara, zoom y perfil de ruta */}
+        <div className="absolute bottom-3 left-3 right-3 flex flex-col items-center gap-2 pointer-events-none">
+          {profileOpen && (
+            <div className="pointer-events-auto self-stretch xl:mx-[21rem] rounded-lg border border-line bg-panel p-3">
+              <RouteProfileChart plan={plan} compact />
+            </div>
+          )}
+          {detailOpen && (
+            <div id="mapa-detalle" className="pointer-events-auto max-w-full rounded-md border border-line bg-panel px-3 py-2 t-label text-ink-2 tabular-nums space-y-0.5">
+              <div>
+                {mainGeo ? `Cursor en ${fmt(Math.abs(mainGeo.lat), 4)}°S ${fmt(mainGeo.lonE, 4)}°E` : 'Cursor fuera del terreno'}
+              </div>
+              <div className="sm:hidden">
+                Azimut {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevación {fmt(cam.elevationDeg)}°
+              </div>
+              <div>Sistema de referencia IAU_2015:49900</div>
+              <div>
+                {terrain
+                  ? `Terreno a 20 m (${fmt(terrain.grid_cells)} celdas), con el relieve exagerado ×${fmt(VERTICAL_EXAGGERATION, 1)}`
+                  : 'Sin terreno: plano con los puntos de los datos de la misión'}
+              </div>
+            </div>
+          )}
+          <div
+            className="pointer-events-auto max-w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-md border border-line bg-ground/90 pl-3 pr-1 py-1 t-label text-ink-2 tabular-nums"
+            title={`Sistema de referencia IAU_2015:49900. ${terrain ? 'Terreno a 20 m.' : 'Sin terreno cargado.'}`}
+          >
+            <span className="flex items-end gap-1.5">
+              <span className="inline-block h-1.5 border-x border-b border-ink-2" style={{ width: scaleBarM / cam.mPerPx }} aria-hidden />
+              {scaleBarM >= 1000 ? `${fmt(scaleBarM / 1000)} km` : `${scaleBarM} m`}
+            </span>
+            <span className="hidden sm:inline">
+              Azimut {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevación {fmt(cam.elevationDeg)}°
+            </span>
+            <span className="flex items-center">
+              <button type="button" aria-label="Acercar" title="Acercar" onClick={() => sceneRef.current?.zoom(0.85)} className={iconBtn}><Plus className="w-4 h-4" aria-hidden /></button>
+              <button type="button" aria-label="Alejar" title="Alejar" onClick={() => sceneRef.current?.zoom(1.18)} className={iconBtn}><Minus className="w-4 h-4" aria-hidden /></button>
+              <button type="button" aria-label="Volver a la vista inicial" title="Volver a la vista inicial" onClick={() => sceneRef.current?.resetView()} className={iconBtn}><RotateCcw className="w-4 h-4" aria-hidden /></button>
+              <Button variant="quiet" size="sm" aria-pressed={profileOpen} onClick={() => setProfileOpen((o) => !o)} className={profileOpen ? 'bg-raised !text-ink' : ''}>
+                Perfil de ruta
+              </Button>
+              <Button variant="quiet" size="sm" aria-expanded={detailOpen} aria-controls="mapa-detalle" onClick={() => setDetailOpen((o) => !o)} className={detailOpen ? 'bg-raised !text-ink' : ''}>
+                Más detalle
+              </Button>
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Left Floating Panels: Spectral Layers & Survival Triangle Summary */}
-      <div className="absolute top-4 left-4 w-72 space-y-3">
-        <div className="bg-[#0B0E14]/90 backdrop-blur-md border border-[#1E2738] rounded-xl p-3.5 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 font-mono-tech text-xs font-bold text-slate-100">
-              <Layers className="w-3.5 h-3.5 text-[#00F5D4]" />
-              CAPAS ESPECTRALES (COG)
-            </span>
-            <span className="font-mono-tech text-[10px] text-[#00FFA3]">EN LÍNEA</span>
-          </div>
-
-          {/* Spyglass Mode Switcher */}
-          <div className="grid grid-cols-2 gap-1.5 bg-[#111622] p-1 rounded-lg border border-[#1E2738] font-mono-tech text-[10px]">
-            <button
-              type="button"
-              onClick={() => {
-                setSpyglassMode('tri-sector');
-                onNotify?.('Lupa Spyglass: Modo Tri-Sector 120°', 'CRISM + THEMIS + MOLA/SVF activos', 'cyan');
-              }}
-              className={`py-1 rounded font-semibold transition cursor-pointer ${
-                spyglassMode === 'tri-sector' ? 'bg-[#00F5D4]/20 text-[#00F5D4]' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Tri-Sector 120°
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSpyglassMode('xray-crism');
-                onNotify?.('Lupa Spyglass: Modo X-Ray 1 Capa', 'Selecciona la capa espectral abajo', 'cyan');
-              }}
-              className={`py-1 rounded font-semibold transition cursor-pointer ${
-                spyglassMode !== 'tri-sector' ? 'bg-[#00F5D4]/20 text-[#00F5D4]' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Modo X-Ray 1 Capa
-            </button>
-          </div>
-
-          {spyglassMode !== 'tri-sector' && (
-            <div className="grid grid-cols-3 gap-1 font-mono-tech text-[9.5px]">
-              {[
-                { id: 'xray-crism', label: 'CRISM H₂O' },
-                { id: 'xray-themis', label: 'THEMIS TIU' },
-                { id: 'xray-mola', label: 'MOLA / SVF' },
-              ].map((xm) => (
-                <button
-                  key={xm.id}
-                  type="button"
-                  onClick={() => setSpyglassMode(xm.id as SpyglassMode)}
-                  className={`py-1 rounded border transition cursor-pointer ${
-                    spyglassMode === xm.id
-                      ? 'bg-[#00F5D4]/15 border-[#00F5D4] text-[#00F5D4] font-bold'
-                      : 'bg-[#111622] border-[#1E2738] text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {xm.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="space-y-2 text-xs">
-            {[
-              { key: 'mola', title: 'Relieve MOLA / CTX 20m', sub: 'Pendientes, horizonte & SVF' },
-              { key: 'crism', title: 'Sulfatos CRISM', sub: 'Kieserita ≥12% H₂O (WP1)' },
-              { key: 'themis', title: 'Inercia THEMIS', sub: 'Trampas polvo <150 TIU (WP2)' },
-              { key: 'h3o', title: 'Malla Hexagonal h3o', sub: 'Res-12 (~5m) · Parquet' },
-            ].map((item) => {
-              const checked = layers[item.key as keyof typeof layers];
-              return (
-                <label
-                  key={item.key}
-                  className="flex items-start justify-between gap-2 cursor-pointer hover:bg-white/5 p-1 rounded"
-                >
-                  <div>
-                    <div className="font-medium text-slate-200 leading-tight">{item.title}</div>
-                    <div className="text-[10px] text-slate-400">{item.sub}</div>
-                  </div>
+      <div className="grid md:grid-cols-2 gap-3 items-start xl:contents">
+        {/* Columna izquierda: capas, lupa y triángulo */}
+        <div className={`${column} xl:left-2`}>
+          <Panel
+            title="Capas"
+            defaultOpen
+            aside={<span className={`whitespace-nowrap ${!loading && !terrain ? 'text-warn' : ''}`}>{loading ? 'Cargando…' : terrain ? 'Terreno a 20 m' : 'Sin terreno'}</span>}
+          >
+            <div className="-mx-1.5">
+              {layerItems.map((item) => (
+                <label key={item.key} className="flex items-start gap-3 min-h-11 px-1.5 py-1.5 rounded-md cursor-pointer hover:bg-raised">
                   <input
                     type="checkbox"
-                    checked={checked}
-                    onChange={() =>
-                      setLayers((prev) => ({
-                        ...prev,
-                        [item.key]: !prev[item.key as keyof typeof layers],
-                      }))
-                    }
-                    className="mt-1 accent-[#00F5D4]"
+                    checked={layers[item.key]}
+                    onChange={() => setLayers((prev) => ({ ...prev, [item.key]: !prev[item.key] }))}
+                    className="mt-0.5 w-4 h-4 shrink-0 cursor-pointer"
                   />
+                  <span className="min-w-0">
+                    <span className="block text-sm text-ink">{item.title}</span>
+                    <span className="block t-label text-ink-3">{item.sub}</span>
+                  </span>
                 </label>
-              );
-            })}
-          </div>
+              ))}
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setSpyglassPinned((p) => !p)}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-[#111622] border border-[#1E2738] hover:border-[#00F5D4]/50 font-mono-tech text-[10px] text-slate-300"
-          >
-            {spyglassPinned ? <Lock className="w-3 h-3 text-[#00F5D4]" /> : <Unlock className="w-3 h-3 text-slate-400" />}
-            <span>{spyglassPinned ? 'LUPA FIJADA (CLIC PARA MOVER)' : 'LUPA LIBRE (CLIC EN MAPA PARA FIJAR)'}</span>
-          </button>
-        </div>
-
-        <div className="bg-[#0B0E14]/90 backdrop-blur-md border border-[#1E2738] rounded-xl p-3.5 space-y-2">
-          <div className="flex items-center justify-between font-mono-tech text-[11px]">
-            <span className="text-slate-400">TRIÁNGULO SUPERVIVENCIA</span>
-            <span className="text-[#FF9100] font-bold">MÁX 22.0° [E]</span>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="font-mono-tech text-xl font-extrabold text-white">4.90 KM</span>
-            <span className="font-mono-tech text-[11px] font-bold text-[#00FFA3]">GEOJSON VIABLE</span>
-          </div>
-          <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden flex">
-            <div className="w-[31%] bg-[#00F5D4]" />
-            <div className="w-[24%] bg-[#FF9100]" />
-            <div className="w-[45%] bg-[#00FFA3]" />
-          </div>
-          <div className="grid grid-cols-4 gap-1 font-mono-tech text-[9.5px]">
-            {CANONICAL_WAYPOINTS.map((wp) => {
-              const isSel = focusedWaypointId === wp.id;
-              return (
-                <button
-                  key={wp.id}
-                  type="button"
-                  onClick={() => {
-                    setFocusedWaypointId(wp.id);
-                    const p = geoToScene(wp.lat, wp.lonE);
-                    setSpyglassSample(sampleTerrainProps(p.x, p.z, layers.mola ? 1 : 0.12, hexCells));
-                    const m = markers.find((mk) => mk.node.id === wp.id);
-                    if (m) {
-                      setSpyglassPinned(true);
-                      setSpyglassPos({ x: m.x, y: m.y });
-                    }
-                    onNotify?.(`Lupa fijada en ${wp.shortLabel}`, wp.geology, 'cyan');
+            <div className="mt-4 space-y-2">
+              <div className="t-label text-ink-3">La lupa enseña</div>
+              <Segmented
+                label="Modo de la lupa"
+                className="w-full [&>button]:flex-1"
+                options={[
+                  { value: 'tri', label: 'Tres capas' },
+                  { value: 'one', label: 'Una capa' },
+                ]}
+                value={mode === 'tri-sector' ? 'tri' : 'one'}
+                onChange={(next) => setMode(next === 'tri' ? 'tri-sector' : mode === 'tri-sector' ? lastXray : mode)}
+              />
+              {mode !== 'tri-sector' && (
+                <Segmented
+                  label="Capa que enseña la lupa"
+                  className="w-full [&>button]:flex-1"
+                  options={[
+                    { value: 'xray-crism', label: 'Agua' },
+                    { value: 'xray-themis', label: 'Inercia' },
+                    { value: 'xray-mola', label: 'Relieve' },
+                  ]}
+                  value={mode}
+                  onChange={(id) => {
+                    setMode(id);
+                    setLastXray(id);
                   }}
-                  className={`py-1 rounded border transition cursor-pointer ${
-                    isSel
-                      ? 'bg-[#00F5D4]/20 border-[#00F5D4] text-[#00F5D4] font-bold'
-                      : 'bg-[#111622] border-[#1E2738] text-slate-300 hover:border-slate-500'
-                  }`}
-                >
-                  {wp.id}
-                </button>
-              );
-            })}
-          </div>
-          {focusedWaypointId && (
-            <div className="text-[10px] text-slate-300 bg-[#111622] border border-[#1E2738] rounded-lg px-2.5 py-1.5 leading-snug">
-              {CANONICAL_WAYPOINTS.find((w) => w.id === focusedWaypointId)?.geology}
+                />
+              )}
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Right Floating Panel: EVA Suit Telemetry & Eclipse Zenoh Sync */}
-      <div className="absolute top-4 right-4 w-72 space-y-2.5">
-        <div className="bg-[#0B0E14]/90 backdrop-blur-md border border-[#1E2738] rounded-xl p-3.5 space-y-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="font-mono-tech text-[10px] text-slate-400">EVA ACTIVO // XEMU-04</div>
-              <div className="text-sm font-bold text-white">Dra. Elena Rostova</div>
-            </div>
-            <span className="px-2 py-0.5 rounded bg-[#00FFA3]/15 border border-[#00FFA3]/40 font-mono-tech text-[10px] font-bold text-[#00FFA3]">
-              EGRESO OK
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-[#111622] border border-[#1E2738] rounded-lg p-2.5">
-              <div className="font-mono-tech text-[10px] text-slate-400">O₂ PLSS</div>
-              <div className="font-mono-tech text-lg font-extrabold text-white">
-                {currentEvent.values.o2_remaining_pct.toFixed(1)}%
+            <Disclosure summary="Ajustes de la lupa" className="mt-3">
+              <div className="space-y-3">
+                <label className="block t-label text-ink-3">
+                  <span className="flex justify-between">
+                    <span>Tamaño</span>
+                    <span className="text-ink tabular-nums">{lensSize} px</span>
+                  </span>
+                  <input type="range" className="timeline w-full" min={LENS_MIN_PX} max={LENS_MAX_PX} step={10} value={lensSize} onChange={(e) => setLensSize(Number(e.target.value))} />
+                </label>
+                <label className="block t-label text-ink-3">
+                  <span className="flex justify-between">
+                    <span>Opacidad</span>
+                    <span className="text-ink tabular-nums">{Math.round(lensOpacity * 100)} %</span>
+                  </span>
+                  <input type="range" className="timeline w-full" min={30} max={100} step={5} value={Math.round(lensOpacity * 100)} onChange={(e) => setLensOpacity(Number(e.target.value) / 100)} />
+                </label>
+                <Button aria-pressed={frozen} onClick={toggleFreeze} className={`w-full ${frozen ? '!border-accent' : ''}`}>
+                  {frozen ? 'Lupa congelada: soltarla' : 'Lupa libre: congelarla'}
+                </Button>
+                <p className="t-label text-ink-3">
+                  Un clic o la tecla F congelan y sueltan la lupa. Con doble clic o Intro se fija una lupa para comparar
+                  ({pins.length} de {MAX_PINS}) y Escape la quita. La rueda cambia el tamaño y Espacio, el modo. Arrastra
+                  para girar el mapa; Ctrl y la rueda hacen zoom.
+                </p>
               </div>
-              <div className="font-mono-tech text-[10px] text-[#00FFA3]">800 g útiles</div>
-            </div>
-            <div className="bg-[#111622] border border-[#1E2738] rounded-lg p-2.5">
-              <div className="font-mono-tech text-[10px] text-slate-400">REFUGIO WP3</div>
-              <div className="font-mono-tech text-lg font-extrabold text-[#00FFA3]">8 min</div>
-              <div className="font-mono-tech text-[10px] text-slate-400">600 m / SVF 0.15</div>
-            </div>
-          </div>
+            </Disclosure>
+          </Panel>
 
-          <div className="flex items-center justify-between font-mono-tech text-[11px] text-slate-300 pt-1">
-            <span>P: 29.6 kPa</span>
-            <span>POT: {Math.round(currentEvent.values.metabolic_power_w)} W</span>
-            <span className="text-[#00FFA3]">BAT: 88%</span>
-          </div>
+          <Panel title="Triángulo de supervivencia" defaultOpen={false} aside={<span className="whitespace-nowrap">{fmt(PERIMETER_M / 1000, 2)} km</span>}>
+            <Row label="Perímetro" value={`${fmt(PERIMETER_M / 1000, 2)} km`} />
+            {PLANNED_LEGS.map((leg) => (
+              <Row key={leg.id} label={`${leg.id}, de ${shownId(leg.from)} a ${shownId(leg.to)}`} value={`${fmt(leg.distanceM / 1000, 2)} km`} />
+            ))}
+            <Row
+              label="Pendiente máxima"
+              value={`${fmt(maxSlopeLeg.maxSlopeDeg, 1)}° en ${maxSlopeLeg.id}`}
+              level={classify('slope_deg', maxSlopeLeg.maxSlopeDeg)}
+            />
+            <div className="mt-3 t-label text-ink-3">Fijar una lupa en</div>
+            <div role="group" aria-label="Fijar una lupa en un punto de la ruta" className="mt-1.5 grid grid-cols-4 gap-1.5">
+              {CANONICAL_WAYPOINTS.map((wp) => {
+                const on = pins.some((p) => p.label === wp.id);
+                return (
+                  <button
+                    key={wp.id}
+                    type="button"
+                    aria-pressed={on}
+                    title={wp.geology}
+                    onClick={() => toggleNodePin(wp.id)}
+                    className={`min-h-8 rounded-md border text-sm cursor-pointer ${on ? 'border-accent bg-raised text-ink font-medium' : 'border-line-strong text-ink-2 hover:text-ink hover:bg-raised'}`}
+                  >
+                    {shownId(wp.id)}
+                  </button>
+                );
+              })}
+            </div>
+            <Button
+              size="sm"
+              className="w-full mt-2"
+              onClick={() => {
+                pinsRef.current = [];
+                setPins([]);
+                (['WP1', 'WP2', 'WP3'] as NodeId[]).forEach((id) => {
+                  const w = waypoint(id);
+                  if (w) addPin(w.lat, w.lonE, id);
+                });
+              }}
+            >
+              Comparar WP1, WP2 y WP3
+            </Button>
+          </Panel>
+        </div>
 
-          <button
-            type="button"
-            disabled={isSyncing}
-            onClick={async () => {
-              setIsSyncing(true);
-              await onSyncZenoh();
-              setIsSyncing(false);
-            }}
-            className={`w-full py-2 px-3 rounded-lg font-mono-tech text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98] ${
-              zenohSynced
-                ? 'bg-[#00FFA3]/20 border border-[#00FFA3]/60 text-[#00FFA3]'
-                : 'bg-[#FF9100] hover:bg-[#FF9100]/90 text-[#0B0E14]'
-            }`}
+        {/* Columna derecha: astronauta, meteorología, margen de retorno y simulación */}
+        <div className={`${column} xl:right-2`}>
+          <Panel
+            title={UX_LABELS.astronaut}
+            defaultOpen
+            aside={
+              <span className={`flex items-center gap-1.5 whitespace-nowrap ${tint(stateLevel) ?? ''}`}>
+                {stateLevel !== 'none' && <StatusDot level={stateLevel} pulse={state.pulse} />}
+                {isPreEva ? 'En la base' : state.short}
+              </span>
+            }
           >
-            {zenohSynced ? (
-              <Check className="w-4 h-4" />
-            ) : (
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            <p className="t-label text-ink-3 tabular-nums">
+              Traje {UX_LABELS.suit} · {formatT(sample.t_min)}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <Stat
+                label="Oxígeno (O₂)"
+                value={fmt(v.o2_remaining_pct, 1)}
+                unit="%"
+                hint={`${fmt(v.o2_remaining_g)} g útiles`}
+                level={classify('o2_primary_pct', v.o2_remaining_pct)}
+              />
+              <Stat label="Al refugio WP3" value={fmt(v.wp3_time_min, 1)} unit="min" hint={`${fmt(v.wp3_route_m)} m de ruta`} />
+            </div>
+
+            <Button
+              variant="primary"
+              onClick={() => void handleSync()}
+              aria-disabled={syncBlocked}
+              aria-describedby={!certified ? 'envio-ayuda' : undefined}
+              className="w-full mt-4 aria-disabled:bg-raised aria-disabled:text-ink-3 aria-disabled:font-normal aria-disabled:hover:brightness-100 aria-disabled:cursor-not-allowed"
+            >
+              {sync.status === 'syncing' ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : sync.status === 'ok' ? <Check className="w-4 h-4" aria-hidden /> : null}
+              {sync.status === 'syncing' ? 'Enviando la ruta…' : sync.status === 'ok' ? 'Ruta enviada al traje' : 'Enviar ruta al traje'}
+            </Button>
+            {!certified && (
+              <p id="envio-ayuda" className="mt-2 t-label text-ink-3">
+                Simula la ruta antes de enviarla al traje.
+              </p>
             )}
-            <span>
-              {isSyncing
-                ? 'SINCRONIZANDO ZENOH...'
-                : zenohSynced
-                  ? 'SYNC ECLIPSE ZENOH OK'
-                  : 'SINCRONIZAR TRAJE (ZENOH)'}
-            </span>
-          </button>
-        </div>
+            {sync.status === 'error' && (
+              <p role="alert" className="mt-2 t-label text-danger-ink">
+                El último envío ha fallado porque el motor de cálculo no responde. Vuelve a intentarlo.
+              </p>
+            )}
+            {sync.status === 'ok' && sync.checksum && (
+              <Disclosure summary="Detalle del envío" className="mt-1">
+                <Row label="Huella SHA-256" value={<span className="num">{sync.checksum.slice(0, 24)}…</span>} />
+                <Row label="Celdas enviadas" value={fmt(sync.cells)} />
+                {sync.simulated && <p className="t-label text-ink-3 pt-1">El enlace con el traje está simulado en esta demostración.</p>}
+              </Disclosure>
+            )}
 
-        <div className="bg-[#0B0E14]/90 backdrop-blur-md border border-[#1E2738] rounded-xl px-3.5 py-2 flex items-center justify-between font-mono-tech text-[10px]">
-          <span className="flex items-center gap-1.5 text-slate-300">
-            <Eye className="w-3.5 h-3.5 text-[#00F5D4]" />
-            SOL 34° · NLOS T+92
-          </span>
-          <span className={currentEvent.values.radio_class === 'VERDE' ? 'text-[#00FFA3]' : 'text-[#FF1744]'}>
-            ZENOH {currentEvent.values.radio_class}
-          </span>
-        </div>
-      </div>
+            <Disclosure summary="Más datos del traje" className="mt-1">
+              <Row label="Presión del traje (valor supuesto)" value={`${fmt(SUIT_SCENARIO.pressureKpa, 1)} kPa`} />
+              <Row label="Potencia metabólica" value={`${fmt(v.metabolic_power_w)} W`} level={classify('metabolic_rate_w', v.metabolic_power_w)} />
+              <Row label="Dosis por tormenta solar (SPE)" value={`${fmt(v.dose_spe_msv, 2)} mSv`} level={classify('eva_spe_dose_budget_msv', v.dose_spe_msv)} />
+              <Row label="Cielo visible en el refugio (SVF)" value={fmt(wp3?.svfScenario, 2)} />
+            </Disclosure>
+          </Panel>
 
-      {/* Clean Scale Bar (fixed spacing, no overlapping digits) */}
-      <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-3 bg-[#0B0E14]/85 border border-[#1E2738] rounded-lg px-3 py-1.5 font-mono-tech text-[10px] text-slate-300">
-        <span>ESCALA 1:25,000 · 1.0 KM</span>
-        <span className="text-slate-600">|</span>
-        <span>CRS: IAU_2015:49900 (MOLA / CTX 20M)</span>
-      </div>
+          <Panel
+            title="Meteorología y enlace"
+            defaultOpen={false}
+            aside={<span className={`whitespace-nowrap ${tint(radioLevel) ?? ''}`}>Enlace {RADIO_TEXT[v.radio_class] ?? 'sin dato'}</span>}
+          >
+            <Row label="Polvo en el aire (τ)" value={fmt(v.dust_tau, 1)} level={classify('dust_tau_880nm', v.dust_tau)} />
+            <Row
+              label="Viento"
+              value={dusty ? `${fmt(WB.wind_m_s)} m/s, frente de polvo` : 'Sin dato'}
+              level={dusty ? classify('wind_speed_m_s', WB.wind_m_s) : undefined}
+            />
+            <Row label="Presión en la Base" value={`${fmt(P1_CONSTANTS.surface_pressure_pa_site)} Pa`} />
+            <Row
+              label="Enlace con el traje"
+              value={`${RADIO_TEXT[v.radio_class] ?? 'sin dato'} · ${fmt(v.radio_rssi_dbm, 0)} dBm`}
+              level={radioLevel}
+            />
+            <Row label="Sombra de radio prevista" value={`de ${formatT(NLOS_WINDOW[0])} a ${formatT(NLOS_WINDOW[1])}`} />
+          </Panel>
 
-      {/* NASA Mars Trek Orbital Texture Selector */}
-      <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-[#0B0E14]/90 border border-[#1E2738] rounded-lg px-2.5 py-1.5 font-mono-tech text-[10px] text-slate-200">
-        <span className="text-slate-400">ORBITAL BASE:</span>
-        <div className="flex items-center gap-1">
-          {[
-            { id: 'trek-viking', label: 'VIKING 232m' },
-            { id: 'trek-mola', label: 'MOLA 463m' },
-          ].map((src) => (
-            <button
-              key={src.id}
-              type="button"
-              onClick={() => setTextureSource(src.id as 'trek-viking' | 'trek-mola')}
-              className={`px-2 py-1 rounded font-bold transition cursor-pointer ${
-                textureSource === src.id
-                  ? 'bg-[#00F5D4]/20 text-[#00F5D4] border border-[#00F5D4]/60'
-                  : 'bg-[#111622] text-slate-400 hover:text-white border border-[#1E2738]'
-              }`}
-            >
-              {src.label}
-            </button>
-          ))}
+          <Panel
+            title="Margen de retorno"
+            defaultOpen={false}
+            aside={<span className={`whitespace-nowrap ${tint(destLevel) ?? ''}`}>{isPreEva ? 'Antes de la salida' : `Destino: ${v.viable_destination}`}</span>}
+          >
+            <p className="t-label text-ink-3 tabular-nums pb-1">Situación en {formatT(sample.t_min)}.</p>
+            <Row
+              label={v.base_viable ? 'Volver a la Base' : 'Volver a la Base (no viable)'}
+              value={`${fmt(v.base_time_min, 1)} min · ${fmt(v.base_route_m)} m`}
+              level={v.base_viable ? undefined : 'red'}
+            />
+            <Row label="Ir al refugio WP3" value={`${fmt(v.wp3_time_min, 1)} min · ${fmt(v.wp3_route_m)} m`} />
+            <Row label="Destino viable" value={isPreEva ? '—' : v.viable_destination} level={destLevel} />
+            <p className="t-label text-ink-3 tabular-nums pt-2">
+              En {formatT(WB.decision_t_min)}, volver a la Base cuesta {fmt(WB.base.time_min, 1)} min y {fmt(WB.base.dose_spe_msv, 2)} mSv;
+              ir al refugio WP3, {fmt(WB.wp3.time_min, 1)} min y {fmt(WB.wp3.dose_spe_msv, 2)} mSv.
+            </p>
+          </Panel>
+
+          <Panel
+            title="Simulación de imprevistos"
+            defaultOpen={false}
+            aside={
+              chaos.status === 'running' ? (
+                <span className="whitespace-nowrap">Simulando…</span>
+              ) : run && cert ? (
+                <span className={`whitespace-nowrap ${cert.authorized ? '' : 'text-danger-ink'}`}>{cert.authorized ? 'Autorizada' : 'No autorizada'}</span>
+              ) : (
+                <span className="whitespace-nowrap">Sin simular</span>
+              )
+            }
+          >
+            <Button disabled={chaos.status === 'running' || !apiOnline} onClick={() => void onRunChaos(CHAOS_VISIBLE_TRIALS)} className="w-full">
+              {chaos.status === 'running' && <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden />}
+              {chaos.status === 'running' ? 'Simulando…' : `Simular ${CHAOS_VISIBLE_TRIALS} salidas`}
+            </Button>
+            <div role="status" className="mt-3">
+              {run && cert ? (
+                <>
+                  <p className={`text-sm font-medium ${cert.authorized ? 'text-ink' : 'text-danger-ink'}`}>
+                    {cert.authorized ? 'Ruta autorizada' : 'Ruta no autorizada'} con {fmt(run.report.trials)} de {fmt(run.trials)} salidas simuladas.
+                  </p>
+                  <div className="mt-1">
+                    <Row label="A salvo con el refugio WP3" value={`${fmt(run.report.survival_rate_with_shelter_pct, 1)} %`} />
+                    <Row label="A salvo solo con la Base" value={`${fmt(run.report.survival_rate_base_only_pct, 1)} %`} />
+                    <Row label="Semilla" value={run.seed} />
+                  </div>
+                </>
+              ) : (
+                <p className="t-label text-ink-3">
+                  {!apiOnline
+                    ? 'Sin el motor de cálculo no se puede simular.'
+                    : chaos.status === 'error'
+                      ? 'La última simulación ha fallado. Vuelve a intentarlo.'
+                      : 'Aún sin simular: hasta entonces la ruta no se puede enviar al traje.'}
+                </p>
+              )}
+            </div>
+            {run && <p className="mt-2 t-label text-ink-3">Las trazas ámbar del mapa son ilustrativas: la simulación da recuentos, no recorridos.</p>}
+            <Disclosure summary="Simulación de referencia" className="mt-1">
+              <Row label="Salidas simuladas" value={fmt(CHAOS_REFERENCE.trials)} />
+              <Row label="Semilla" value={CHAOS_REFERENCE.seed} />
+              <Row label="A salvo con el refugio WP3" value={`${fmt(CHAOS_REFERENCE.report.survival_rate_with_shelter_pct, 2)} %`} />
+              <Row label="A salvo solo con la Base" value={`${fmt(CHAOS_REFERENCE.report.survival_rate_base_only_pct, 2)} %`} />
+            </Disclosure>
+          </Panel>
         </div>
-        {activeMarsImage && (
-          <div className="hidden xl:flex items-center gap-1.5 pl-2 border-l border-[#1E2738]">
-            <span className="text-[#FF9100]">MARS 2020 SOL {activeMarsImage.sol}</span>
-            <button
-              type="button"
-              onClick={() =>
-                onChangeImageIdx((selectedImageIdx - 1 + marsImages.length) % marsImages.length)
-              }
-              className="p-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] cursor-pointer"
-              title="Imagen anterior NASA Mars 2020"
-            >
-              <ChevronLeft className="w-3 h-3" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeImageIdx((selectedImageIdx + 1) % marsImages.length)}
-              className="p-0.5 rounded bg-[#111622] hover:bg-white/10 border border-[#1E2738] cursor-pointer"
-              title="Siguiente imagen NASA Mars 2020"
-            >
-              <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

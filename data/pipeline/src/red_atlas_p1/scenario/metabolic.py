@@ -36,6 +36,19 @@ def o2_density_g_l() -> float:
     return _const("o2_density_g_per_l_stpd")
 
 
+def pace_caps() -> dict[str, float]:
+    """Topes de ritmo de ``eva_thresholds.json``: huida (1,25 m/s, 650 W) y retorno sostenido
+    (1,0 m/s, 585 W)."""
+    keys = ("escape_speed_cap_m_s", "escape_power_cap_w",
+            "sustained_return_speed_cap_m_s", "sustained_return_power_cap_w")
+    return {k: _const(k) for k in keys}
+
+
+def escape_speed_m_s() -> float:
+    """Tope de velocidad de huida (1,25 m/s)."""
+    return pace_caps()["escape_speed_cap_m_s"]
+
+
 def eta_from_tiu(tiu: float) -> float:
     """Factor de terreno η a partir de la inercia térmica THEMIS (TIU).
 

@@ -105,6 +105,7 @@ def test_spyglass_por_celda_con_forma_de_p3(synth):
     assert len(cells["crism_water_cells"]) == agg["norte_hidratacion"]["n_celdas"]
     assert len(cells["themis_trap_cells"]) == agg["derecha_inercia_termica"]["n_celdas"]
     assert len(cells["mola_slope_svf_cells"]) == agg["izquierda_pendiente_svf"]["n_celdas"]
-    _h, slope, svf, los = cells["mola_slope_svf_cells"][0]
-    assert slope == pytest.approx(5.0) and svf == pytest.approx(0.8) and los == 1.0
+    _h, slope, svf, rssi = cells["mola_slope_svf_cells"][0]
+    assert slope == pytest.approx(5.0) and svf == pytest.approx(0.8)
+    assert rssi == pytest.approx(-70.0)
     assert all(v == 12.0 for _, v in cells["crism_water_cells"] if v is not None)
