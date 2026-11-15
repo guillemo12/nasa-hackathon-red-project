@@ -3,83 +3,92 @@
 # 🔴 R.E.D. ATLAS
 ### *Reconnaissance, EVA & Dynamic-survival Atlas*
 **NASA Space Apps Challenge 2026 — Interplanetary Survival Guide: Martian Map**
-**Equipo Red Project**
+**Team Red Project**
 
 [![NASA Space Apps 2026](https://img.shields.io/badge/NASA_Space_Apps-2026-0B3D91?style=for-the-badge&logo=nasa&logoColor=white)](https://www.spaceappschallenge.org/2026/challenges/interplanetary-survival-guide-martian-map/)
-[![Core Engine](https://img.shields.io/badge/Motor-Rust_%F0%9F%A6%80-DEA584?style=for-the-badge&logo=rust&logoColor=black)](./src/core-engine/)
-[![Console](https://img.shields.io/badge/Consola-React_%2B_Three.js-61DAFB?style=for-the-badge&logo=react&logoColor=black)](./src/base-console/)
-[![Target Region](https://img.shields.io/badge/Marte-Melas_Chasma-E25822?style=for-the-badge)](./docs/01-planetary-science-mission/)
+[![Core Engine](https://img.shields.io/badge/Engine-Rust_%F0%9F%A6%80-DEA584?style=for-the-badge&logo=rust&logoColor=black)](./src/core-engine/)
+[![Console](https://img.shields.io/badge/Console-React_%2B_Three.js-61DAFB?style=for-the-badge&logo=react&logoColor=black)](./src/base-console/)
+[![Target Region](https://img.shields.io/badge/Mars-Melas_Chasma-E25822?style=for-the-badge)](./docs/01-planetary-science-mission/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
 </div>
 
 ---
 
-## Qué es
+## What it is
 
-**R.E.D. ATLAS** es un mapa de supervivencia para una salida a pie (EVA) en el fondo de **Melas Chasma**, en Valles Marineris (cuenca suroeste, ~9,9°S, 283,4°E). Convierte datos orbitales reales de la NASA en una malla hexagonal de terreno y, sobre ella, planifica la ruta, calcula cuánto tarda el astronauta en volver a la Base o en llegar a un refugio, y decide qué hacer cuando varias amenazas coinciden.
+**R.E.D. ATLAS** is a survival map for a Mars surface excursion (EVA) on the floor of **Melas Chasma**, Valles Marineris (southwest basin, ~9.9°S, 283.4°E). It turns real NASA orbital data into a hexagonal terrain grid. On that grid it plans the route, computes how long the astronaut needs to get back to the base or to reach a shelter, and decides what to do when several hazards hit at once.
 
-El escenario de demostración es la **EVA-07**, un «Triángulo de Supervivencia» de 4,9 km (Base → WP1 agua ISRU → WP2 talud peligroso → WP3 refugio). En T+105 coinciden cuatro amenazas: tormenta solar (SPE), frente de polvo, sombra de radio y una rampa de regolito blando. El sistema comprueba que volver a la Base ya no cabe en la regla de radiación y cambia el destino al refugio.
+The demo scenario is **EVA-07**, a 4.9 km "Survival Triangle": Base → WP1 (ISRU water) → WP2 (hazardous slope) → WP3 (shelter). At T+105, four hazards coincide:
 
-**Cifras clave (calculadas por el motor Rust sobre el terreno real):**
+- a solar particle event (SPE);
+- a dust front;
+- a radio shadow;
+- a soft-regolith ramp.
 
-| Cifra | Valor | Procedencia |
+The system finds that returning to the base no longer fits the radiation flight rule and switches the goal to the shelter.
+
+**Key figures (computed by the Rust engine on the real terrain):**
+
+| Figure | Value | Provenance |
 | :--- | :--- | :--- |
-| Tiempo al refugio WP3 desde el WP2 | **9,4 min** (595 m de camino) | Planificador D\* Lite sobre la malla H3 res 12 del DTM CTX de 20 m |
-| Retorno a la Base desde el WP2 | **48 min** sobre **2,15 km** | Mismo planificador; excede la ventana de 15 min a cielo abierto |
-| Chaos Mode (10.000 simulaciones, semilla 42) | **96,0 %** de misión segura con cambio al refugio frente a **23,8 %** solo con la Base | Motor estocástico Monte Carlo (corredor sintético, ver limitaciones) |
-| Replanificación al cambiar de destino | **17 ms** (mediana, compilación optimizada) | Medida del motor sobre un corredor de la malla real |
+| Time to shelter WP3 from WP2 | **9.4 min** (595 m path) | D\* Lite planner on the H3 res-12 grid of the 20 m CTX DTM |
+| Return to base from WP2 | **48 min** over **2.15 km** | Same planner; exceeds the 15 min open-sky window |
+| Chaos Mode (10,000 runs, seed 42) | **96.0%** safe missions with shelter switching vs **23.8%** base-only | Stochastic Monte Carlo engine (synthetic corridor, see limitations) |
+| Re-planning on goal switch | **17 ms** (median, optimised build) | Engine measurement on a corridor of the real grid |
 
-Cada cifra de la documentación lleva su procedencia: **[M]** medida o publicada, **[D]** derivada por cálculo, **[E]** supuesto del escenario de diseño. La fuente única es [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md).
+Every figure in the documentation carries its provenance: **[M]** measured or published, **[D]** derived by calculation, **[E]** design-scenario assumption. The single source of truth is [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md).
+
+> **Language note:** this README and the submission texts are in English. The detailed technical documentation in `docs/` and the code comments are in Spanish, our team's working language.
 
 ---
 
-## Qué está implementado y qué es diseño
+## Implemented vs design
 
-| Componente | Estado | Dónde |
+| Component | Status | Where |
 | :--- | :--- | :--- |
-| Pipeline de datos NASA (STAC/PDS → COG, GeoJSON, Parquet; malla H3; escenario EVA-07) | Implementado (Python, 263 tests) | [`data/pipeline/`](data/pipeline/) |
-| Malla hexagonal H3 de Marte con índices reales (`h3o`) cargada desde Parquet | Implementado (Rust) | [`src/core-engine/src/h3_mars_grid.rs`](src/core-engine/src/h3_mars_grid.rs) |
-| Planificador D\* Lite con coste metabólico y cambio automático de destino | Implementado (Rust) | [`metabolic_dstar.rs`](src/core-engine/src/metabolic_dstar.rs), [`mission.rs`](src/core-engine/src/mission.rs) |
-| Motor de amenazas Markov/Poisson y Chaos Mode | Implementado (Rust) | [`stochastic_hazard.rs`](src/core-engine/src/stochastic_hazard.rs) |
-| Máquina de estados de seguridad (5 estados), triaje de alerta única y frase de voz por plantilla | Implementado (Rust, determinista) | [`neuro_symbolic.rs`](src/core-engine/src/neuro_symbolic.rs) |
-| Filtro de Kalman de posicionamiento sin GPS (Canyon-TRN) | Implementado y probado con datos simulados | [`canyon_trn.rs`](src/core-engine/src/canyon_trn.rs) |
-| Puntos marcados durante la EVA (peligro, refugio, ISRU) con replanificación | Implementado (Rust + consola) | [`reported_points.rs`](src/core-engine/src/reported_points.rs) |
-| API HTTP local del motor (puerto 3001) | Implementado (Rust, biblioteca estándar) | [`src/core-engine/src/bin/api_server.rs`](src/core-engine/src/bin/api_server.rs) |
-| Consola de Base: cartografía 3D, lupa Spyglass, planificador y telemetría EVA | Implementado (React + TypeScript + Three.js + Tailwind) | [`src/base-console/`](src/base-console/) |
-| Modelo de lenguaje local (Candle / ONNX Runtime) y voz con `whisper-rs` | Diseño | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
-| Nodo del traje con ROS 2 (`rclrs`) y enlace Eclipse Zenoh | Diseño (la API simula la sincronización) | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
-| HUD de realidad aumentada en el casco | Diseño (la vista «Telemetría EVA» de la consola reproduce su lógica) | [`docs/02-product-ux-ui/`](docs/02-product-ux-ui/) |
-| Motor compilado a WebAssembly, CesiumJS | Diseño | — |
+| NASA data pipeline (STAC/PDS → COG, GeoJSON, Parquet; H3 grid; EVA-07 scenario) | Implemented (Python, 263 tests) | [`data/pipeline/`](data/pipeline/) |
+| Mars H3 hexagonal grid with real indices (`h3o`) loaded from Parquet | Implemented (Rust) | [`h3_mars_grid.rs`](src/core-engine/src/h3_mars_grid.rs) |
+| D\* Lite planner with metabolic cost and automatic goal switching | Implemented (Rust) | [`metabolic_dstar.rs`](src/core-engine/src/metabolic_dstar.rs), [`mission.rs`](src/core-engine/src/mission.rs) |
+| Markov/Poisson hazard engine and Chaos Mode | Implemented (Rust) | [`stochastic_hazard.rs`](src/core-engine/src/stochastic_hazard.rs) |
+| Safety state machine (5 states), single-alert triage and template voice message | Implemented (Rust, deterministic) | [`neuro_symbolic.rs`](src/core-engine/src/neuro_symbolic.rs) |
+| GPS-denied positioning Kalman filter (Canyon-TRN) | Implemented, tested with simulated data | [`canyon_trn.rs`](src/core-engine/src/canyon_trn.rs) |
+| Points marked during the EVA (hazard, shelter, ISRU) with re-planning | Implemented (Rust + console) | [`reported_points.rs`](src/core-engine/src/reported_points.rs) |
+| Local HTTP API of the engine (port 3001) | Implemented (Rust standard library) | [`api_server.rs`](src/core-engine/src/bin/api_server.rs) |
+| Base console: 3D cartography, Spyglass lens, route planner, EVA telemetry | Implemented (React + TypeScript + Three.js + Tailwind) | [`src/base-console/`](src/base-console/) |
+| On-suit language model (Candle / ONNX Runtime) and `whisper-rs` voice | Design | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
+| Suit node with ROS 2 (`rclrs`) and Eclipse Zenoh link | Design (the API simulates the sync) | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
+| Augmented-reality helmet HUD | Design (the console's "EVA telemetry" view reproduces its logic) | [`docs/02-product-ux-ui/`](docs/02-product-ux-ui/) |
+| Engine compiled to WebAssembly, CesiumJS | Design | — |
 
 ---
 
-## Arquitectura
+## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph NASA["Datos NASA (USGS Astrogeology / PDS)"]
-        D1["DTM CTX 20 m"]
-        D2["Mosaico CTX 6 m y HiRISE"]
-        D3["MOLA y HRSC+MOLA"]
-        D4["THEMIS IR día y noche"]
+    subgraph NASA["NASA data (USGS Astrogeology / PDS)"]
+        D1["CTX DTM 20 m"]
+        D2["CTX 6 m mosaic and HiRISE"]
+        D3["MOLA and HRSC+MOLA"]
+        D4["THEMIS IR day and night"]
     end
 
-    subgraph PIPE["Pipeline Python (data/pipeline)"]
-        T["terrain: COG, pendientes,<br/>SVF, línea de vista"]
-        H["hexgrid: malla H3<br/>res 9 y 12 en Parquet"]
-        S["scenario: EVA-07,<br/>umbrales, cronología"]
+    subgraph PIPE["Python pipeline (data/pipeline)"]
+        T["terrain: COG, slopes,<br/>sky view, line of sight"]
+        H["hexgrid: H3 grid<br/>res 9 and 12 in Parquet"]
+        S["scenario: EVA-07,<br/>thresholds, timeline"]
     end
 
-    subgraph CORE["Motor Rust (src/core-engine)"]
-        G["Malla H3 (h3o)"]
-        P["D* Lite metabólico"]
+    subgraph CORE["Rust engine (src/core-engine)"]
+        G["H3 grid (h3o)"]
+        P["Metabolic D* Lite"]
         C["Chaos Mode"]
-        F["Máquina de estados<br/>de seguridad"]
-        API["API HTTP :3001"]
+        F["Safety state machine"]
+        API["HTTP API :3001"]
     end
 
-    UI["Consola de Base<br/>React + Three.js"]
+    UI["Base console<br/>React + Three.js"]
 
     NASA --> T --> H --> G
     S --> CORE
@@ -88,17 +97,17 @@ flowchart LR
 
 ---
 
-## Cómo arrancarlo
+## How to run it
 
-Requisitos: **Rust** (stable, con `cargo`), **Node.js** 18 o superior con `npm`, y **uv** para el pipeline de Python (solo si se quieren regenerar los datos o pasar sus tests). Los datos ya procesados están versionados en `data/`, así que no hace falta descargar nada para ver la demo.
+Requirements: **Rust** (stable, with `cargo`), **Node.js** 18+ with `npm`, and **uv** for the Python pipeline (only to regenerate the data or run its tests). The processed data is versioned in `data/`, so nothing needs to be downloaded to run the demo.
 
-1. API del motor en `http://127.0.0.1:3001`:
+1. Engine API on `http://127.0.0.1:3001`:
 
 ```bash
 cargo run --release --manifest-path src/core-engine/Cargo.toml --bin api_server
 ```
 
-2. Consola en `http://localhost:5173` (en otra terminal):
+2. Console on `http://localhost:5173` (in another terminal):
 
 ```bash
 npm --prefix src/base-console install
@@ -108,9 +117,9 @@ npm --prefix src/base-console install
 npm --prefix src/base-console run dev -- --port 5173 --strictPort
 ```
 
-Rutas de la consola: `/cartografia-3d`, `/planificador`, `/telemetria-eva` y `/multiemergencia` (abre la telemetría en T+105). Sin la API, la consola sigue funcionando con los datos guardados y lo indica.
+Console routes: `/cartografia-3d`, `/planificador`, `/telemetria-eva` and `/multiemergencia` (opens the telemetry at T+105). Without the API, the console still works with the stored mission data and says so.
 
-**Simulación completa de la EVA-07 en terminal** (cronología, decisión de T+105 y Chaos Mode):
+**Full EVA-07 simulation in the terminal** (timeline, T+105 decision and Chaos Mode):
 
 ```bash
 cargo run --release --manifest-path src/core-engine/Cargo.toml --bin eva07_mission_sim
@@ -136,57 +145,73 @@ npm --prefix src/base-console run build
 
 ---
 
-## Datos de la NASA usados
+## NASA data used
 
-Todos los productos se leen por ventana desde el catálogo STAC y los repositorios de USGS Astrogeology. Identificadores, URL, licencias y cobertura medida de cada uno están en [`data/nasa-layers/sources_manifest.json`](data/nasa-layers/sources_manifest.json).
+All products are read by window from the USGS Astrogeology STAC catalog and repositories. Identifiers, URLs, licences and measured coverage of each one are in [`data/nasa-layers/sources_manifest.json`](data/nasa-layers/sources_manifest.json).
 
-| Misión / instrumento | Producto | Resolución | Uso |
+| Mission / instrument | Product | Resolution | Use |
 | :--- | :--- | :--- | :--- |
-| MRO Context Camera (CTX) | DTM estéreo controlados USGS (Ames Stereo Pipeline, alineados a MOLA) | 20 m | Terreno de trabajo: cotas, pendientes, SVF, línea de vista de radio, malla H3 |
-| MRO CTX | Mosaico ecuatorial controlado, cuadrángulo MC-18 Coprates (Robbins et al., 2023) | 6 m | Textura orbital del gemelo 3D |
-| MRO HiRISE | RDR proyectados (sin control, ±100 m) y búsqueda de DTM de 1 m | 0,25 m | Contexto visual; no hay DTM HiRISE sobre la ruta |
-| Mars Global Surveyor MOLA | MEGDR, mosaico global | 463 m | Referencia altimétrica y contexto regional |
-| Mars Express HRSC + MGS MOLA | Mezcla HRSC+MOLA v2 (USGS) | 200 m | Horizonte y relieve regional |
-| 2001 Mars Odyssey THEMIS IR | Mosaicos controlados diurno y nocturno, MC-18 | 100 m | Contexto térmico cualitativo |
-| NASA Mars Trek | Teselas Viking MDIM 2.1 y MOLA hillshade | 232 m / 463 m | Mapa base 2D de la consola |
-| MSL RAD, MRO MCS, Mars 2020 MEDA | Valores publicados (dosis en Gale, polvo, viento) | — | Parámetros del escenario, citados como análogos |
+| MRO Context Camera (CTX) | USGS controlled stereo DTMs (Ames Stereo Pipeline, aligned to MOLA) | 20 m | Working terrain: elevation, slope, sky view, radio line of sight, H3 grid |
+| MRO CTX | Controlled equatorial mosaic, MC-18 Coprates quadrangle (Robbins et al., 2023) | 6 m | Orbital texture of the 3D twin |
+| MRO HiRISE | Projected RDRs (uncontrolled, ±100 m) and a search for 1 m DTMs | 0.25 m | Visual context; no HiRISE DTM covers the route |
+| Mars Global Surveyor MOLA | MEGDR global mosaic | 463 m | Altimetric reference and regional context |
+| Mars Express HRSC + MGS MOLA | HRSC+MOLA blend v2 (USGS) | 200 m | Horizon and regional relief |
+| 2001 Mars Odyssey THEMIS IR | Controlled day and night mosaics, MC-18 | 100 m | Qualitative thermal context |
+| NASA Mars Trek | Viking MDIM 2.1 and MOLA hillshade tiles | 232 m / 463 m | 2D base map of the console |
+| MSL RAD, MRO MCS, Mars 2020 MEDA | Published values (dose at Gale, dust, wind) | — | Scenario parameters, cited as analogues |
 
-**Lo que no se usa como dato, y se dice:** no hay mapa cuantitativo de inercia térmica accesible, así que las inercias térmicas de los nodos son supuestos de escenario [E]. CRISM y SHARAD no están en el catálogo STAC, así que la hidratación del WP1 también es escenario. El detalle está en la sección `not_available` del manifiesto y en la sección 5 de [`CIENCIA_Y_MISION.md`](docs/01-planetary-science-mission/CIENCIA_Y_MISION.md).
+**What is not used as data, and we say so:** there is no accessible quantitative thermal-inertia map, so the node thermal inertias are scenario assumptions [E]. CRISM and SHARAD are not in the STAC catalog, so the WP1 hydration is also a scenario value. Details are in the `not_available` section of the manifest and in section 5 of [`CIENCIA_Y_MISION.md`](docs/01-planetary-science-mission/CIENCIA_Y_MISION.md).
 
 ---
 
-## Estructura del repositorio
+## Use of AI tools (Super Intelligence)
+
+The team did the brainstorming, analysis and design decisions without AI. These include the challenge, the site, the mission concept and what to build. We then used AI tools to accelerate development:
+
+- **Anthropic Claude Code** (Claude Opus 5.5 and Claude Fable 5.2 models): wrote and refactored much of the Rust engine, the Python pipeline and the React console under the team's direction, and drafted and edited documentation and submission texts.
+- **Google's AI coding agent** (Hydrogen, Argon and 3.8 Flash models): produced a large part of the architecture and core-engine work.
+- **Google Stitch:** generated the first concept wireframes in [`docs/wireframes/`](docs/wireframes/). They carry a visible "AI-GENERATED CONCEPT" watermark and are superseded by the coded console.
+
+All AI-assisted code was reviewed by the team and is checked by the automated tests listed above. No NASA data was generated or altered by AI.
+
+---
+
+## Repository layout
 
 ```text
 ├── data/
-│   ├── pipeline/              # Paquete Python red_atlas_pipeline (terrain, hexgrid, scenario) y sus tests
-│   ├── nasa-layers/           # Manifiesto de fuentes, malla H3 en Parquet, comprobación de realidad del sitio
-│   └── mission-scenarios/     # EVA-07: GeoJSON del triángulo, umbrales, cronología y resultados del motor
+│   ├── pipeline/              # Python package red_atlas_pipeline (terrain, hexgrid, scenario) and tests
+│   ├── nasa-layers/           # Source manifest, H3 grid in Parquet, site reality check
+│   └── mission-scenarios/     # EVA-07: triangle GeoJSON, thresholds, timeline and engine results
 ├── src/
-│   ├── shared/                # Crate Rust con las constantes físicas y el contrato de la malla
-│   ├── core-engine/           # Motor Rust: malla H3, D* Lite, Chaos Mode, máquina de estados y API
-│   ├── base-console/          # Consola web (React + TypeScript + Three.js)
-│   └── eva-tactical-hud/      # Diseño del HUD del casco (sin código propio todavía)
+│   ├── shared/                # Rust crate with physical constants and the grid contract
+│   ├── core-engine/           # Rust engine: H3 grid, D* Lite, Chaos Mode, state machine and API
+│   ├── base-console/          # Web console (React + TypeScript + Three.js)
+│   └── eva-tactical-hud/      # Helmet HUD design (no code of its own yet)
 ├── docs/
-│   ├── 01-planetary-science-mission/   # Dossier científico y datos canónicos
-│   ├── 02-product-ux-ui/               # Producto, UX y wireframes
-│   ├── 03-system-architecture-ai/      # Arquitectura del motor y de la IA
-│   ├── 04-pitch-and-submission/        # Textos de la entrega y material del pitch
-│   └── wireframes/                     # Wireframes de las pantallas
-├── assets/                    # Material gráfico del pitch
+│   ├── 01-planetary-science-mission/   # Science dossier and canonical data
+│   ├── 02-product-ux-ui/               # Product, UX and wireframes
+│   ├── 03-system-architecture-ai/      # Engine and AI architecture
+│   ├── 04-pitch-and-submission/        # Submission texts and pitch material
+│   └── wireframes/                     # AI-generated concept wireframes (watermarked)
+├── assets/                    # Pitch graphics
 ├── CONTRIBUTING.md
 └── LICENSE                    # MIT
 ```
 
-## Documentación
+## Documentation (Spanish)
 
-| Área | Documento |
+| Area | Document |
 | :--- | :--- |
-| Ciencia planetaria y datos | [`CIENCIA_Y_MISION.md`](docs/01-planetary-science-mission/CIENCIA_Y_MISION.md) · [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md) |
-| Producto y UX | [`PRODUCTO_UX_UI.md`](docs/02-product-ux-ui/PRODUCTO_UX_UI.md) |
-| Arquitectura e IA | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
-| Esquemas de datos | [`SCHEMA_HEXGRID.md`](data/nasa-layers/SCHEMA_HEXGRID.md) · [`SCHEMA_EVA07.md`](data/mission-scenarios/SCHEMA_EVA07.md) · [`SITE_REALITY_CHECK.md`](data/nasa-layers/SITE_REALITY_CHECK.md) |
+| Planetary science and data | [`CIENCIA_Y_MISION.md`](docs/01-planetary-science-mission/CIENCIA_Y_MISION.md) · [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md) |
+| Product and UX | [`PRODUCTO_UX_UI.md`](docs/02-product-ux-ui/PRODUCTO_UX_UI.md) |
+| Architecture and AI | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
+| Data schemas | [`SCHEMA_HEXGRID.md`](data/nasa-layers/SCHEMA_HEXGRID.md) · [`SCHEMA_EVA07.md`](data/mission-scenarios/SCHEMA_EVA07.md) · [`SITE_REALITY_CHECK.md`](data/nasa-layers/SITE_REALITY_CHECK.md) |
 
-## Licencia
+## Team
 
-Código y documentación bajo licencia [MIT](LICENSE). Los productos de la NASA y de USGS conservan sus licencias de origen (dominio público o CC0), indicadas en el manifiesto de fuentes.
+Red Project — Mario Perdiguero, Guillermo Remesal and David Pérez.
+
+## License
+
+Code and documentation under the [MIT](LICENSE) licence. NASA and USGS products keep their original licences (public domain or CC0), listed in the source manifest.

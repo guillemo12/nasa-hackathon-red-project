@@ -1,6 +1,6 @@
 # Wireframes
 
-Wireframes de concepto de las pantallas de la consola, anteriores a la implementación:
+Wireframes de concepto de las pantallas de la consola, anteriores a la implementación. **Se generaron con IA (Google Stitch)** y llevan una marca de agua visible que lo indica, como pide la guía de Space Apps.
 
 | Fichero | Pantalla |
 | :--- | :--- |

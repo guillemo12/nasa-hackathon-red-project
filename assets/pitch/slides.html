@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>R.E.D. ATLAS — Space Apps 2026 demo</title>
+<style>
+  @page { size: 1920px 1080px; margin: 0; }
+  :root { --bg:#0d1016; --panel:#161b24; --ink:#eef1f6; --mute:#9aa4b5; --accent:#ff5a3c; --cyan:#2ee6d0; --red:#ff4d5e; --line:#2a3140; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans","Helvetica Neue",Helvetica,Arial,sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .slide { width:1920px; height:1080px; padding:90px 110px; position:relative; overflow:hidden; page-break-after:always; break-after:page; display:flex; flex-direction:column; }
+  .slide:last-child { page-break-after:auto; break-after:auto; }
+  .kicker { color:var(--accent); font-size:26px; letter-spacing:.14em; text-transform:uppercase; font-weight:600; margin-bottom:22px; }
+  h1 { font-size:96px; line-height:1.02; font-weight:700; letter-spacing:-.02em; }
+  h2 { font-size:62px; line-height:1.08; font-weight:700; letter-spacing:-.01em; margin-bottom:36px; max-width:1500px; }
+  p, li { font-size:34px; line-height:1.4; color:var(--ink); }
+  .mute { color:var(--mute); }
+  ul { list-style:none; }
+  li { padding-left:34px; position:relative; margin-bottom:18px; }
+  li::before { content:""; position:absolute; left:0; top:20px; width:14px; height:3px; background:var(--accent); }
+  .foot { position:absolute; left:110px; right:110px; bottom:48px; display:flex; justify-content:space-between; font-size:22px; color:var(--mute); border-top:1px solid var(--line); padding-top:18px; }
+  .row { display:flex; gap:60px; flex:1; min-height:0; }
+  .col { flex:1; min-width:0; }
+  .shot { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#000; }
+  .shot img { display:block; width:100%; height:100%; object-fit:cover; }
+  .cap { font-size:22px; color:var(--mute); margin-top:12px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:34px 38px; }
+  .big { font-size:110px; font-weight:700; line-height:1; letter-spacing:-.03em; }
+  .lbl { font-size:28px; color:var(--mute); margin-top:12px; }
+  .cyan { color:var(--cyan); } .red { color:var(--red); } .acc { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:28px; }
+  td, th { text-align:left; padding:14px 18px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mute); font-weight:500; font-size:22px; text-transform:uppercase; letter-spacing:.08em; }
+  .tag { display:inline-block; font-size:20px; padding:4px 12px; border-radius:6px; background:#222a38; color:var(--mute); margin-left:10px; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<!-- 1. Title -->
+<section class="slide" style="justify-content:center; background:radial-gradient(1200px 700px at 85% 30%, #3a1610 0%, var(--bg) 60%);">
+  <div class="kicker">NASA Space Apps Challenge 2026 · Interplanetary Survival Guide: Martian Map</div>
+  <h1>R.E.D. ATLAS</h1>
+  <p style="font-size:44px; margin-top:18px;">Reconnaissance, EVA &amp; Dynamic-survival Atlas</p>
+  <p class="mute" style="margin-top:40px; font-size:36px;">A survival map for the first Marswalk in Melas Chasma, built from real NASA orbital data.</p>
+  <p style="margin-top:70px; font-size:34px;"><b>Team Red Project</b> · Mario Perdiguero · Guillermo Remesal · David Pérez</p>
+  <div class="foot"><span>github.com/guillemo12/nasa-hackathon-red-project</span><span>1 / 7</span></div>
+</section>
+
+<!-- 2. Problem -->
+<section class="slide">
+  <div class="kicker">The problem</div>
+  <h2>Global Mars maps can't keep one astronaut alive on one walk.</h2>
+  <div class="row">
+    <div class="col">
+      <ul>
+        <li>Mars Trek and geologic maps work at regional scale. A spacewalk needs <b>5–20 m detail</b> along one route.</li>
+        <li>On the floor of Melas Chasma, <b>5 km canyon walls</b> cut the radio link to the base.</li>
+        <li>Solar storms, dust fronts and soft, steep ground can hit <b>at the same time</b>.</li>
+        <li>With minutes of delay to Earth, the crew must decide alone: <b>"Can I still get back? If not, where do I go?"</b></li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>R.E.D. ATLAS · Team Red Project</span><span>2 / 7</span></div>
+</section>
+
+<!-- 3. NASA data -->
+<section class="slide">
+  <div class="kicker">NASA data, layered</div>
+  <h2>Data from six NASA missions fused into one 5-metre hexagon map of the route.</h2>
+  <div class="row">
+    <div class="col" style="flex:1.25">
+      <table>
+        <tr><th>Mission / instrument</th><th>Used for</th></tr>
+        <tr><td>MRO CTX stereo DTM · 20 m</td><td>Elevation, slope, sky view, radio line of sight</td></tr>
+        <tr><td>MRO CTX mosaic · 6 m</td><td>Orbital texture of the 3D twin</td></tr>
+        <tr><td>MRO HiRISE · 0.25 m</td><td>Close-up visual context</td></tr>
+        <tr><td>MGS MOLA · HRSC+MOLA</td><td>Regional relief and horizon</td></tr>
+        <tr><td>Mars Odyssey THEMIS IR</td><td>Day / night thermal context</td></tr>
+        <tr><td>MSL RAD · MEDA · MCS</td><td>Radiation, dust and wind scenario</td></tr>
+      </table>
+    </div>
+    <div class="col">
+      <div class="stat"><div class="big cyan">141,313</div><div class="lbl">H3 hexagon cells (~5 m) along the route, each with elevation, slope, sky view and S-band signal</div></div>
+      <p class="mute" style="margin-top:30px; font-size:26px;">Every value is labelled: measured, derived, or scenario assumption. Sources: USGS Astrogeology STAC, NASA PDS, JPL Mars Trek.</p>
+    </div>
+  </div>
+  <div class="foot"><span>R.E.D. ATLAS · Team Red Project</span><span>3 / 7</span></div>
+</section>
+
+<!-- 4. User experience -->
+<section class="slide">
+  <div class="kicker">The user experience</div>
+  <h2 style="margin-bottom:28px;">A habitat console to plan the walk and follow it live.</h2>
+  <div class="row">
+    <div class="col" style="flex:1.1">
+      <div class="shot" style="height:640px;"><img src="screens/twin-3d.png" alt="3D twin of the Survival Triangle on real CTX terrain"></div>
+      <div class="cap">3D twin: real CTX 6 m imagery on the 20 m CTX terrain, the 4.9 km "Survival Triangle" and the hexagon grid.</div>
+    </div>
+    <div class="col">
+      <ul>
+        <li><b>Spyglass lens:</b> reads water, thermal inertia and relief under the cursor.</li>
+                <li><b>EVA telemetry:</b> one "return margin" bar and one voice order shorter than 8 s.</li>
+        <li><b>Marked points:</b> the astronaut flags hazards or shelters, and the Rust engine re-plans.</li>
+      </ul>
+      <div class="shot" style="margin-top:14px;"><img src="screens/route-profile.png" alt="Route profile with slope and terrain per leg"></div>
+      <div class="cap">Route planner: elevation profile, slope and terrain cost per leg.</div>
+    </div>
+  </div>
+  <div class="foot"><span>R.E.D. ATLAS · Team Red Project · console UI in Spanish (team language)</span><span>4 / 7</span></div>
+</section>
+
+<!-- 5. Decision at T+105 -->
+<section class="slide">
+  <div class="kicker">The decision at T+105</div>
+  <h2 style="margin-bottom:28px;">Four hazards at once. The engine switches the goal in 17 ms.</h2>
+  <div class="shot" style="height:300px;"><img src="screens/emergency-t105.png" alt="EVA telemetry: evacuate to shelter WP3, 344 degrees, 595 m, 9.4 min" style="object-position:top"></div>
+  <div class="row" style="margin-top:34px; flex:0 0 auto;">
+    <div class="col stat"><div class="big red">48 min</div><div class="lbl">Back to base: 2.15 km and a 5.30 mSv decision dose. <b class="red">Not viable</b>: beyond the 2 mSv flight rule.</div></div>
+    <div class="col stat"><div class="big cyan">9.4 min</div><div class="lbl">To shelter WP3: 595 m under a rock overhang, 0.89 mSv. <b class="cyan">Viable.</b></div></div>
+  </div>
+  <div class="foot"><span>Solar particle event + dust front (τ 2.4) + radio shadow + 22° soft slope · metabolic D* Lite on the real grid</span><span>5 / 7</span></div>
+</section>
+
+<!-- 6. Chaos Mode -->
+<section class="slide">
+  <div class="kicker">Proof under stress · Chaos Mode</div>
+  <h2>10,000 random multi-hazard missions before the crew walks out.</h2>
+  <div class="row" style="flex:0 0 auto;">
+    <div class="col stat"><div class="big cyan">96.0%</div><div class="lbl">safe missions with automatic shelter switching</div></div>
+    <div class="col stat"><div class="big red">23.8%</div><div class="lbl">safe missions if the only option is returning to base</div></div>
+  </div>
+  <ul style="margin-top:50px;">
+    <li>Markov / Poisson hazard engine in Rust (seed 42, reproducible).</li>
+    <li>The engine exports every decision figure; documents and UI quote it, nothing is typed by hand.</li>
+    <li class="mute">Honest limits: Chaos Mode runs on a synthetic corridor today; thermal inertia and WP1 water are scenario values.</li>
+  </ul>
+  <div class="foot"><span>R.E.D. ATLAS · Team Red Project</span><span>6 / 7</span></div>
+</section>
+
+<!-- 7. Future -->
+<section class="slide" style="background:radial-gradient(1100px 650px at 15% 85%, #0f2e2b 0%, var(--bg) 60%);">
+  <div class="kicker">What's next</div>
+  <h2>A survival map for every EVA site on Mars, built from open NASA data.</h2>
+  <ul>
+    <li>Run the same engine on the suit computer, fully offline, with a local voice assistant.</li>
+    <li>Add CRISM spectra and quantitative thermal inertia; run Chaos Mode on the real grid.</li>
+    <li>Point the pipeline at any landing site, Moon or Mars, and get a per-walk safety map.</li>
+  </ul>
+  <p style="margin-top:60px; font-size:34px;"><b>Code, data and docs:</b> <span class="acc">github.com/guillemo12/nasa-hackathon-red-project</span></p>
+  <div class="foot"><span>Team Red Project · Mario Perdiguero · Guillermo Remesal · David Pérez</span><span>7 / 7</span></div>
+</section>
+
+</body>
+</html>
