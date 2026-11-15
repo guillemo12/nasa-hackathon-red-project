@@ -32,19 +32,19 @@ interface ConsoleShellProps {
 }
 
 const NAV: Array<{ view: ConsoleView; label: string }> = [
-  { view: '3d-console', label: 'Cartografía' },
-  { view: 'route-planificator', label: 'Planificador' },
-  { view: 'eva-hud-nominal', label: 'Telemetría EVA' },
+  { view: '3d-console', label: 'Cartography' },
+  { view: 'route-planificator', label: 'Planner' },
+  { view: 'eva-hud-nominal', label: 'EVA telemetry' },
 ];
 
 const SYNC_LABEL: Record<SyncState['status'], { text: string; level: Level }> = {
-  idle: { text: 'Pendiente', level: 'none' },
-  syncing: { text: 'En curso…', level: 'none' },
-  ok: { text: 'Verificada', level: 'green' },
-  error: { text: 'Fallida', level: 'red' },
+  idle: { text: 'Pending', level: 'none' },
+  syncing: { text: 'In progress…', level: 'none' },
+  ok: { text: 'Verified', level: 'green' },
+  error: { text: 'Failed', level: 'red' },
 };
 
-const RADIO_TEXT: Record<string, string> = { VERDE: 'bueno', AMBAR: 'débil', ROJO: 'cortado' };
+const RADIO_TEXT: Record<string, string> = { VERDE: 'good', AMBAR: 'weak', ROJO: 'lost' };
 
 /** Punto de color con su texto: el color nunca va solo. */
 const Dot: React.FC<{ level: Level; pulse?: boolean; className?: string }> = ({ level, pulse, className = '' }) => (
@@ -110,7 +110,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
   const where =
     sample.position.from === sample.position.to
       ? nodeLabel(sample.position.from)
-      : `Entre ${nodeLabel(sample.position.from)} y ${nodeLabel(sample.position.to)}`;
+      : `Between ${nodeLabel(sample.position.from)} and ${nodeLabel(sample.position.to)}`;
 
   const stateText =
     sample.guardrail.state === 'CAUTION' || sample.guardrail.state === 'MULTI_HAZARD'
@@ -118,7 +118,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
       : state.label;
   // Cartografía y Planificador son pantallas de preparación: si el reloj está dentro de la EVA,
   // el estado dice de forma explícita que corresponde a ese minuto de la salida.
-  const pillText = !isEvaView && !preEva ? `EVA-07 en ${formatT(sample.t_min)} · ${stateText}` : stateText;
+  const pillText = !isEvaView && !preEva ? `EVA-07 at ${formatT(sample.t_min)} · ${stateText}` : stateText;
   const alarming = sample.guardrail.state === 'EVAC_SHELTER' || sample.guardrail.state === 'MULTI_HAZARD';
 
   // Resumen de sistema: un solo punto en la cabecera; el detalle va en el desplegable.
@@ -130,53 +130,53 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
         ? 'amber'
         : 'green';
   const systemStatus = !apiChecked
-    ? 'comprobando'
+    ? 'checking'
     : apiDown
-      ? 'sin motor de cálculo'
+      ? 'compute engine offline'
       : sync.status === 'error'
-        ? 'envío al traje fallido'
+        ? 'upload to suit failed'
         : radioLevel === 'red'
-          ? 'sin enlace con el traje'
+          ? 'no link to the suit'
           : radioLevel === 'amber'
-            ? 'enlace débil con el traje'
-            : 'todo en orden';
+            ? 'weak link to the suit'
+            : 'all nominal';
 
   const rows: Array<{ k: string; v: string; level?: Level }> = [
     {
-      k: 'Enlace con el traje',
+      k: 'Suit link',
       v: `${fmt(sample.values.radio_rssi_dbm, 1)} dBm · ${RADIO_TEXT[sample.values.radio_class] ?? '—'}`,
       level: radioLevel,
     },
     {
-      k: 'Posición',
+      k: 'Position',
       v:
         sample.position.lat !== null && sample.position.lon_e !== null
           ? `${where} (${fmtCoords(sample.position.lat, sample.position.lon_e)}${
-              elevApprox !== null ? `; cota ${fmt(elevApprox)} m` : ''
+              elevApprox !== null ? `; elevation ${fmt(elevApprox)} m` : ''
             })`
           : where,
     },
-    { k: 'Destino viable', v: preEva ? '—' : nodeLabel(sample.values.viable_destination) },
+    { k: 'Viable destination', v: preEva ? '—' : nodeLabel(sample.values.viable_destination) },
     {
-      k: 'Motor de cálculo',
-      v: !apiChecked ? 'Comprobando…' : apiHealth ? 'En línea' : 'Sin conexión',
+      k: 'Compute engine',
+      v: !apiChecked ? 'Checking…' : apiHealth ? 'Online' : 'Offline',
       level: !apiChecked ? 'none' : apiHealth ? 'green' : 'red',
     },
     {
-      k: 'Terreno',
-      v: apiHealth ? 'Cargado, a 20 m' : 'No disponible',
+      k: 'Terrain',
+      v: apiHealth ? 'Loaded, 20 m' : 'Unavailable',
     },
     {
-      k: 'Reglas de seguridad',
+      k: 'Safety rules',
       v: preEva
-        ? 'En espera'
-        : `${state.code} · ${sample.source === 'api' ? 'calculadas por el motor' : 'copia local'}`,
+        ? 'Standby'
+        : `${state.code} · ${sample.source === 'api' ? 'computed by the engine' : 'local copy'}`,
       level: preEva ? undefined : sample.source === 'api' ? 'green' : 'amber',
     },
-    { k: 'Sincronización del traje', v: SYNC_LABEL[sync.status].text, level: SYNC_LABEL[sync.status].level },
+    { k: 'Suit sync', v: SYNC_LABEL[sync.status].text, level: SYNC_LABEL[sync.status].level },
     {
-      k: 'Atmósfera en la Base',
-      v: `${fmt(P1_CONSTANTS.surface_pressure_pa_site)} Pa · polvo τ ${fmt(sample.values.dust_tau, 1)}`,
+      k: 'Atmosphere at Base',
+      v: `${fmt(P1_CONSTANTS.surface_pressure_pa_site)} Pa · dust τ ${fmt(sample.values.dust_tau, 1)}`,
       level: tauLevel,
     },
   ];
@@ -187,7 +187,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
         href="#contenido"
         className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-2 focus:left-2 focus:bg-ink focus:text-ground focus:px-3 focus:py-2 focus:rounded"
       >
-        Saltar al contenido
+        Skip to content
       </a>
 
       <header className="relative z-40 shrink-0 bg-sunken border-b border-line">
@@ -203,7 +203,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
           </div>
 
           <nav
-            aria-label="Pantallas"
+            aria-label="Screens"
             className="row-start-2 col-start-1 col-span-2 lg:row-start-1 lg:col-start-2 lg:col-span-1 flex gap-1 overflow-x-auto h-10 lg:h-14 -mx-1 px-1"
           >
             {NAV.map(({ view, label }) => (
@@ -225,7 +225,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
 
           <span
             role="status"
-            aria-label={`Estado: ${pillText}`}
+            aria-label={`Status: ${pillText}`}
             title={pillText}
             className={`row-start-3 col-start-1 col-span-2 lg:row-start-1 lg:col-start-3 lg:col-span-1 lg:justify-self-end min-w-0 max-w-full flex items-center gap-2 h-8 mb-2 lg:mb-0 px-2.5 rounded-md t-label ${
               alarming ? 'text-ink' : 'text-ink-2'
@@ -245,13 +245,13 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
           </span>
 
           <div className="row-start-1 col-start-2 lg:col-start-4 justify-self-end flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center rounded-md border border-line bg-panel" aria-label="Reloj de misión">
+            <div className="flex items-center rounded-md border border-line bg-panel" aria-label="Mission clock">
               <button
                 type="button"
                 onClick={onToggleLive}
                 aria-pressed={isLive}
-                aria-label={isLive ? 'Pausar el reloj de la EVA' : 'Poner en marcha el reloj de la EVA'}
-                title="Un minuto de misión por segundo"
+                aria-label={isLive ? 'Pause the EVA clock' : 'Start the EVA clock'}
+                title="One mission minute per second"
                 className="w-9 h-9 flex items-center justify-center rounded-l-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer"
               >
                 {isLive ? <Pause className="w-4 h-4" aria-hidden /> : <Play className="w-4 h-4" aria-hidden />}
@@ -259,14 +259,14 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
               <div className="px-2 leading-tight tabular-nums border-x border-line whitespace-nowrap">
                 <div className="text-sm font-semibold text-ink">{formatT(sample.t_min)}</div>
                 <div className="text-xs text-ink-3">
-                  {sample.lmst} local<span className="hidden sm:inline">, {isLive ? 'en marcha' : 'en pausa'}</span>
+                  {sample.lmst} local<span className="hidden sm:inline">, {isLive ? 'running' : 'paused'}</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={onResetClock}
-                aria-label={`Volver al inicio (${formatT(T_START_MIN)})`}
-                title={`Volver a ${formatT(T_START_MIN)}`}
+                aria-label={`Back to start (${formatT(T_START_MIN)})`}
+                title={`Back to ${formatT(T_START_MIN)}`}
                 className="w-9 h-9 flex items-center justify-center rounded-r-md text-ink-3 hover:text-ink hover:bg-raised cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" aria-hidden />
@@ -279,12 +279,12 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
                 onClick={() => setDiagOpen((o) => !o)}
                 aria-expanded={diagOpen}
                 aria-controls="panel-sistema"
-                aria-label={`Sistema: ${systemStatus}`}
-                title={`Sistema: ${systemStatus}`}
+                aria-label={`System: ${systemStatus}`}
+                title={`System: ${systemStatus}`}
                 className="min-h-9 flex items-center gap-2 px-2.5 rounded-md border border-line bg-panel text-sm text-ink-2 hover:text-ink hover:bg-raised cursor-pointer"
               >
                 <Dot level={systemLevel} />
-                <span className="hidden sm:inline">Sistema</span>
+                <span className="hidden sm:inline">System</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${diagOpen ? 'rotate-180' : ''}`} aria-hidden />
               </button>
               {diagOpen && (
@@ -292,7 +292,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
                   id="panel-sistema"
                   className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-1.5rem))] rounded-lg border border-line bg-panel shadow-pop p-4"
                 >
-                  <h2 className="text-sm font-semibold text-ink">Estado del sistema</h2>
+                  <h2 className="text-sm font-semibold text-ink">System status</h2>
                   <p className="t-label text-ink-3 mt-0.5 mb-3 first-letter:uppercase">{systemStatus}.</p>
                   <dl className="space-y-2.5">
                     {rows.map((row) => (
@@ -312,12 +312,12 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
             <button
               type="button"
               onClick={() => onSelectView('eva-emergency')}
-              aria-label="Simular emergencia"
-              title={`Abre la Telemetría EVA en ${formatT(T_DECISION_MIN)}, cuando coinciden las cuatro amenazas`}
+              aria-label="Simulate emergency"
+              title={`Opens EVA telemetry at ${formatT(T_DECISION_MIN)}, when all four hazards coincide`}
               className="min-h-9 px-3 rounded-md border border-danger/50 text-sm font-medium text-danger-ink hover:bg-danger-bg cursor-pointer whitespace-nowrap"
             >
-              <span className="sm:hidden">Emergencia</span>
-              <span className="hidden sm:inline">Simular emergencia</span>
+              <span className="sm:hidden">Emergency</span>
+              <span className="hidden sm:inline">Simulate emergency</span>
             </button>
           </div>
         </div>
@@ -327,9 +327,9 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
         <div role="alert" className="shrink-0 flex items-start gap-2.5 px-4 sm:px-5 py-2.5 bg-warn-bg border-b border-line text-sm text-ink">
           <WifiOff className="w-4 h-4 shrink-0 mt-0.5 text-warn" aria-hidden />
           <span>
-            <strong className="font-semibold">Sin conexión con el motor de cálculo.</strong> Ves los datos guardados de la misión.
-            El mapa 3D, la lupa, el plan de ruta, la simulación y la sincronización del traje vuelven solos cuando se
-            recupere la conexión.
+            <strong className="font-semibold">No connection to the compute engine.</strong> Showing saved mission data.
+            The 3D map, magnifier, route plan, simulation and suit sync come back on their own when the connection
+            returns.
           </span>
         </div>
       )}
@@ -357,7 +357,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
           <button
             type="button"
             onClick={onDismissToast}
-            aria-label="Cerrar aviso"
+            aria-label="Dismiss notice"
             className="shrink-0 w-8 h-8 -mr-1 -mt-1 flex items-center justify-center rounded-md text-ink-3 hover:text-ink hover:bg-raised cursor-pointer"
           >
             <X className="w-4 h-4" aria-hidden />

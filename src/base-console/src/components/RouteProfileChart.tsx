@@ -166,8 +166,8 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
   );
 
   const axisText = { fill: PALETTE.muted, fontSize: TEXT } as const;
-  const summary = `Perfil de la ruta de ${fmt(total / 1000, 2)} km: cotas de ${fmt(eMin)} a ${fmt(eMax)} metros${
-    fromPlan ? '' : ' (solo los cuatro puntos de la ruta, sin el motor de cálculo)'
+  const summary = `Route profile, ${fmt(total / 1000, 2)} km: elevation ${fmt(eMin)} to ${fmt(eMax)} metres${
+    fromPlan ? '' : ' (only the four route points, no compute engine)'
   }`;
 
   const cursor = (y1: number, y2: number) =>
@@ -213,7 +213,7 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
         {nodeXs.map((n, i) => {
           const key = `${n.id}-${i}`;
           const selected = selectedId === n.id && !n.end;
-          const name = `${nodeLabel(n.id)}${n.end ? ' (regreso)' : ''}`;
+          const name = `${nodeLabel(n.id)}${n.end ? ' (return)' : ''}`;
           const label = `${name}, ${fmt(n.x / 1000, 2)} km, ${fmt(n.elev)} m`;
           const cxn = X(n.x);
           const cyn = yE(n.elev);
@@ -222,7 +222,7 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
               key={key}
               role={onSelect ? 'button' : undefined}
               tabIndex={onSelect ? 0 : undefined}
-              aria-label={onSelect ? `Hito ${label}` : undefined}
+              aria-label={onSelect ? `Waypoint ${label}` : undefined}
               aria-pressed={onSelect ? selected : undefined}
               onClick={() => onSelect?.(n.id)}
               onFocus={(e) => setFocusId(e.currentTarget.matches(':focus-visible') ? key : null)}
@@ -283,18 +283,18 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
               const small = span > 64;
               const tiny = span > 26;
               const eta = fmt(terrainEta(meanTiu), 1);
-              const o2 = planned ? `${fmt(planned.o2_grams, 0)} g de O₂` : null;
+              const o2 = planned ? `${fmt(planned.o2_grams, 0)} g of O₂` : null;
               return (
                 <g key={leg.id} fontSize={TEXT} textAnchor="middle">
                   <title>
-                    {`${leg.id}: pendiente media ${fmt(leg.meanSlopeDeg, 1)}°, máxima ${fmt(leg.maxSlopeDeg, 1)}°. Inercia térmica ${a?.tiu} a ${b?.tiu} TIU, coste de marcha ×${eta}${o2 ? `, ${o2}` : ''}.`}
+                    {`${leg.id}: mean slope ${fmt(leg.meanSlopeDeg, 1)}°, max ${fmt(leg.maxSlopeDeg, 1)}°. Thermal inertia ${a?.tiu} to ${b?.tiu} TIU, walking cost ×${eta}${o2 ? `, ${o2}` : ''}.`}
                   </title>
                   <rect x={X(s.x0) + 1} y={ROWS_Y} width={Math.max(1, span - 2)} height={20} rx="3" {...levelTint(level)} />
                   <text x={mid} y={ROWS_Y + 14} fill={PALETTE.text}>
                     {wide
-                      ? `${leg.id}: media ${fmt(leg.meanSlopeDeg, 1)}°, máx. ${fmt(leg.maxSlopeDeg, 1)}°`
+                      ? `${leg.id}: mean ${fmt(leg.meanSlopeDeg, 1)}°, max ${fmt(leg.maxSlopeDeg, 1)}°`
                       : mediumW
-                        ? `${leg.id}: máx. ${fmt(leg.maxSlopeDeg, 1)}°`
+                        ? `${leg.id}: max ${fmt(leg.maxSlopeDeg, 1)}°`
                         : small
                           ? `${leg.id} ${fmt(leg.maxSlopeDeg, 0)}°`
                           : tiny
@@ -304,9 +304,9 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
                   <rect x={X(s.x0) + 1} y={ROWS_Y + 24} width={Math.max(1, span - 2)} height={20} rx="3" {...levelTint('none')} />
                   <text x={mid} y={ROWS_Y + 38} fill={PALETTE.text2}>
                     {wide
-                      ? `${a?.tiu} a ${b?.tiu} TIU, coste ×${eta}${o2 ? `, ${o2}` : ''}`
+                      ? `${a?.tiu} to ${b?.tiu} TIU, cost ×${eta}${o2 ? `, ${o2}` : ''}`
                       : mediumW
-                        ? `coste ×${eta}${planned ? `, ${fmt(planned.o2_grams, 0)} g O₂` : ''}`
+                        ? `cost ×${eta}${planned ? `, ${fmt(planned.o2_grams, 0)} g O₂` : ''}`
                         : span > 40
                           ? `×${eta}`
                           : ''}
@@ -314,8 +314,8 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
                 </g>
               );
             })}
-            <text x={PAD_L - 8} y={ROWS_Y + 14} textAnchor="end" {...axisText}>{narrow ? 'Pend.' : 'Pendiente'}</text>
-            <text x={PAD_L - 8} y={ROWS_Y + 38} textAnchor="end" {...axisText}>Terreno</text>
+            <text x={PAD_L - 8} y={ROWS_Y + 14} textAnchor="end" {...axisText}>Slope</text>
+            <text x={PAD_L - 8} y={ROWS_Y + 38} textAnchor="end" {...axisText}>Terrain</text>
           </>
         )}
       </svg>
@@ -326,15 +326,15 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
             <span className="font-semibold text-ink">
               {hover.leg}, km {fmt(hover.x / 1000, 2)}
             </span>
-            <span>Cota {fmt(hover.elev_m, 0)} m</span>
+            <span>Elevation {fmt(hover.elev_m, 0)} m</span>
             {hover.grade_deg !== null && (
               <span>
-                Pendiente {hover.grade_deg > 0 ? '+' : ''}
+                Slope {hover.grade_deg > 0 ? '+' : ''}
                 {fmt(hover.grade_deg, 1)}°
               </span>
             )}
-            {hover.power_w !== null && <span>Potencia {fmt(hover.power_w)} W</span>}
-            {hover.power_w !== null && <span>Velocidad {fmt(hover.speed_mps, 2)} m/s</span>}
+            {hover.power_w !== null && <span>Power {fmt(hover.power_w)} W</span>}
+            {hover.power_w !== null && <span>Speed {fmt(hover.speed_mps, 2)} m/s</span>}
             {hover.rssi_dbm !== null && <span>Radio {fmt(hover.rssi_dbm, 0)} dBm</span>}
             {Number.isFinite(hover.o2Pct) && <span>O₂ {fmt(hover.o2Pct, 1)} %</span>}
           </div>
@@ -342,22 +342,22 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
           <span className="text-ink-3">
             {fromPlan
               ? onSelect
-                ? 'Pasa el cursor por el perfil para leer cada punto del camino. Los hitos se pueden pulsar.'
-                : 'Pasa el cursor por el perfil para leer cada punto del camino.'
-              : 'Solo se dibujan los cuatro puntos de la ruta guardados en los datos de la misión.'}
+                ? 'Hover over the profile to read each point of the path. Waypoints are clickable.'
+                : 'Hover over the profile to read each point of the path.'
+              : 'Only the four route points stored in the mission data are drawn.'}
           </span>
         )}
       </div>
 
       {!compact && (
-        <Disclosure summary="Más detalle del recorrido">
+        <Disclosure summary="More route detail">
           {fromPlan ? (
             <div className="space-y-2">
               <svg
                 viewBox={`0 0 ${W} ${H2}`}
                 className="block w-full h-auto select-none"
                 role="img"
-                aria-label="Potencia metabólica, oxígeno y batería frente a la distancia, y enlace de radio en cada punto del camino"
+                aria-label="Metabolic power, oxygen and battery versus distance, and radio link at each point of the path"
                 onPointerMove={onMove}
                 onPointerLeave={() => setHover(null)}
               >
@@ -367,7 +367,7 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
 
                 {/* Potencia metabólica del planificador, con los límites de la misión */}
                 <text x={PAD_L} y={POWER.y - 10} fill={PALETTE.text2} fontSize={TEXT}>
-                  Potencia metabólica (W)
+                  Metabolic power (W)
                 </text>
                 <line x1={PAD_L} x2={W - PAD_R} y1={yP(0)} y2={yP(0)} stroke={PALETTE.border} />
                 {(['amber', 'red'] as const).map((k) => {
@@ -386,8 +386,8 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
                 {/* Consumibles frente a distancia */}
                 <text x={PAD_L} y={CONS.y - 10} fill={PALETTE.text2} fontSize={TEXT}>
                   {narrow
-                    ? `O₂ (continua) y batería (discontinua)`
-                    : `O₂ primario en marcha (línea continua) y batería a ${SUIT_SCENARIO.batteryDrawW} W (discontinua)`}
+                    ? `O₂ (solid) and battery (dashed)`
+                    : `Primary O₂ while walking (solid line) and battery at ${SUIT_SCENARIO.batteryDrawW} W (dashed)`}
                 </text>
                 {[100, 90, 80].map((pct) => (
                   <g key={pct}>
@@ -423,13 +423,13 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
                 {cursor(POWER.y, RADIO_Y + 16)}
               </svg>
               <p className="t-label text-ink-3">
-                Enlace con el traje en cada punto: verde si es bueno (por encima de {fmt(radio.amber)} dBm), ámbar si es débil
-                (hasta {fmt(radio.red)} dBm) y rojo si se corta (sombra de radio).
+                Link with the suit at each point: green if good (above {fmt(radio.amber)} dBm), amber if weak
+                (down to {fmt(radio.red)} dBm) and red if lost (radio shadow).
               </p>
             </div>
           ) : (
             <p className="t-label text-ink-3">
-              La potencia, los consumibles y la radio en cada punto los calcula el motor de cálculo, que ahora no responde.
+              Power, consumables and radio at each point come from the compute engine, which is not responding.
             </p>
           )}
         </Disclosure>

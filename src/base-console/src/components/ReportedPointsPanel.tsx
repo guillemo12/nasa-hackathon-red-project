@@ -22,7 +22,7 @@ const signed = (v: number | undefined, decimals: number) =>
 const legName = (l: PlannedLeg) => `${l.leg_id} (${nodeLabel(l.from)} → ${nodeLabel(l.to)})`;
 
 const listText = (parts: string[]) =>
-  parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+  parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 
 /** Una frase por tramo afectado. `null` si no hay puntos. */
 export function routeImpactLines(plan: RoutePlan | null): Array<{ level: 'amber' | 'red' | 'green' | 'none'; text: string }> | null {
@@ -35,20 +35,20 @@ export function routeImpactLines(plan: RoutePlan | null): Array<{ level: 'amber'
     if (d.status === 'inalcanzable') {
       out.push({
         level: 'red',
-        text: `${legName(leg)} es inalcanzable: ${d.reason ?? 'no hay camino'}. El motor no inventa una ruta: hay que borrar el punto o decidir otro destino.`,
+        text: `${legName(leg)} is unreachable: ${d.reason ?? 'no path'}. The engine does not invent a route: delete the point or choose another destination.`,
       });
     } else if (d.status === 'desviada') {
       const causes = listText(d.caused_by.map((c) => c.label));
       const dt = d.added_time_min ?? 0;
-      const timeText = Math.abs(dt) < 0.05 ? 'sin tiempo añadido' : `${signed(dt, 1)} min`;
+      const timeText = Math.abs(dt) < 0.05 ? 'no added time' : `${signed(dt, 1)} min`;
       out.push({
         level: 'amber',
-        text: `${legName(leg)} se desvía por ${causes || 'los peligros marcados'}: ${signed(d.added_length_m, 0)} m, ${timeText}, ${signed(d.added_o2_liters, 2)} L de O₂. Pasa a ${fmt(d.min_distance_to_hazard_m ?? null)} m del punto más cercano (ruta buscada en ${d.search}).`,
+        text: `${legName(leg)} detours around ${causes || 'the marked hazards'}: ${signed(d.added_length_m, 0)} m, ${timeText}, ${signed(d.added_o2_liters, 2)} L of O₂. Passes ${fmt(d.min_distance_to_hazard_m ?? null)} m from the nearest point (route searched in ${d.search}).`,
       });
     }
   }
   if (out.length === 0 && hazards.length > 0) {
-    out.push({ level: 'green', text: `Ningún tramo pasa a menos de ${fmt(plan.hazard_model?.caution_radius_m ?? null)} m de los peligros marcados: la ruta no cambia.` });
+    out.push({ level: 'green', text: `No leg passes within ${fmt(plan.hazard_model?.caution_radius_m ?? null)} m of the marked hazards: the route is unchanged.` });
   }
   return out;
 }
@@ -70,7 +70,7 @@ export const RouteImpact: React.FC<{ plan: RoutePlan | null; className?: string 
 
 /** Lista de puntos marcados con lo que el motor hace con cada uno. */
 export const PointList: React.FC<{ points: ReportedPoint[]; onRemove?: (id: number) => void; busy?: boolean }> = ({ points, onRemove, busy }) => {
-  if (points.length === 0) return <p className="text-sm text-ink-3">Sin puntos marcados.</p>;
+  if (points.length === 0) return <p className="text-sm text-ink-3">No marked points.</p>;
   return (
     <ul className="divide-y divide-line">
       {points.map((p) => (
@@ -79,14 +79,14 @@ export const PointList: React.FC<{ points: ReportedPoint[]; onRemove?: (id: numb
           <div className="min-w-0 flex-1 text-sm">
             <p className="text-ink">
               <span className="font-medium">{p.label}</span>
-              <span className="text-ink-3 num"> · {fmtCoords(p.lat, p.lon_e)}{p.t_min !== null ? ` · marcado en ${formatT(p.t_min)}` : ''}</span>
+              <span className="text-ink-3 num"> · {fmtCoords(p.lat, p.lon_e)}{p.t_min !== null ? ` · marked at ${formatT(p.t_min)}` : ''}</span>
             </p>
             <p className="text-ink-2">{p.effect}</p>
             {p.cell && (
               <p className="t-label text-ink-3 num">
-                Celda: pendiente {fmt(p.cell.slope_deg, 1)}°, SVF {fmt(p.cell.sky_view_factor, 2)}
-                {p.kind === 'REFUGIO' ? (p.cell.dtm_shelter ? ' (la malla del terreno lo da como abrigo)' : ' (la malla del terreno lo da a cielo abierto)') : ''}
-                {p.kind === 'ISRU' ? `, H₂O ${p.cell.isru_h2o_pct === null ? 'sin dato en la malla' : `${fmt(p.cell.isru_h2o_pct, 1)} % (valor de escenario, no medido)`}` : ''}
+                Cell: slope {fmt(p.cell.slope_deg, 1)}°, SVF {fmt(p.cell.sky_view_factor, 2)}
+                {p.kind === 'REFUGIO' ? (p.cell.dtm_shelter ? ' (the terrain grid marks it as sheltered)' : ' (the terrain grid marks it as open sky)') : ''}
+                {p.kind === 'ISRU' ? `, H₂O ${p.cell.isru_h2o_pct === null ? 'no data in the grid' : `${fmt(p.cell.isru_h2o_pct, 1)}% (scenario value, not measured)`}` : ''}
               </p>
             )}
           </div>
@@ -95,8 +95,8 @@ export const PointList: React.FC<{ points: ReportedPoint[]; onRemove?: (id: numb
               type="button"
               disabled={busy}
               onClick={() => onRemove(p.id)}
-              aria-label={`Borrar ${p.label}`}
-              title={`Borrar ${p.label}`}
+              aria-label={`Delete ${p.label}`}
+              title={`Delete ${p.label}`}
               className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer disabled:opacity-50"
             >
               <Trash2 className="w-4 h-4" aria-hidden />
@@ -121,8 +121,8 @@ export function redecisionDiffers(
   const sameTarget = data.dynamic_goal_switched && data.chosen_id === 'WP3' && Boolean(chosen?.reachable);
   const t = chosen?.escape?.time_min;
   if (sameTarget && t !== undefined && Math.abs(t - canonicalWp3Min) < 0.05) return null;
-  const canon = `La tarjeta de evacuación, la voz y la cronología siguen el escenario canónico: WP3 a ${fmt(canonicalWp3Min, 1)} min.`;
-  return { level: decisionLevel(data), text: `Con los puntos marcados, en ${formatT(data.decision_t_min)}: ${decisionSentence(data)} ${canon}` };
+  const canon = `The evacuation card, voice and timeline follow the canonical scenario: WP3 at ${fmt(canonicalWp3Min, 1)} min.`;
+  return { level: decisionLevel(data), text: `With the marked points, at ${formatT(data.decision_t_min)}: ${decisionSentence(data)} ${canon}` };
 }
 
 function decisionLevel(data: EmergencyDecision): 'amber' | 'red' {
@@ -134,15 +134,15 @@ function decisionLevel(data: EmergencyDecision): 'amber' | 'red' {
 function decisionSentence(data: EmergencyDecision): string {
   const chosen = data.candidates.find((c) => c.chosen);
   if (data.dynamic_goal_switched && chosen?.reachable && chosen.escape) {
-    return `el motor iría a ${chosen.label}, ${fmt(chosen.escape.time_min, 1)} min de escape${chosen.dtm_confirms_shelter ? '' : ' (la malla lo da a cielo abierto: es el último recurso)'}.`;
+    return `the engine would go to ${chosen.label}, ${fmt(chosen.escape.time_min, 1)} min escape${chosen.dtm_confirms_shelter ? '' : ' (the grid marks it as open sky: last resort)'}.`;
   }
   const noShelter = !data.candidates.some((c) => c.reachable);
-  const base = data.base ? `${fmt(data.base.time_min, 1)} min de retorno` : 'sin ruta de retorno';
+  const base = data.base ? `${fmt(data.base.time_min, 1)} min return` : 'no return route';
   if (noShelter && !data.base_feasible) {
-    return `no queda ningún refugio alcanzable y la Base no es viable (${base} frente a ${fmt(data.t_vital_min, 1)} min de margen vital). Hay que borrar o revisar los peligros marcados.`;
+    return `no reachable shelter is left and Base is not viable (${base} versus ${fmt(data.t_vital_min, 1)} min of life-support margin). Delete or review the marked hazards.`;
   }
-  if (noShelter) return `no queda ningún refugio alcanzable; el motor volvería a la Base (${base}).`;
-  return `el motor volvería a la Base (${base}).`;
+  if (noShelter) return `no reachable shelter is left; the engine would return to Base (${base}).`;
+  return `the engine would return to Base (${base}).`;
 }
 
 /** Redecisión de emergencia (T+105) del motor con los puntos marcados. */
@@ -165,18 +165,18 @@ export function useEmergency(version: number, enabled: boolean): EmergencyDecisi
 }
 
 export const EmergencyRedecision: React.FC<{ data: EmergencyDecision | null; canonicalWp3Min: number }> = ({ data, canonicalWp3Min }) => {
-  if (!data) return <p className="text-sm text-ink-3">Calculando la redecisión…</p>;
-  if (data.error) return <Notice level="red">El motor no ha podido rehacer la decisión: {data.error}</Notice>;
+  if (!data) return <p className="text-sm text-ink-3">Computing the re-decision…</p>;
+  if (data.error) return <Notice level="red">The engine could not redo the decision: {data.error}</Notice>;
   const level = decisionLevel(data);
   return (
     <div className="space-y-3 text-sm">
       {level === 'red' ? (
         <Notice level="red" role="alert">
-          En {formatT(data.decision_t_min)}, desde WP2: {decisionSentence(data)}
+          At {formatT(data.decision_t_min)}, from WP2: {decisionSentence(data)}
         </Notice>
       ) : (
         <p className="text-ink">
-          En {formatT(data.decision_t_min)}, desde WP2: {decisionSentence(data)} En el escenario canónico, WP3 a {fmt(canonicalWp3Min, 1)} min.
+          At {formatT(data.decision_t_min)}, from WP2: {decisionSentence(data)} In the canonical scenario, WP3 at {fmt(canonicalWp3Min, 1)} min.
         </p>
       )}
       <ul className="divide-y divide-line">
@@ -187,15 +187,15 @@ export const EmergencyRedecision: React.FC<{ data: EmergencyDecision | null; can
                 <span>
                   {c.chosen ? '● ' : ''}
                   {c.label}
-                  {c.reported ? ' · marcado' : ''}
+                  {c.reported ? ' · marked' : ''}
                 </span>
               }
               value={
                 c.reachable && c.escape
-                  ? `${fmt(c.escape.time_min, 1)} min · ${fmt(c.escape.length_m)} m · SVF ${fmt(c.cell_svf, 2)}${c.dtm_confirms_shelter ? '' : ' (sin confirmar)'}`
+                  ? `${fmt(c.escape.time_min, 1)} min · ${fmt(c.escape.length_m)} m · SVF ${fmt(c.cell_svf, 2)}${c.dtm_confirms_shelter ? '' : ' (unconfirmed)'}`
                   : c.on_grid
-                    ? 'Inalcanzable'
-                    : 'Fuera de la malla'
+                    ? 'Unreachable'
+                    : 'Outside the grid'
               }
               level={c.reachable ? (c.dtm_confirms_shelter ? 'green' : 'amber') : 'red'}
             />
@@ -212,6 +212,6 @@ export const ClearPointsButton: React.FC<{ count: number; onClear: () => void; b
   count > 0 ? (
     <Button size="sm" variant="quiet" onClick={onClear} disabled={busy}>
       <Trash2 className="w-4 h-4" aria-hidden />
-      Borrar puntos ({count})
+      Clear points ({count})
     </Button>
   ) : null;

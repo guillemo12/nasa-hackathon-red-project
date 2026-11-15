@@ -208,7 +208,7 @@ function evaluateGuardrail(inp: GuardrailInputs): GuardrailFrame {
     state,
     state_code: STATE_CODES[state],
     primary_cause: cause,
-    engine: 'réplica local de las reglas (API Rust no disponible)',
+    engine: 'local replica of the rules (Rust API unavailable)',
     t_vital_min: Number.isFinite(tVital) ? Number(tVital.toFixed(2)) : null,
     target_eta_min: state === 'SHELTER_HOLD' ? 0 : state === 'EVAC_SHELTER' ? v.wp3_time_min : v.base_time_min,
     nlos_autonomous: h4,
@@ -323,7 +323,7 @@ export function sampleEva07Local(tTarget: number): Eva07Sample {
           state: 'PRE_EVA',
           state_code: 'PRE_EVA',
           primary_cause: 'PRE_EVA',
-          engine: 'sin evaluar: astronauta en la Base (fase de consola)',
+          engine: 'not evaluated: astronaut at Base (console phase)',
         }
       : evaluateGuardrail({
           threats: phase.active_threats,
@@ -367,36 +367,36 @@ export function sampleEva07Local(tTarget: number): Eva07Sample {
   };
 }
 
-/** Texto en español de la causa prioritaria que emite el guardrail. */
+/** Display text for the priority cause emitted by the guardrail. */
 export function causeLabel(sample: Eva07Sample): string {
   const spe = sample.active_threats.includes('spe');
   switch (sample.guardrail.primary_cause) {
     case 'SPE_RADIATION_CRITICAL':
       // El motor agrupa radiación y O₂ en la misma prioridad; sin SPE activo, es el consumo.
-      return spe ? 'Radiación SPE crítica' : 'Consumo de O₂ en rojo';
+      return spe ? 'Critical SPE radiation' : 'O₂ consumption in red';
     case 'SPE_RADIATION_ELEVATED':
-      return spe ? 'Radiación SPE elevada' : 'Consumo de O₂ elevado';
+      return spe ? 'Elevated SPE radiation' : 'Elevated O₂ consumption';
     case 'REGOLITH_SLOPE_TERRAIN_TRAP':
-      return 'Trampa de regolito en pendiente';
+      return 'Regolith trap on slope';
     case 'REGOLITH_SLOPE_WARNING':
-      return 'Pendiente o regolito en aviso';
+      return 'Slope or regolith warning';
     case 'DUST_STORM_HIGH_WIND':
-      return 'Frente de polvo y viento';
+      return 'Dust front and wind';
     case 'DUST_WIND_ELEVATED':
-      return 'Polvo o viento elevados';
+      return 'Elevated dust or wind';
     case 'NLOS_RADIO_LOSS':
     case 'NLOS_OFFLINE':
-      return 'Sombra de radio: modo autónomo';
+      return 'Radio shadow: autonomous mode';
     case 'DYNAMIC_GOAL_SWITCH_EVAC':
-      return 'Cambio de destino al refugio';
+      return 'Goal switched to shelter';
     case 'CAUTION_MARGIN_AMBER':
-      return 'Una variable en ámbar';
+      return 'One variable in amber';
     case 'SHELTER_HOLD_REACHED':
-      return 'Refugio alcanzado';
+      return 'Shelter reached';
     case 'PRE_EVA':
-      return 'Fase de consola (pre-EVA)';
+      return 'Console phase (pre-EVA)';
     default:
-      return 'Todas las variables en verde';
+      return 'All variables green';
   }
 }
 

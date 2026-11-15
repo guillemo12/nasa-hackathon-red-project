@@ -28,7 +28,7 @@ export function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: numbe
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO'];
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 export function compassPoint(deg: number): string {
   return COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
 }
@@ -111,27 +111,27 @@ export function hillshadeDataUrl(t: TerrainGrid): string {
 }
 
 const NUM_WORDS = [
-  'cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez',
-  'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte',
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
 ];
 /** Número en palabras para la voz (0–20; el resto, en cifras). */
 export function numberWord(n: number): string {
   return NUM_WORDS[n] ?? String(n);
 }
-/** Minutos dichos en voz alta, con su concordancia: «un minuto», «nueve minutos». */
+/** Minutes spoken aloud: "one minute", "nine minutes". */
 export function minutesWords(n: number): string {
   const m = Math.max(1, Math.round(n));
-  return m === 1 ? 'un minuto' : `${numberWord(m)} minutos`;
+  return m === 1 ? 'one minute' : `${numberWord(m)} minutes`;
 }
-/** Rumbo dicho dígito a dígito, como en fraseología aeronáutica: 344 → «tres cuatro cuatro». */
+/** Bearing spoken digit by digit, as in aviation phraseology: 344 -> "three four four". */
 export function bearingWords(deg: number): string {
   return String(Math.round(deg)).padStart(3, '0').split('').map((d) => NUM_WORDS[Number(d)]).join(' ');
 }
 
-/** Número con formato español y signo menos tipográfico (−), igual que en «T−45». */
+/** Number in English format (decimal point, thousands comma) with a typographic minus (−), as in "T−45". */
 export function fmt(value: number | null | undefined, decimals = 0): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return new Intl.NumberFormat('es-ES', {
+  return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })
@@ -139,7 +139,7 @@ export function fmt(value: number | null | undefined, decimals = 0): string {
     .replace('-', '−');
 }
 
-/** Coordenadas siempre igual en toda la consola: «9,8965° S, 283,3892° E». */
+/** Coordinates, same format across the console: "9.8965° S, 283.3892° E". */
 export function fmtCoords(lat: number, lonE: number, decimals = 4): string {
   return `${fmt(Math.abs(lat), decimals)}° ${lat < 0 ? 'S' : 'N'}, ${fmt(lonE, decimals)}° E`;
 }

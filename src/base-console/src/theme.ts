@@ -50,13 +50,13 @@ export interface StateStyle {
 }
 
 export const STATE_STYLE: Record<GuardrailState, StateStyle> = {
-  PRE_EVA: { code: 'PRE-EVA', label: 'Antes de la salida', short: 'Antes de la salida', color: PALETTE.muted, pulse: false },
+  PRE_EVA: { code: 'PRE-EVA', label: 'Before departure', short: 'Before departure', color: PALETTE.muted, pulse: false },
   // El color es el del sendero del visor (cian de los documentos de UX); la cabecera pinta su punto en verde.
   NOMINAL: { code: '0x01', label: 'Nominal', short: 'Nominal', color: AR_PATH.nominal, pulse: false },
-  CAUTION: { code: '0x02', label: 'Precaución', short: 'Precaución', color: AR_PATH.caution, pulse: false },
-  MULTI_HAZARD: { code: '0x03', label: 'Varias amenazas a la vez', short: 'Varias amenazas', color: AR_PATH.caution, pulse: true },
-  EVAC_SHELTER: { code: '0x04', label: 'Evacuar al refugio WP3', short: 'Evacuación', color: AR_PATH.evac, pulse: true },
-  SHELTER_HOLD: { code: '0x05', label: 'A salvo en el refugio WP3', short: 'En el refugio', color: AR_PATH.shelter, pulse: false },
+  CAUTION: { code: '0x02', label: 'Caution', short: 'Caution', color: AR_PATH.caution, pulse: false },
+  MULTI_HAZARD: { code: '0x03', label: 'Multiple hazards at once', short: 'Multiple hazards', color: AR_PATH.caution, pulse: true },
+  EVAC_SHELTER: { code: '0x04', label: 'Evacuate to shelter WP3', short: 'Evacuation', color: AR_PATH.evac, pulse: true },
+  SHELTER_HOLD: { code: '0x05', label: 'Safe in shelter WP3', short: 'In shelter', color: AR_PATH.shelter, pulse: false },
 };
 
 export const LEVEL_COLOR: Record<Level, string> = {

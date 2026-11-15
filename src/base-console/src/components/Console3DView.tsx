@@ -89,10 +89,13 @@ const CENTROID = {
 };
 const WB = PLANNER_WALKBACK;
 const NLOS_WINDOW = EVA07_DOC.threat_windows_t_min.sombra_radio;
-const RADIO_TEXT: Record<string, string> = { VERDE: 'bueno', AMBAR: 'débil', ROJO: 'cortado' };
+const RADIO_TEXT: Record<string, string> = { VERDE: 'good', AMBAR: 'weak', ROJO: 'lost' };
 
+/** Rótulos en inglés de los nodos del mapa (los nombres cortos de los datos están en español). */
+const NODE_MAP_NAME: Record<string, string> = { BASE: 'Base', WP1: 'WP1 Sulfates', WP2: 'WP2 Slope', WP3: 'WP3 Shelter' };
 /** Los nombres cortos llegan en mayúsculas de los datos de la misión; aquí se escriben como nombres. */
-const nodeName = (shortLabel: string) =>
+const nodeName = (id: string, shortLabel: string) =>
+  NODE_MAP_NAME[id] ??
   shortLabel
     .split(' ')
     .map((w) => (/\d/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()))
@@ -111,7 +114,7 @@ function nearestNode(lat: number, lonE: number): { label: string; node: (typeof 
       best = w;
     }
   }
-  return { label: d <= NODE_SNAP_M ? best.id : d < 400 ? `A ${fmt(d)} m de ${nodeLabel(best.id)}` : 'Cuenca suroeste', node: best, distM: d };
+  return { label: d <= NODE_SNAP_M ? best.id : d < 400 ? `${fmt(d)} m from ${nodeLabel(best.id)}` : 'Southwest basin', node: best, distM: d };
 }
 
 export const Console3DView: React.FC<Console3DViewProps> = ({
@@ -529,7 +532,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const addPin = useCallback(
     (lat: number, lonE: number, label?: string) => {
       if (pinsRef.current.length >= MAX_PINS) {
-        onNotify('Ya hay 3 lupas fijadas', 'Quita una con su aspa o con la tecla Escape antes de fijar otra.', 'amber');
+        onNotify('3 lenses already pinned', 'Remove one with its X or the Escape key before pinning another.', 'amber');
         return;
       }
       const id = ++pinSeq.current;
@@ -713,23 +716,23 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const layerItems: Array<{ key: keyof TwinLayers; title: string; sub: string }> = [
     {
       key: 'ortho',
-      title: 'Imagen orbital (MRO CTX)',
+      title: 'Orbital image (MRO CTX)',
       sub:
         ortho.status === 'ok' && ortho.meta
-          ? `${fmt(ortho.meta.resolution_m)} m por píxel, en grises (banda roja de CTX); alineada con el relieve`
+          ? `${fmt(ortho.meta.resolution_m)} m per pixel, greyscale (CTX red band); aligned with the relief`
           : ortho.status === 'loading'
-            ? 'Cargando la imagen…'
-            : 'No disponible: el terreno se pinta por cota',
+            ? 'Loading the image…'
+            : 'Not available: terrain colored by elevation',
     },
-    { key: 'mola', title: 'Relieve y pendientes (DTM CTX)', sub: `DTM de 20 m a escala real; pendientes de más de ${limits('slope_deg').red}° y refugios` },
-    { key: 'crism', title: 'Sulfatos (CRISM)', sub: `Zonas con ${fmt(ISRU_H2O_MIN_PCT)} % de agua o más` },
-    { key: 'themis', title: 'Inercia térmica (THEMIS)', sub: `Trampas de polvo, menos de ${limits('thermal_inertia_tiu').red} TIU` },
-    { key: 'h3o', title: 'Malla hexagonal', sub: hexCells.length ? 'Refugios, trampas de polvo y zonas con agua, celda a celda' : 'No disponible sin el relieve' },
+    { key: 'mola', title: 'Relief and slopes (CTX DTM)', sub: `20 m DTM at true scale; slopes over ${limits('slope_deg').red}° and shelters` },
+    { key: 'crism', title: 'Sulfates (CRISM)', sub: `Areas with ${fmt(ISRU_H2O_MIN_PCT)} % water or more` },
+    { key: 'themis', title: 'Thermal inertia (THEMIS)', sub: `Dust traps, under ${limits('thermal_inertia_tiu').red} TIU` },
+    { key: 'h3o', title: 'Hex grid', sub: hexCells.length ? 'Shelters, dust traps and water areas, cell by cell' : 'Not available without the relief' },
   ];
 
   const handleSync = async () => {
     if (!certified) {
-      onNotify('Aún no se puede enviar la ruta', 'Simula la ruta antes de enviarla al traje.', 'amber');
+      onNotify('The route cannot be sent yet', 'Simulate the route before sending it to the suit.', 'amber');
       return;
     }
     if (sync.status === 'ok' || syncBusy) return;
@@ -754,7 +757,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
 
   return (
     <div className="relative flex flex-col gap-3 xl:block xl:h-full xl:min-h-[540px]">
-      <h1 className="sr-only">Cartografía de la cuenca suroeste de Melas Chasma</h1>
+      <h1 className="sr-only">Map of the southwest basin of Melas Chasma</h1>
 
       {/* Mapa 3D */}
       <div
@@ -766,7 +769,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           ref={mountRef}
           tabIndex={0}
           role="application"
-          aria-label="Mapa 3D del terreno con lupa. Flechas: mover la lupa. Espacio: cambiar entre tres capas y una capa. Intro: fijar una lupa para comparar. F: congelar o soltar. Más y menos: tamaño. A, D, W, S: girar el mapa. Re Pág y Av Pág: zoom. 1 a 4: lupas en Base, WP1, WP2 y WP3."
+          aria-label="3D terrain map with lens. Arrows: move the lens. Space: switch between three layers and one layer. Enter: pin a lens to compare. F: freeze or release. Plus and minus: size. A, D, W, S: rotate the map. Page Up and Page Down: zoom. 1 to 4: lenses at Base, WP1, WP2 and WP3."
           onPointerDown={(e) => (downAt.current = { x: e.clientX, y: e.clientY })}
           onPointerMove={handlePointerMove}
           onClick={handleClick}
@@ -779,7 +782,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           {CANONICAL_WAYPOINTS.map((node) => (
             <div key={node.id} ref={setAnchor(`node-${node.id}`, node.lat, node.lonE, 12, 'label', true)} className="absolute top-0 left-0" style={{ willChange: 'transform' }}>
               <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium`}>
-                {node.id === 'BASE' ? nodeLabel(node.id) : nodeName(node.shortLabel)} · {fmt(node.elevMolaM)} m
+                {node.id === 'BASE' ? nodeLabel(node.id) : nodeName(node.id, node.shortLabel)} · {fmt(node.elevMolaM)} m
               </div>
             </div>
           ))}
@@ -803,14 +806,14 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
                   <div ref={setAnchor('chaos-base', mb.lat, mb.lonE, 40)} className="absolute top-0 left-0">
                     <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium flex items-center gap-1.5`}>
                       <StatusDot level="red" />
-                      Solo con la Base: {fmt(run.report.survival_rate_base_only_pct, 1)} % a salvo
+                      Base only: {fmt(run.report.survival_rate_base_only_pct, 1)} % safe
                     </div>
                   </div>
                 )}
                 {ms && (
                   <div ref={setAnchor('chaos-wp3', ms.lat, ms.lonE, 40)} className="absolute top-0 left-0">
                     <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium`}>
-                      Con el refugio WP3: {fmt(run.report.survival_rate_with_shelter_pct, 1)} % a salvo
+                      With WP3 shelter: {fmt(run.report.survival_rate_with_shelter_pct, 1)} % safe
                     </div>
                   </div>
                 )}
@@ -876,7 +879,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
 
         {(loading || !terrain) && (
           <Notice level={loading ? 'none' : 'amber'} role="status" className="absolute top-16 left-1/2 -translate-x-1/2 w-[min(26rem,calc(100%-1.5rem))]">
-            {loading ? 'Cargando el terreno…' : 'Mapa sin relieve: solo se ven los puntos de la ruta, y la lupa solo lee sobre ellos.'}
+            {loading ? 'Loading the terrain…' : 'Map without relief: only the route points are shown, and the lens only reads on them.'}
           </Notice>
         )}
 
@@ -890,54 +893,54 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           {detailOpen && (
             <div id="mapa-detalle" className="pointer-events-auto max-w-full rounded-md border border-line bg-panel px-3 py-2 t-label text-ink-2 tabular-nums space-y-0.5">
               <div>
-                {mainGeo ? `Cursor en ${fmtCoords(mainGeo.lat, mainGeo.lonE)}` : 'Cursor fuera del terreno'}
+                {mainGeo ? `Cursor at ${fmtCoords(mainGeo.lat, mainGeo.lonE)}` : 'Cursor off the terrain'}
               </div>
               <div className="sm:hidden">
-                Azimut {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevación {fmt(cam.elevationDeg)}°
+                Azimuth {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevation {fmt(cam.elevationDeg)}°
               </div>
-              <div>Sistema de referencia IAU_2015:49900</div>
+              <div>Reference system IAU_2015:49900</div>
               <div>
                 {terrain
-                  ? `Terreno: DTM estéreo CTX de ${fmt(terrain.spacing_m)} m, ${VERTICAL_EXAGGERATION === 1 ? 'relieve a escala real (sin exagerar)' : `relieve exagerado ×${fmt(VERTICAL_EXAGGERATION, 1)}`}`
-                  : 'Sin terreno: plano con los puntos de los datos de la misión'}
+                  ? `Terrain: ${fmt(terrain.spacing_m)} m CTX stereo DTM, ${VERTICAL_EXAGGERATION === 1 ? 'relief at true scale (no exaggeration)' : `relief exaggerated ×${fmt(VERTICAL_EXAGGERATION, 1)}`}`
+                  : 'No terrain: flat plane with the mission data points'}
               </div>
               {ortho.meta && (
                 <div>
-                  Imagen: {ortho.meta.instrument}, {ortho.meta.mission}, {fmt(ortho.meta.resolution_m)} m por píxel ({ortho.meta.source_id}).
-                  Co-registrada con el DTM: {fmt(ortho.meta.coregistration.shift_east_m)} m al este y {fmt(ortho.meta.coregistration.shift_north_m)} m al norte. {ortho.meta.credit}.
+                  Image: {ortho.meta.instrument}, {ortho.meta.mission}, {fmt(ortho.meta.resolution_m)} m per pixel ({ortho.meta.source_id}).
+                  Co-registered with the DTM: {fmt(ortho.meta.coregistration.shift_east_m)} m east and {fmt(ortho.meta.coregistration.shift_north_m)} m north. {ortho.meta.credit}.
                 </div>
               )}
             </div>
           )}
           <p data-imagery-credit className="max-w-full rounded-md bg-ground/85 px-2 py-0.5 t-label text-ink-2 text-center">
             {layers.ortho && ortho.status === 'ok' && ortho.meta
-              ? `Imagen MRO CTX ${fmt(ortho.meta.resolution_m)} m/píxel (NASA/JPL/MSSS, mosaico USGS) · relieve DTM CTX ${fmt(terrain?.spacing_m ?? 20)} m a escala real`
+              ? `MRO CTX ${fmt(ortho.meta.resolution_m)} m/pixel image (NASA/JPL/MSSS, USGS mosaic) · CTX DTM ${fmt(terrain?.spacing_m ?? 20)} m relief at true scale`
               : layers.ortho && ortho.status === 'loading' && terrain
-                ? 'Cargando la imagen orbital…'
+                ? 'Loading the orbital image…'
                 : terrain
-                  ? `Sin imagen orbital: color por cota · relieve DTM CTX ${fmt(terrain.spacing_m)} m a escala real`
-                  : 'Sin terreno'}
+                  ? `No orbital image: colored by elevation · CTX DTM ${fmt(terrain.spacing_m)} m relief at true scale`
+                  : 'No terrain'}
           </p>
           <div
             className="pointer-events-auto max-w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-md border border-line bg-ground/90 pl-3 pr-1 py-1 t-label text-ink-2 tabular-nums"
-            title={`Sistema de referencia IAU_2015:49900. ${terrain ? 'Terreno a 20 m.' : 'Sin terreno cargado.'}`}
+            title={`Reference system IAU_2015:49900. ${terrain ? 'Terrain at 20 m.' : 'No terrain loaded.'}`}
           >
             <span className="flex items-end gap-1.5">
               <span className="inline-block h-1.5 border-x border-b border-ink-2" style={{ width: scaleBarM / cam.mPerPx }} aria-hidden />
               {scaleBarM >= 1000 ? `${fmt(scaleBarM / 1000)} km` : `${fmt(scaleBarM)} m`}
             </span>
             <span className="hidden sm:inline">
-              Azimut {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevación {fmt(cam.elevationDeg)}°
+              Azimuth {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevation {fmt(cam.elevationDeg)}°
             </span>
             <span className="flex items-center">
-              <button type="button" aria-label="Acercar" title="Acercar" onClick={() => sceneRef.current?.zoom(0.85)} className={iconBtn}><Plus className="w-4 h-4" aria-hidden /></button>
-              <button type="button" aria-label="Alejar" title="Alejar" onClick={() => sceneRef.current?.zoom(1.18)} className={iconBtn}><Minus className="w-4 h-4" aria-hidden /></button>
-              <button type="button" aria-label="Volver a la vista inicial" title="Volver a la vista inicial" onClick={() => sceneRef.current?.resetView()} className={iconBtn}><RotateCcw className="w-4 h-4" aria-hidden /></button>
+              <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => sceneRef.current?.zoom(0.85)} className={iconBtn}><Plus className="w-4 h-4" aria-hidden /></button>
+              <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => sceneRef.current?.zoom(1.18)} className={iconBtn}><Minus className="w-4 h-4" aria-hidden /></button>
+              <button type="button" aria-label="Reset view" title="Reset view" onClick={() => sceneRef.current?.resetView()} className={iconBtn}><RotateCcw className="w-4 h-4" aria-hidden /></button>
               <Button variant="quiet" size="sm" aria-pressed={profileOpen} onClick={() => setProfileOpen((o) => !o)} className={profileOpen ? 'bg-raised !text-ink' : ''}>
-                Perfil de ruta
+                Route profile
               </Button>
               <Button variant="quiet" size="sm" aria-expanded={detailOpen} aria-controls="mapa-detalle" onClick={() => setDetailOpen((o) => !o)} className={detailOpen ? 'bg-raised !text-ink' : ''}>
-                Más detalle
+                More detail
               </Button>
             </span>
           </div>
@@ -948,7 +951,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
         {/* Columna izquierda: capas, lupa y triángulo */}
         <div ref={sideCol} className={`${column} xl:left-2`}>
           {pins.length > 0 && (
-            <Panel title="Lupas fijadas" defaultOpen aside={<span className="whitespace-nowrap">{pins.length} de {MAX_PINS}</span>}>
+            <Panel title="Pinned lenses" defaultOpen aside={<span className="whitespace-nowrap">{pins.length} of {MAX_PINS}</span>}>
               <ul>
                 {pins.map((pin) => (
                   <LensReadout
@@ -965,19 +968,19 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
             </Panel>
           )}
           {reported.points.length > 0 && (
-            <Panel title="Puntos de la astronauta" defaultOpen aside={<span className="whitespace-nowrap">{reported.points.length}</span>} bodyClassName="space-y-3">
-              {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3">El motor está replanificando la ruta…</p>}
+            <Panel title="Astronaut points" defaultOpen aside={<span className="whitespace-nowrap">{reported.points.length}</span>} bodyClassName="space-y-3">
+              {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3">The engine is replanning the route…</p>}
               <PointList points={reported.points} />
-              <Disclosure summary="Redecisión de emergencia con estos puntos">
+              <Disclosure summary="Emergency re-decision with these points">
                 <EmergencyRedecision data={emergency} canonicalWp3Min={WB.wp3.time_min} />
               </Disclosure>
-              <p className="t-label text-ink-3">Se marcan y se borran en Telemetría EVA.</p>
+              <p className="t-label text-ink-3">They are marked and cleared in EVA Telemetry.</p>
             </Panel>
           )}
           <Panel
-            title="Capas"
+            title="Layers"
             defaultOpen
-            aside={<span className={`whitespace-nowrap ${!loading && !terrain ? 'text-warn' : ''}`}>{loading ? 'Cargando…' : terrain ? 'Terreno a 20 m' : 'Sin terreno'}</span>}
+            aside={<span className={`whitespace-nowrap ${!loading && !terrain ? 'text-warn' : ''}`}>{loading ? 'Loading…' : terrain ? 'Terrain at 20 m' : 'No terrain'}</span>}
           >
             <div className="-mx-1.5">
               {layerItems.map((item) => (
@@ -997,25 +1000,25 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
             </div>
 
             <div className="mt-4 space-y-2">
-              <div className="t-label text-ink-3">La lupa enseña</div>
+              <div className="t-label text-ink-3">The lens shows</div>
               <Segmented
-                label="Modo de la lupa"
+                label="Lens mode"
                 className="w-full [&>button]:flex-1"
                 options={[
-                  { value: 'tri', label: 'Tres capas' },
-                  { value: 'one', label: 'Una capa' },
+                  { value: 'tri', label: 'Three layers' },
+                  { value: 'one', label: 'One layer' },
                 ]}
                 value={mode === 'tri-sector' ? 'tri' : 'one'}
                 onChange={(next) => setMode(next === 'tri' ? 'tri-sector' : mode === 'tri-sector' ? lastXray : mode)}
               />
               {mode !== 'tri-sector' && (
                 <Segmented
-                  label="Capa que enseña la lupa"
+                  label="Layer shown by the lens"
                   className="w-full [&>button]:flex-1"
                   options={[
-                    { value: 'xray-crism', label: 'Agua' },
-                    { value: 'xray-themis', label: 'Inercia' },
-                    { value: 'xray-mola', label: 'Relieve' },
+                    { value: 'xray-crism', label: 'Water' },
+                    { value: 'xray-themis', label: 'Inertia' },
+                    { value: 'xray-mola', label: 'Relief' },
                   ]}
                   value={mode}
                   onChange={(id) => {
@@ -1026,46 +1029,46 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               )}
             </div>
 
-            <Disclosure summary="Ajustes de la lupa" className="mt-3">
+            <Disclosure summary="Lens settings" className="mt-3">
               <div className="space-y-3">
                 <label className="block t-label text-ink-3">
                   <span className="flex justify-between">
-                    <span>Tamaño</span>
+                    <span>Size</span>
                     <span className="text-ink tabular-nums">{lensSize} px</span>
                   </span>
                   <input type="range" className="timeline w-full" min={LENS_MIN_PX} max={LENS_MAX_PX} step={10} value={lensSize} onChange={(e) => setLensSize(Number(e.target.value))} />
                 </label>
                 <label className="block t-label text-ink-3">
                   <span className="flex justify-between">
-                    <span>Opacidad</span>
+                    <span>Opacity</span>
                     <span className="text-ink tabular-nums">{Math.round(lensOpacity * 100)} %</span>
                   </span>
                   <input type="range" className="timeline w-full" min={30} max={100} step={5} value={Math.round(lensOpacity * 100)} onChange={(e) => setLensOpacity(Number(e.target.value) / 100)} />
                 </label>
                 <Button aria-pressed={frozen} onClick={toggleFreeze} className={`w-full ${frozen ? '!border-accent' : ''}`}>
-                  {frozen ? 'Lupa congelada: soltarla' : 'Lupa libre: congelarla'}
+                  {frozen ? 'Lens frozen: release it' : 'Lens free: freeze it'}
                 </Button>
                 <p className="t-label text-ink-3">
-                  Con el cursor sobre el mapa: un clic o la tecla F congelan y sueltan la lupa. Con doble clic o Intro se
-                  fija una lupa para comparar ({pins.length} de {MAX_PINS}) y Escape la quita. La rueda cambia el tamaño y
-                  Espacio, el modo. Arrastra para girar el mapa; Ctrl y la rueda hacen zoom.
+                  With the cursor on the map: a click or the F key freezes and releases the lens. Double-click or Enter
+                  pins a lens to compare ({pins.length} of {MAX_PINS}) and Escape removes it. The wheel changes the size and
+                  Space, the mode. Drag to rotate the map; Ctrl and the wheel zoom.
                 </p>
               </div>
             </Disclosure>
           </Panel>
 
-          <Panel title="Triángulo de supervivencia" defaultOpen={false} aside={<span className="whitespace-nowrap">{fmt(PERIMETER_M / 1000, 2)} km</span>}>
-            <Row label="Perímetro" value={`${fmt(PERIMETER_M / 1000, 2)} km`} />
+          <Panel title="Survival triangle" defaultOpen={false} aside={<span className="whitespace-nowrap">{fmt(PERIMETER_M / 1000, 2)} km</span>}>
+            <Row label="Perimeter" value={`${fmt(PERIMETER_M / 1000, 2)} km`} />
             {PLANNED_LEGS.map((leg) => (
-              <Row key={leg.id} label={`${leg.id}, de ${nodeLabel(leg.from)} a ${nodeLabel(leg.to)}`} value={`${fmt(leg.distanceM / 1000, 2)} km`} />
+              <Row key={leg.id} label={`${leg.id}, ${nodeLabel(leg.from)} to ${nodeLabel(leg.to)}`} value={`${fmt(leg.distanceM / 1000, 2)} km`} />
             ))}
             <Row
-              label="Pendiente máxima"
-              value={`${fmt(maxSlopeLeg.maxSlopeDeg, 1)}° en ${maxSlopeLeg.id}`}
+              label="Maximum slope"
+              value={`${fmt(maxSlopeLeg.maxSlopeDeg, 1)}° on ${maxSlopeLeg.id}`}
               level={classify('slope_deg', maxSlopeLeg.maxSlopeDeg)}
             />
-            <div className="mt-3 t-label text-ink-3">Fijar una lupa en</div>
-            <div role="group" aria-label="Fijar una lupa en un punto de la ruta" className="mt-1.5 grid grid-cols-4 gap-1.5">
+            <div className="mt-3 t-label text-ink-3">Pin a lens at</div>
+            <div role="group" aria-label="Pin a lens at a route point" className="mt-1.5 grid grid-cols-4 gap-1.5">
               {CANONICAL_WAYPOINTS.map((wp) => {
                 const on = pins.some((p) => p.label === wp.id);
                 return (
@@ -1094,7 +1097,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
                 });
               }}
             >
-              Comparar WP1, WP2 y WP3
+              Compare WP1, WP2 and WP3
             </Button>
           </Panel>
         </div>
@@ -1107,22 +1110,22 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
             aside={
               <span className={`flex items-center gap-1.5 whitespace-nowrap ${tint(stateLevel) ?? ''}`}>
                 {stateLevel !== 'none' && <StatusDot level={stateLevel} pulse={state.pulse} />}
-                {isPreEva ? 'En la Base' : state.short}
+                {isPreEva ? 'At Base' : state.short}
               </span>
             }
           >
             <p className="t-label text-ink-3 tabular-nums">
-              Traje {UX_LABELS.suit} · {formatT(sample.t_min)}
+              Suit {UX_LABELS.suit} · {formatT(sample.t_min)}
             </p>
             <div className="mt-3 grid grid-cols-2 gap-4">
               <Stat
-                label="Oxígeno (O₂)"
+                label="Oxygen (O₂)"
                 value={fmt(v.o2_remaining_pct, 1)}
                 unit="%"
-                hint={`${fmt(v.o2_remaining_g)} g útiles`}
+                hint={`${fmt(v.o2_remaining_g)} g usable`}
                 level={classify('o2_primary_pct', v.o2_remaining_pct)}
               />
-              <Stat label="Al refugio WP3" value={fmt(v.wp3_time_min, 1)} unit="min" hint={`${fmt(v.wp3_route_m)} m de ruta`} />
+              <Stat label="To WP3 shelter" value={fmt(v.wp3_time_min, 1)} unit="min" hint={`${fmt(v.wp3_route_m)} m of route`} />
             </div>
 
             <Button
@@ -1133,115 +1136,115 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               className="w-full mt-4 aria-disabled:bg-raised aria-disabled:text-ink-3 aria-disabled:font-normal aria-disabled:hover:brightness-100 aria-disabled:cursor-not-allowed"
             >
               {sync.status === 'syncing' ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : sync.status === 'ok' ? <Check className="w-4 h-4" aria-hidden /> : null}
-              {sync.status === 'syncing' ? 'Enviando la ruta…' : sync.status === 'ok' ? 'Ruta enviada al traje' : 'Enviar ruta al traje'}
+              {sync.status === 'syncing' ? 'Sending the route…' : sync.status === 'ok' ? 'Route sent to the suit' : 'Send route to the suit'}
             </Button>
             {!certified && (
               <p id="envio-ayuda" className="mt-2 t-label text-ink-3">
-                Simula la ruta antes de enviarla al traje.
+                Simulate the route before sending it to the suit.
               </p>
             )}
             {sync.status === 'error' && (
               <p role="alert" className="mt-2 t-label text-danger-ink">
-                El último envío ha fallado porque el motor de cálculo no responde. Vuelve a intentarlo.
+                The last send failed because the computation engine is not responding. Try again.
               </p>
             )}
             {sync.status === 'ok' && sync.checksum && (
-              <Disclosure summary="Detalle del envío" className="mt-1">
-                <Row label="Huella SHA-256" value={<span className="num">{sync.checksum.slice(0, 24)}…</span>} />
-                <Row label="Celdas enviadas" value={fmt(sync.cells)} />
-                {sync.simulated && <p className="t-label text-ink-3 pt-1">El enlace con el traje está simulado en esta demostración.</p>}
+              <Disclosure summary="Send details" className="mt-1">
+                <Row label="SHA-256 fingerprint" value={<span className="num">{sync.checksum.slice(0, 24)}…</span>} />
+                <Row label="Cells sent" value={fmt(sync.cells)} />
+                {sync.simulated && <p className="t-label text-ink-3 pt-1">The link to the suit is simulated in this demo.</p>}
               </Disclosure>
             )}
 
-            <Disclosure summary="Más datos del traje" className="mt-1">
-              <Row label="Presión del traje (valor supuesto)" value={`${fmt(SUIT_SCENARIO.pressureKpa, 1)} kPa`} />
-              <Row label="Potencia metabólica" value={`${fmt(v.metabolic_power_w)} W`} level={classify('metabolic_rate_w', v.metabolic_power_w)} />
-              <Row label="Dosis por tormenta solar (SPE)" value={`${fmt(v.dose_spe_msv, 2)} mSv`} level={classify('eva_spe_dose_budget_msv', v.dose_spe_msv)} />
-              {wp3?.svfScenario != null && <Row label="Cielo visible en el refugio (SVF)" value={fmt(wp3.svfScenario, 2)} />}
+            <Disclosure summary="More suit data" className="mt-1">
+              <Row label="Suit pressure (assumed value)" value={`${fmt(SUIT_SCENARIO.pressureKpa, 1)} kPa`} />
+              <Row label="Metabolic power" value={`${fmt(v.metabolic_power_w)} W`} level={classify('metabolic_rate_w', v.metabolic_power_w)} />
+              <Row label="Solar storm dose (SPE)" value={`${fmt(v.dose_spe_msv, 2)} mSv`} level={classify('eva_spe_dose_budget_msv', v.dose_spe_msv)} />
+              {wp3?.svfScenario != null && <Row label="Sky view at the shelter (SVF)" value={fmt(wp3.svfScenario, 2)} />}
             </Disclosure>
           </Panel>
 
           <Panel
-            title="Meteorología y enlace"
+            title="Weather and link"
             defaultOpen={false}
-            aside={radioText ? <span className={`whitespace-nowrap ${tint(radioLevel) ?? ''}`}>Enlace {radioText}</span> : undefined}
+            aside={radioText ? <span className={`whitespace-nowrap ${tint(radioLevel) ?? ''}`}>Link {radioText}</span> : undefined}
           >
-            <Row label="Polvo en el aire (τ)" value={fmt(v.dust_tau, 1)} level={classify('dust_tau_880nm', v.dust_tau)} />
+            <Row label="Airborne dust (τ)" value={fmt(v.dust_tau, 1)} level={classify('dust_tau_880nm', v.dust_tau)} />
             {/* Solo hay dato de viento mientras pasa el frente de polvo. */}
-            {dusty && <Row label="Viento" value={`${fmt(WB.wind_m_s)} m/s, frente de polvo`} level={classify('wind_speed_m_s', WB.wind_m_s)} />}
-            <Row label="Presión en la Base" value={`${fmt(P1_CONSTANTS.surface_pressure_pa_site)} Pa`} />
+            {dusty && <Row label="Wind" value={`${fmt(WB.wind_m_s)} m/s, dust front`} level={classify('wind_speed_m_s', WB.wind_m_s)} />}
+            <Row label="Pressure at Base" value={`${fmt(P1_CONSTANTS.surface_pressure_pa_site)} Pa`} />
             <Row
-              label="Enlace con el traje"
+              label="Suit link"
               value={`${radioText ? `${radioText} · ` : ''}${fmt(v.radio_rssi_dbm, 0)} dBm`}
               level={radioLevel}
             />
-            <Row label="Sombra de radio prevista" value={`de ${formatT(NLOS_WINDOW[0])} a ${formatT(NLOS_WINDOW[1])}`} />
+            <Row label="Expected radio shadow" value={`from ${formatT(NLOS_WINDOW[0])} to ${formatT(NLOS_WINDOW[1])}`} />
           </Panel>
 
           <Panel
-            title="Margen de retorno"
+            title="Return margin"
             defaultOpen={false}
-            aside={<span className={`whitespace-nowrap ${tint(destLevel) ?? ''}`}>{isPreEva ? 'Antes de la salida' : `Destino: ${nodeLabel(v.viable_destination)}`}</span>}
+            aside={<span className={`whitespace-nowrap ${tint(destLevel) ?? ''}`}>{isPreEva ? 'Before departure' : `Destination: ${nodeLabel(v.viable_destination)}`}</span>}
           >
-            <p className="t-label text-ink-3 tabular-nums pb-1">Situación en {formatT(sample.t_min)}.</p>
+            <p className="t-label text-ink-3 tabular-nums pb-1">Status at {formatT(sample.t_min)}.</p>
             <Row
-              label={v.base_viable ? 'Volver a la Base' : 'Volver a la Base (no viable)'}
+              label={v.base_viable ? 'Return to Base' : 'Return to Base (not viable)'}
               value={`${fmt(v.base_time_min, 1)} min · ${fmt(v.base_route_m)} m`}
               level={v.base_viable ? undefined : 'red'}
             />
-            <Row label="Ir al refugio WP3" value={`${fmt(v.wp3_time_min, 1)} min · ${fmt(v.wp3_route_m)} m`} />
-            {!isPreEva && <Row label="Destino viable" value={nodeLabel(v.viable_destination)} level={destLevel} />}
+            <Row label="Go to WP3 shelter" value={`${fmt(v.wp3_time_min, 1)} min · ${fmt(v.wp3_route_m)} m`} />
+            {!isPreEva && <Row label="Viable destination" value={nodeLabel(v.viable_destination)} level={destLevel} />}
             <p className="t-label text-ink-3 tabular-nums pt-2">
-              En {formatT(WB.decision_t_min)}, volver a la Base cuesta {fmt(WB.base.time_min, 1)} min y {fmt(WB.base.dose_spe_msv, 2)} mSv;
-              ir al refugio WP3, {fmt(WB.wp3.time_min, 1)} min y {fmt(WB.wp3.dose_spe_msv, 2)} mSv.
+              At {formatT(WB.decision_t_min)}, returning to Base costs {fmt(WB.base.time_min, 1)} min and {fmt(WB.base.dose_spe_msv, 2)} mSv;
+              going to the WP3 shelter, {fmt(WB.wp3.time_min, 1)} min and {fmt(WB.wp3.dose_spe_msv, 2)} mSv.
             </p>
           </Panel>
 
           <Panel
-            title="Simulación de imprevistos"
+            title="Hazard simulation"
             defaultOpen={false}
             aside={
               chaos.status === 'running' ? (
-                <span className="whitespace-nowrap">Simulando…</span>
+                <span className="whitespace-nowrap">Simulating…</span>
               ) : run && cert ? (
-                <span className={`whitespace-nowrap ${cert.authorized ? '' : 'text-danger-ink'}`}>{cert.authorized ? 'Autorizada' : 'No autorizada'}</span>
+                <span className={`whitespace-nowrap ${cert.authorized ? '' : 'text-danger-ink'}`}>{cert.authorized ? 'Authorized' : 'Not authorized'}</span>
               ) : (
-                <span className="whitespace-nowrap">Sin simular</span>
+                <span className="whitespace-nowrap">Not simulated</span>
               )
             }
           >
             <Button disabled={chaos.status === 'running' || !apiOnline} onClick={() => void onRunChaos(CHAOS_VISIBLE_TRIALS)} className="w-full">
               {chaos.status === 'running' && <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden />}
-              {chaos.status === 'running' ? 'Simulando…' : `Simular ${CHAOS_VISIBLE_TRIALS} salidas`}
+              {chaos.status === 'running' ? 'Simulating…' : `Simulate ${CHAOS_VISIBLE_TRIALS} EVAs`}
             </Button>
             <div role="status" className="mt-3">
               {run && cert ? (
                 <>
                   <p className={`text-sm font-medium ${cert.authorized ? 'text-ink' : 'text-danger-ink'}`}>
-                    {cert.authorized ? 'Ruta autorizada' : 'Ruta no autorizada'} con {fmt(run.report.trials)} de {fmt(run.trials)} salidas simuladas.
+                    {cert.authorized ? 'Route authorized' : 'Route not authorized'} with {fmt(run.report.trials)} of {fmt(run.trials)} simulated EVAs.
                   </p>
                   <div className="mt-1">
-                    <Row label="A salvo con el refugio WP3" value={`${fmt(run.report.survival_rate_with_shelter_pct, 1)} %`} />
-                    <Row label="A salvo solo con la Base" value={`${fmt(run.report.survival_rate_base_only_pct, 1)} %`} />
-                    <Row label="Semilla" value={run.seed} />
+                    <Row label="Safe with WP3 shelter" value={`${fmt(run.report.survival_rate_with_shelter_pct, 1)} %`} />
+                    <Row label="Safe with Base only" value={`${fmt(run.report.survival_rate_base_only_pct, 1)} %`} />
+                    <Row label="Seed" value={run.seed} />
                   </div>
                 </>
               ) : (
                 <p className="t-label text-ink-3">
                   {!apiOnline
-                    ? 'Sin el motor de cálculo no se puede simular.'
+                    ? 'Simulation needs the computation engine.'
                     : chaos.status === 'error'
-                      ? 'La última simulación ha fallado. Vuelve a intentarlo.'
-                      : 'Aún sin simular: hasta entonces la ruta no se puede enviar al traje.'}
+                      ? 'The last simulation failed. Try again.'
+                      : 'Not simulated yet: until then the route cannot be sent to the suit.'}
                 </p>
               )}
             </div>
-            {run && <p className="mt-2 t-label text-ink-3">Las trazas ámbar del mapa son ilustrativas: la simulación da recuentos, no recorridos.</p>}
-            <Disclosure summary="Simulación de referencia" className="mt-1">
-              <Row label="Salidas simuladas" value={fmt(CHAOS_REFERENCE.trials)} />
-              <Row label="Semilla" value={CHAOS_REFERENCE.seed} />
-              <Row label="A salvo con el refugio WP3" value={`${fmt(CHAOS_REFERENCE.report.survival_rate_with_shelter_pct, 2)} %`} />
-              <Row label="A salvo solo con la Base" value={`${fmt(CHAOS_REFERENCE.report.survival_rate_base_only_pct, 2)} %`} />
+            {run && <p className="mt-2 t-label text-ink-3">The amber traces on the map are illustrative: the simulation gives counts, not paths.</p>}
+            <Disclosure summary="Reference simulation" className="mt-1">
+              <Row label="Simulated EVAs" value={fmt(CHAOS_REFERENCE.trials)} />
+              <Row label="Seed" value={CHAOS_REFERENCE.seed} />
+              <Row label="Safe with WP3 shelter" value={`${fmt(CHAOS_REFERENCE.report.survival_rate_with_shelter_pct, 2)} %`} />
+              <Row label="Safe with Base only" value={`${fmt(CHAOS_REFERENCE.report.survival_rate_base_only_pct, 2)} %`} />
             </Disclosure>
           </Panel>
         </div>

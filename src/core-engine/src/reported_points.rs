@@ -69,8 +69,8 @@ impl ReportedKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Hazard => "Peligro",
-            Self::Shelter => "Refugio",
+            Self::Hazard => "Hazard",
+            Self::Shelter => "Shelter",
             Self::Isru => "ISRU",
         }
     }
@@ -192,7 +192,7 @@ fn unreachable_reason(
     nominal: Option<&PathResult>,
 ) -> Unreachable {
     let hazards: Vec<&ReportedPoint> = points.iter().filter(|p| p.kind == ReportedKind::Hazard).collect();
-    for (end, what) in [(to_h3, "el destino"), (from_h3, "el origen")] {
+    for (end, what) in [(to_h3, "the destination"), (from_h3, "the origin")] {
         if let Some(p) = hazards
             .iter()
             .filter(|p| cell_distance_m(end, p) < REPORTED_HAZARD_EXCLUSION_RADIUS_M)
@@ -200,7 +200,7 @@ fn unreachable_reason(
         {
             return Unreachable {
                 reason: format!(
-                    "{what} queda dentro de la zona de exclusión de {} ({:.0} m del punto; radio {:.0} m)",
+                    "{what} lies inside the exclusion zone of {} ({:.0} m from the point; radius {:.0} m)",
                     p.label,
                     cell_distance_m(end, p),
                     REPORTED_HAZARD_EXCLUSION_RADIUS_M
@@ -210,14 +210,14 @@ fn unreachable_reason(
         }
     }
     if hazards.is_empty() {
-        return Unreachable { reason: "no hay camino transitable en la malla".into(), blocking_points: vec![] };
+        return Unreachable { reason: "no traversable path on the grid".into(), blocking_points: vec![] };
     }
     let blocking: Vec<u32> = nominal
         .map(|n| hazards_on_route(n, points).into_iter().map(|(id, _)| id).collect())
         .unwrap_or_default();
     Unreachable {
-        reason: "las zonas de exclusión de los peligros marcados, sumadas a las pendientes intransitables, \
-                 cortan todos los caminos de la malla"
+        reason: "the exclusion zones of the reported hazards, together with untraversable slopes, \
+                 cut every path on the grid"
             .into(),
         blocking_points: blocking,
     }
@@ -304,7 +304,7 @@ pub fn t105_decision_with_reports(
     };
     let mut candidates = vec![ShelterCandidate {
         id: "WP3".into(),
-        label: "WP3 (refugio previsto)".into(),
+        label: "WP3 (planned shelter)".into(),
         reported: false,
         lat_deg: wp3.lat_deg,
         lon_e_deg: wp3.lon_deg,

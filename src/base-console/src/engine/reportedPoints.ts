@@ -67,4 +67,4 @@ export async function clearPoints(): Promise<void> {
   await syncPoints();
 }
 
-export const POINT_KIND_NAME: Record<ReportedKind, string> = { ISRU: 'ISRU', PELIGRO: 'peligro', REFUGIO: 'refugio' };
+export const POINT_KIND_NAME: Record<ReportedKind, string> = { ISRU: 'ISRU', PELIGRO: 'hazard', REFUGIO: 'shelter' };

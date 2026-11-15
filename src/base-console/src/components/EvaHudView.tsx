@@ -65,68 +65,101 @@ const MAP_CENTER = {
 // por minutos enteros, así que T+114 todavía es evacuación.
 const PRESET_IDS = ['llegada_wp1', 'nlos', 'regolito', 'spe_polvo', 'refugio_activo', 'telemetria_final'];
 const PRESET_LABEL: Record<string, string> = {
-  llegada_wp1: 'Muestreo en WP1',
-  nlos: 'Corte de radio',
-  regolito: 'Rampa de 22°',
-  spe_polvo: 'Multiemergencia',
-  refugio_activo: 'Refugio WP3',
-  telemetria_final: 'Final',
+  llegada_wp1: 'Sampling at WP1',
+  nlos: 'Radio loss',
+  regolito: '22° ramp',
+  spe_polvo: 'Multi-emergency',
+  refugio_activo: 'Shelter WP3',
+  telemetria_final: 'End',
 };
 const TIMELINE_PRESETS = PRESET_IDS.map((id) => EVA07_EVENTS.find((e) => e.id === id))
   .filter((e): e is (typeof EVA07_EVENTS)[number] => Boolean(e))
   .map((e) => ({ t: e.t_min, label: `${formatT(e.t_min)} ${PRESET_LABEL[e.id]}`, evac: e.id === 'spe_polvo' }));
 
 const LAYER_OPTIONS: Array<{ value: MarsTrekLayerId; label: string }> = [
-  { value: 'viking', label: 'Imagen' },
-  { value: 'mola', label: 'Relieve' },
+  { value: 'viking', label: 'Imagery' },
+  { value: 'mola', label: 'Relief' },
 ];
 const POINT_KIND_OPTIONS: Array<{ value: ReportedKind; label: string }> = [
   { value: 'ISRU', label: 'ISRU' },
-  { value: 'PELIGRO', label: 'Peligro' },
-  { value: 'REFUGIO', label: 'Refugio' },
+  { value: 'PELIGRO', label: 'Hazard' },
+  { value: 'REFUGIO', label: 'Shelter' },
 ];
 /** Dial mecánico de tres posiciones de la unidad de muñeca. */
 type DialValue = '1' | '2' | '3';
 const DIAL_OPTIONS: Array<{ value: DialValue; label: string; hint: string }> = [
-  { value: '1', label: 'Sendero', hint: 'Solo el sendero y el objetivo' },
-  { value: '2', label: 'Nodos', hint: 'Nodos con su distancia' },
-  { value: '3', label: 'Escape', hint: 'Vector de escape a WP3' },
+  { value: '1', label: 'Trail', hint: 'Trail and target only' },
+  { value: '2', label: 'Nodes', hint: 'Nodes with distance' },
+  { value: '3', label: 'Escape', hint: 'Escape vector to WP3' },
 ];
 /** Nombres de los nodos dentro de una frase («Hacia…», «En…»). */
-const GOAL_NAME: Record<string, string> = { BASE: 'la Base', WP1: 'WP1 (sulfatos)', WP2: 'WP2 (talud)', WP3: 'el refugio WP3' };
+const GOAL_NAME: Record<string, string> = { BASE: 'Base', WP1: 'WP1 (sulfates)', WP2: 'WP2 (slope)', WP3: 'shelter WP3' };
 /** De dónde sale la potencia metabólica de cada fase, en palabras. */
 const POWER_SOURCE_TEXT: Record<string, string> = {
-  sin_consumo: 'Sin consumo',
-  escenario: 'Valor supuesto',
-  modelo: 'Según el modelo',
-  modelo_tramo_real: 'Según el modelo del tramo',
-  modelo_ritmo_regulado: 'Modelo con ritmo regulado',
-  planificador_dstar: 'Según el planificador',
+  sin_consumo: 'No consumption',
+  escenario: 'Assumed value',
+  modelo: 'From the model',
+  modelo_tramo_real: 'From the leg model',
+  modelo_ritmo_regulado: 'Model with paced walking',
+  planificador_dstar: 'From the planner',
 };
 /** Los textos de la cronología llegan con términos internos: aquí se dicen en claro. */
+/** English display text for the Spanish titles and phase texts of `eva07_events.json` (the data file stays as generated). */
+const DATA_TEXT_EN: Record<string, string> = {
+  'Inspección Spyglass de 3 sectores en la consola': 'Three-layer terrain inspection in the console',
+  'Chaos Mode: 10.000 simulaciones (semilla 42), 96,02 % de misión segura con cambio al refugio frente a 23,84 % solo con la Base':
+    'Contingency simulation: 10,000 runs (seed 42), 96.02% safe missions with shelter switching vs 23.84% base-only',
+  'Sincronización de la sub-malla h3o al traje por Zenoh': 'Route uploaded to the suit',
+  'Salida de la Base con rumbo 152°': 'Departure from the Base, heading 152°',
+  'Llegada a WP1 (ISRU)': 'Arrival at WP1 (ISRU)',
+  'Objetivo ISRU cumplido; salida hacia WP2': 'ISRU goal met; departure to WP2',
+  'Amenaza 1: sombra de radio (NLOS) tras el espolón': 'Hazard 1: radio shadow behind the spur',
+  'Amenaza 2: regolito suelto en rampa de 22° (pico 3,2 L/min)': 'Hazard 2: loose regolith on a 22° ramp (3.2 L/min peak)',
+  'Amenazas 3 y 4: alerta SPE y frente de polvo; 4 amenazas activas': 'Hazards 3 and 4: SPE alert and dust front; 4 hazards active',
+  'Dynamic Goal Switching: destino Base → WP3': 'Goal switch: destination Base → WP3',
+  'Llegada a WP3 tras 9,45 min de huida (T+114,45)': 'Arrival at WP3 after a 9.45 min escape (T+114.45)',
+  'Bajo la cornisa: primer minuto completo de refugio activo': 'Under the overhang: first full minute in shelter',
+  'Pico del SPE: 8 mSv/h fuera, 1,2 mSv/h en la alcoba': 'SPE peak: 8 mSv/h outside, 1.2 mSv/h in the alcove',
+  'Remite el pico del SPE': 'The SPE peak eases',
+  'Enlace Zenoh restablecido por el repetidor del rover': 'Link restored by the rover relay',
+  'Telemetría final recibida en la consola': 'Final telemetry received in the console',
+  'Consola de Base: Spyglass, Chaos Mode y sincronización': 'Base console: terrain inspection, contingency simulation and route upload',
+  'Marcha Base→WP1 (0,89 m/s, pendiente media +3,0°, η 1,3)': 'Walk Base→WP1 (0.89 m/s, mean slope +3.0°, η 1.3)',
+  'Muestreo ISRU en WP1': 'ISRU sampling at WP1',
+  'Aproximación al lóbulo de WP2 con línea de vista': 'Approach to the WP2 lobe with line of sight',
+  'Aproximación a WP2 sin línea de vista': 'Approach to WP2 without line of sight',
+  'Rampa local de 22° en 110 TIU: pico de 3,2 L/min': 'Local 22° ramp on 110 TIU: 3.2 L/min peak',
+  'Progresión lenta por la rampa, ritmo regulado a 585 W': 'Slow progress up the ramp, pace held at 585 W',
+  'Alerta SPE y polvo; Dynamic Goal Switching; huida D* Lite a WP3 (9,45 min, 595 m de camino, 1,05 m/s de media, rumbo 344°) y entrada bajo la cornisa':
+    'SPE and dust alert; goal switch; escape computed by the planner to WP3 (9.45 min, 595 m path, 1.05 m/s mean, heading 344°) and entry under the overhang',
+  'Refugio activo, subida hacia el pico SPE': 'Sheltering while the SPE rises to its peak',
+  'Refugio activo durante el pico SPE': 'Sheltering through the SPE peak',
+  'Remite el pico; permanencia protegida': 'The peak eases; staying protected',
+  'Enlace Zenoh restablecido por repetidor; telemetría final': 'Link restored by relay; final telemetry',
+};
 const plain = (text: string) =>
-  text
+  (DATA_TEXT_EN[text] ?? text)
     .replace(/\s*\(NLOS\)/g, '')
-    .replace(/Inspección Spyglass de 3 sectores/g, 'Inspección del terreno en tres capas')
-    .replace(/Spyglass, Chaos Mode y sincronización/g, 'inspección del terreno, simulación de imprevistos y envío de la ruta')
-    .replace(/Chaos Mode/g, 'Simulación de imprevistos')
-    .replace(/sub-malla h3o al traje por Zenoh/g, 'ruta con el traje')
-    .replace(/Enlace Zenoh/g, 'Enlace')
-    .replace(/Dynamic Goal Switching/g, 'cambio de destino')
-    .replace(/huida D\* Lite/g, 'huida calculada por el planificador')
-    .replace(/API Rust/g, 'motor de cálculo')
+    .replace(/Inspección Spyglass de 3 sectores/g, 'Three-layer terrain inspection')
+    .replace(/Spyglass, Chaos Mode y sincronización/g, 'terrain inspection, contingency simulation and route upload')
+    .replace(/Chaos Mode/g, 'Contingency simulation')
+    .replace(/sub-malla h3o al traje por Zenoh/g, 'route to the suit')
+    .replace(/Enlace Zenoh/g, 'Link')
+    .replace(/Dynamic Goal Switching/g, 'goal switch')
+    .replace(/huida D\* Lite/g, 'escape computed by the planner')
+    .replace(/API Rust/g, 'compute engine')
     .replace(/\bBASE\b/g, 'Base');
-const LAYER_RESOLUTION: Record<MarsTrekLayerId, string> = { viking: '232 m por píxel', mola: '463 m por píxel' };
-const RADIO_TEXT: Record<string, string> = { VERDE: 'bueno', AMBAR: 'débil', ROJO: 'cortado' };
+const LAYER_RESOLUTION: Record<MarsTrekLayerId, string> = { viking: '232 m per pixel', mola: '463 m per pixel' };
+const RADIO_TEXT: Record<string, string> = { VERDE: 'good', AMBAR: 'weak', ROJO: 'lost' };
 const ICON_BUTTON =
   'shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer';
 
 const listText = (parts: string[]) =>
-  parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+  parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 /** Duración en palabras: sin decimales por encima de una hora y sin cifras huecas por encima de tres. */
 const durationText = (min: number): string =>
-  min >= 180 ? `más de ${fmt(Math.floor(min / 60))} horas` : min > 60 ? `${fmt(min)} min` : `${fmt(min, 1)} min`;
+  min >= 180 ? `over ${fmt(Math.floor(min / 60))} hours` : min > 60 ? `${fmt(min)} min` : `${fmt(min, 1)} min`;
 /** Filtro común de las teselas de fondo: grises con un tinte ocre suave, sea cual sea la capa. */
 const TILE_FILTER: Record<MarsTrekLayerId, string> = {
   viking: 'grayscale(1) sepia(0.3) brightness(0.8) contrast(0.95)',
@@ -210,13 +243,13 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     setPointBusy(true);
     try {
       const pt = await addPoint(kind, lat, lonE, tMin);
-      onNotify(`${pt.label} guardado en el motor`, pt.effect, kind === 'PELIGRO' ? 'amber' : kind === 'REFUGIO' ? 'green' : 'cyan');
+      onNotify(`${pt.label} saved to the engine`, pt.effect, kind === 'PELIGRO' ? 'amber' : kind === 'REFUGIO' ? 'green' : 'cyan');
     } catch (err) {
       onNotify(
-        'No se ha guardado el punto',
+        'Point not saved',
         err instanceof ApiError && err.status === 400
-          ? 'Cae fuera de la zona con malla del terreno: el motor no puede usarlo.'
-          : 'El motor de cálculo no responde: el punto no ha llegado a la Base ni al planificador.',
+          ? 'Outside the terrain grid area: the engine cannot use it.'
+          : 'The compute engine is not responding: the point has not reached Base or the planner.',
         'red'
       );
     } finally {
@@ -229,7 +262,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       if (id === undefined) await clearPoints();
       else await removePoint(id);
     } catch {
-      onNotify('No se ha borrado', 'El motor de cálculo no responde.', 'red');
+      onNotify('Not deleted', 'The compute engine is not responding.', 'red');
     } finally {
       setPointBusy(false);
     }
@@ -308,7 +341,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const escapeBearing = ESCAPE_LEG?.bearingDeg ?? bearing ?? 0;
   // La orden es única: lleva el tiempo de la decisión (el del planificador en T+105), no el que
   // queda en cada minuto. El vector de la tarjeta sí se actualiza.
-  const voiceLine = `Alerta combinada. Base inviable por radiación. Siga chevrones al refugio, rumbo ${bearingWords(escapeBearing)}. ${capitalize(minutesWords(PLANNER_WALKBACK.wp3.time_min))}.`;
+  const voiceLine = `Combined alert. Base not viable due to radiation. Follow chevrons to shelter, heading ${bearingWords(escapeBearing)}. ${capitalize(minutesWords(PLANNER_WALKBACK.wp3.time_min))}.`;
 
   const speak = () => {
     if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
@@ -318,7 +351,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     const synth = window.speechSynthesis;
     synth.cancel();
     const utter = new SpeechSynthesisUtterance(voiceLine);
-    utter.lang = 'es-ES';
+    utter.lang = 'en-US';
     utter.rate = 1.1;
     let started = 0;
     let begun = false;
@@ -567,19 +600,19 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const objectiveText = (() => {
     if (isPreEva) {
       const l1 = PLANNED_LEGS[0];
-      return `En la Base, antes de salir. Primer objetivo, ${nodeLabel(l1.to)}: rumbo ${fmt(l1.bearingDeg)}° ${compassPoint(l1.bearingDeg)} · ${fmt(l1.distanceM)} m`;
+      return `At Base, before departure. First target, ${nodeLabel(l1.to)}: heading ${fmt(l1.bearingDeg)}° ${compassPoint(l1.bearingDeg)} · ${fmt(l1.distanceM)} m`;
     }
-    if (isHold) return 'En el refugio WP3, a cubierto bajo la cornisa';
-    if (sample.position.at_goal) return `En ${goalName}`;
-    return `Hacia ${goalName}${bearing !== null ? `: rumbo ${fmt(bearing)}° ${compassPoint(bearing)}` : ''} · ${fmt(sample.position.target_distance_m)} m`;
+    if (isHold) return 'At shelter WP3, under cover beneath the overhang';
+    if (sample.position.at_goal) return `At ${goalName}`;
+    return `To ${goalName}${bearing !== null ? `: heading ${fmt(bearing)}° ${compassPoint(bearing)}` : ''} · ${fmt(sample.position.target_distance_m)} m`;
   })();
 
   const isruOpen = sample.phase_id === 'A2_isru_wp1';
   const threatParts = sample.active_threats.map((t) => {
-    if (t === 'spe') return `tormenta solar de hasta ${fmt(PLANNER_WALKBACK.spe_rate_envelope_msv_h)} mSv/h`;
-    if (t === 'polvo') return `polvo (τ ${fmt(v.dust_tau, 1)})`;
-    if (t === 'sombra_radio') return 'sombra de radio';
-    if (t === 'trampa_regolito') return `talud de ${SUIT_SCENARIO.wp2RampDeg}° sobre regolito suelto (${fmt(waypoint('WP2')?.tiu)} TIU)`;
+    if (t === 'spe') return `solar storm up to ${fmt(PLANNER_WALKBACK.spe_rate_envelope_msv_h)} mSv/h`;
+    if (t === 'polvo') return `dust (τ ${fmt(v.dust_tau, 1)})`;
+    if (t === 'sombra_radio') return 'radio shadow';
+    if (t === 'trampa_regolito') return `${SUIT_SCENARIO.wp2RampDeg}° slope on loose regolith (${fmt(waypoint('WP2')?.tiu)} TIU)`;
     return t.replace(/_/g, ' ');
   });
   const threatText = capitalize(listText(threatParts));
@@ -592,11 +625,11 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const dialHint = DIAL_OPTIONS.find((o) => o.value === String(dialPos))?.hint;
   const speBudgetLeft = Math.max(0, PLANNER_WALKBACK.dose_budget_msv - v.dose_spe_msv);
   const marginText = (m: number | null) =>
-    m === null ? '' : m >= 180 ? ', con margen de sobra' : m >= 0 ? `, con ${durationText(m)} de margen` : `; faltan ${durationText(Math.abs(m))}`;
+    m === null ? '' : m >= 180 ? ', with ample margin' : m >= 0 ? `, with ${durationText(m)} margin` : `; short by ${durationText(Math.abs(m))}`;
 
   const confirmEvac = () => {
     setEvacConfirmed(true);
-    onNotify('Evacuación al refugio WP3 confirmada', `Rumbo ${fmt(escapeBearing)}°, ${fmt(v.wp3_route_m)} m, ${fmt(v.wp3_time_min, 1)} min.`, 'red');
+    onNotify('Evacuation to shelter WP3 confirmed', `Heading ${fmt(escapeBearing)}°, ${fmt(v.wp3_route_m)} m, ${fmt(v.wp3_time_min, 1)} min.`, 'red');
   };
 
   // La única tarjeta que puede gritar: la orden, el vector, el porqué y una confirmación.
@@ -609,7 +642,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       <div role="alert" className="space-y-3">
       <div className="flex items-center gap-2 t-label font-medium text-danger-ink">
         <StatusDot level="red" pulse={!evacConfirmed} />
-        Evacuación
+        Evacuation
       </div>
       <div>
         <h2 className="text-[28px] leading-9 font-semibold text-ink">{style.label}</h2>
@@ -618,7 +651,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
         </p>
       </div>
       <p className="text-sm text-ink-2">
-        {threatText}. La Base no es viable: el refugio es la única salida.
+        {threatText}. Base is not viable: the shelter is the only way out.
       </p>
       </div>
       <div className="space-y-3 md:self-center">
@@ -628,38 +661,38 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
         onClick={confirmEvac}
         className="w-full"
       >
-        {evacConfirmed ? 'Evacuación confirmada' : 'Confirmar evacuación'}
+        {evacConfirmed ? 'Evacuation confirmed' : 'Confirm evacuation'}
       </Button>
       <div className="flex items-start gap-2 border-t border-line pt-3">
         <button
           type="button"
           onClick={speak}
-          aria-label="Oír la orden"
-          title="Oír la orden"
+          aria-label="Play the order"
+          title="Play the order"
           className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer"
         >
           <Volume2 className={`w-4 h-4 ${voiceStatus === 'playing' ? 'hud-pulse' : ''}`} aria-hidden />
         </button>
         <div className="min-w-0">
-          <p className="text-sm text-ink">«{voiceLine}»</p>
+          <p className="text-sm text-ink">“{voiceLine}”</p>
           <p className="t-label text-ink-3 mt-1" data-voice-status={voiceStatus} data-voice-seconds={voiceSeconds ?? ''}>
-            {voiceStatus === 'unavailable' && 'Este navegador no tiene voz: la orden queda solo escrita.'}
-            {voiceStatus === 'blocked' && 'El navegador no ha dejado sonar la voz: pulsa el altavoz para oír la orden.'}
-            {voiceStatus === 'playing' && 'Sonando en el casco…'}
-            {voiceStatus === 'done' && voiceSeconds !== null && `Orden dicha en ${fmt(voiceSeconds, 1)} s.`}
-            {voiceStatus === 'idle' && 'Preparando la voz…'}
+            {voiceStatus === 'unavailable' && 'This browser has no voice: the order is text only.'}
+            {voiceStatus === 'blocked' && 'The browser blocked the voice: press the speaker to play the order.'}
+            {voiceStatus === 'playing' && 'Playing in the helmet…'}
+            {voiceStatus === 'done' && voiceSeconds !== null && `Order spoken in ${fmt(voiceSeconds, 1)} s.`}
+            {voiceStatus === 'idle' && 'Preparing voice…'}
           </p>
         </div>
       </div>
-      <Disclosure summary="Más detalle">
+      <Disclosure summary="More detail">
         <Row
-          label={`Vuelta a la Base en ${formatT(T_DECISION_MIN)}`}
+          label={`Return to Base at ${formatT(T_DECISION_MIN)}`}
           level="red"
-          value={`${fmt(PLANNER_WALKBACK.base.time_min, 1)} min, ${fmt(PLANNER_WALKBACK.base.dose_spe_msv, 2)} mSv (límite ${fmt(PLANNER_WALKBACK.dose_budget_msv)})`}
+          value={`${fmt(PLANNER_WALKBACK.base.time_min, 1)} min, ${fmt(PLANNER_WALKBACK.base.dose_spe_msv, 2)} mSv (limit ${fmt(PLANNER_WALKBACK.dose_budget_msv)})`}
         />
-        <Row label="El refugio atenúa" value={`${SUIT_SCENARIO.shelterAttenuationPct} % de la radiación`} />
-        <Row label="Cielo visible en el refugio" value={fmt(WP3?.svfScenario, 2)} />
-        <Row label="Ritmo de marcha" value={`${fmt(PLANNER_WALKBACK.wp3.mean_speed_mps, 2)} m/s`} />
+        <Row label="Shelter attenuates" value={`${SUIT_SCENARIO.shelterAttenuationPct}% of radiation`} />
+        <Row label="Sky view at shelter" value={fmt(WP3?.svfScenario, 2)} />
+        <Row label="Walking pace" value={`${fmt(PLANNER_WALKBACK.wp3.mean_speed_mps, 2)} m/s`} />
         <p className="t-label text-ink-3 pt-1">{phaseDetail}</p>
       </Disclosure>
       </div>
@@ -680,16 +713,16 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       {/* Cronología, estado y margen de retorno: un solo bloque bajo, para que mande el mapa */}
       <Panel bodyClassName="space-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-sm font-semibold text-ink">Telemetría EVA</h1>
+          <h1 className="text-sm font-semibold text-ink">EVA telemetry</h1>
           <span
             className="hidden sm:inline t-value tabular-nums text-ink"
-            title={`Sol ${UX_LABELS.sol}, ${sample.lmst} hora local (${sample.met})`}
+            title={`Sol ${UX_LABELS.sol}, ${sample.lmst} local time (${sample.met})`}
           >
             {formatT(tMin)}
           </span>
           <div
             role="group"
-            aria-label={`Ir a un momento de la salida (${EVA07_EVENTS.length} hitos en total)`}
+            aria-label={`Jump to a moment of the EVA (${EVA07_EVENTS.length} milestones in total)`}
             className="flex flex-wrap items-center gap-1 sm:ml-auto"
           >
             {TIMELINE_PRESETS.map((p) => {
@@ -721,8 +754,8 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               step={1}
               value={Math.round(tMin)}
               onChange={(e) => onSelectTimeMin(Number(e.target.value))}
-              aria-label="Tiempo de misión en minutos desde la salida"
-              aria-valuetext={`${formatT(tMin)} minutos, ${sample.lmst} hora local`}
+              aria-label="Mission time in minutes since departure"
+              aria-valuetext={`${formatT(tMin)} minutes, ${sample.lmst} local time`}
             />
             <div className="relative h-4 t-label tabular-nums text-ink-3" aria-hidden>
               {[T_START_MIN, 0, 60, 105, T_END_MIN].map((t) => (
@@ -738,7 +771,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
           </div>
           <Button
             size="sm"
-            aria-label="Retroceder un minuto"
+            aria-label="Back one minute"
             disabled={Math.round(tMin) <= T_START_MIN}
             onClick={() => onSelectTimeMin(Math.max(T_START_MIN, Math.round(tMin) - 1))}
             className="justify-self-start tabular-nums sm:col-start-1 sm:row-start-1"
@@ -748,7 +781,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
           <span className="sm:hidden self-center text-center t-value tabular-nums text-ink">{formatT(tMin)}</span>
           <Button
             size="sm"
-            aria-label="Avanzar un minuto"
+            aria-label="Forward one minute"
             disabled={Math.round(tMin) >= T_END_MIN}
             onClick={() => onSelectTimeMin(Math.min(T_END_MIN, Math.round(tMin) + 1))}
             className="justify-self-end tabular-nums sm:col-start-3 sm:row-start-1"
@@ -775,13 +808,13 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
             </span>
           </span>
           <span>
-            <span className="text-ink-3">Dosis </span>
+            <span className="text-ink-3">Dose </span>
             <span className={`font-medium ${levelTextClass(doseLevel)}`}>
-              {fmt(v.dose_spe_msv, 2)} de {fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv
+              {fmt(v.dose_spe_msv, 2)} of {fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv
             </span>
           </span>
           <span>
-            <span className="text-ink-3">Enlace </span>
+            <span className="text-ink-3">Link </span>
             <span className={`font-medium ${levelTextClass(radioLevel)}`}>
               {radioText} ({fmt(v.radio_rssi_dbm, 0)} dBm)
             </span>
@@ -795,10 +828,10 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
         >
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-              <h2 id="margen-h" className="text-sm font-semibold text-ink">Margen de retorno</h2>
+              <h2 id="margen-h" className="text-sm font-semibold text-ink">Return margin</h2>
               {!isPreEva && !isHold && tVital !== null && (
                 <span className="t-label tabular-nums text-ink-2">
-                  Autonomía de {durationText(tVital)}. Limita {limiting === 'O₂' ? 'el O₂' : 'la radiación'}.
+                  Endurance {durationText(tVital)}. Limited by {limiting === 'O₂' ? 'O₂' : 'radiation'}.
                 </span>
               )}
             </div>
@@ -829,36 +862,36 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
           </div>
 
           <div className="min-w-0 space-y-1 text-sm tabular-nums lg:self-center">
-            {isPreEva && <p className="text-ink-2">La salida aún no ha empezado.</p>}
+            {isPreEva && <p className="text-ink-2">The EVA has not started yet.</p>}
 
             {isHold && (
               <p className="text-ink-2">
-                A cubierto en el refugio, sin desplazamiento pendiente. Quedan {fmt(speBudgetLeft, 2)} mSv de dosis
-                {tRad !== null && <>, que dan para {durationText(tRad)} más bajo la cornisa con una tormenta de {fmt(PLANNER_WALKBACK.spe_rate_envelope_msv_h)} mSv/h</>}
-                . Hay O₂ de sobra. La vuelta a la Base ({fmt(v.base_time_min, 1)} min){' '}
-                {v.base_viable ? 'es viable' : 'todavía no es viable'}.
+                Under cover in the shelter, no movement pending. {fmt(speBudgetLeft, 2)} mSv of dose left
+                {tRad !== null && <>, enough for {durationText(tRad)} more under the overhang in a {fmt(PLANNER_WALKBACK.spe_rate_envelope_msv_h)} mSv/h storm</>}
+                . O₂ is ample. Return to Base ({fmt(v.base_time_min, 1)} min){' '}
+                {v.base_viable ? 'is viable' : 'is not viable yet'}.
               </p>
             )}
 
             {!isPreEva && !isHold && tVital !== null && (
               <>
                 <p className="text-ink">
-                  <span className="font-medium">Refugio WP3:</span> a {fmt(v.wp3_time_min, 1)} min
+                  <span className="font-medium">Shelter WP3:</span> {fmt(v.wp3_time_min, 1)} min away
                   <span className={openSky !== null && wp3Margin !== null ? levelTextClass(classify('walkback_margin_min', wp3Margin)) : undefined}>
                     {marginText(wp3Margin)}
                   </span>
-                  .{!v.wp3_viable && <span className="text-danger-ink font-medium"> No viable.</span>}
+                  .{!v.wp3_viable && <span className="text-danger-ink font-medium"> Not viable.</span>}
                 </p>
                 <p>
                   <span className={v.base_viable ? 'text-ink' : 'text-ink-3 line-through'}>
-                    <span className="font-medium">Base:</span> a {fmt(v.base_time_min, 1)} min{marginText(baseMargin)}.
+                    <span className="font-medium">Base:</span> {fmt(v.base_time_min, 1)} min away{marginText(baseMargin)}.
                   </span>
-                  {!v.base_viable && <span className="text-danger-ink font-medium"> No viable.</span>}
+                  {!v.base_viable && <span className="text-danger-ink font-medium"> Not viable.</span>}
                 </p>
                 <p className="t-label text-ink-3">
-                  Hay O₂ para {durationText(tO2)}
-                  {tRad === null ? ' y no hay tormenta solar' : ` y la radiación deja ${durationText(tRad)}`}
-                  {openSky !== null && ` (${durationText(openSky)} a cielo abierto)`}. El agua y la batería no entran en este cálculo.
+                  O₂ lasts {durationText(tO2)}
+                  {tRad === null ? ' and there is no solar storm' : ` and radiation allows ${durationText(tRad)}`}
+                  {openSky !== null && ` (${durationText(openSky)} in the open)`}. Water and battery are not part of this calculation.
                 </p>
               </>
             )}
@@ -868,31 +901,31 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
 
       {isMulti && (
         <Notice level="amber" role="alert">
-          <span className="font-medium">{sample.active_threats.length} amenazas a la vez. Lo primero: {cause.charAt(0).toLowerCase() + cause.slice(1)}.</span>{' '}
-          {threatText}. Todavía no hay que evacuar: la vuelta a la Base sigue siendo viable ({fmt(v.base_time_min, 1)} min) y el refugio
-          WP3 está a {fmt(v.wp3_time_min, 1)} min.
+          <span className="font-medium">{sample.active_threats.length} threats at once. First priority: {cause.charAt(0).toLowerCase() + cause.slice(1)}.</span>{' '}
+          {threatText}. No need to evacuate yet: return to Base is still viable ({fmt(v.base_time_min, 1)} min) and shelter
+          WP3 is {fmt(v.wp3_time_min, 1)} min away.
         </Notice>
       )}
       {isHold && (
         <Notice level="none" role="status">
-          <span className="font-medium">A cubierto en el refugio WP3.</span> La cornisa atenúa el {SUIT_SCENARIO.shelterAttenuationPct} % de la
-          radiación (cielo visible {fmt(WP3?.svfScenario, 2)}): {fmt(v.spe_local_rate_msv_h, 2)} mSv/h dentro frente a{' '}
-          {fmt(v.spe_ext_rate_cal_msv_h, 1)} fuera. Dosis acumulada, {fmt(v.dose_spe_msv, 2)} de {fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv.{' '}
+          <span className="font-medium">Under cover in shelter WP3.</span> The overhang attenuates {SUIT_SCENARIO.shelterAttenuationPct}% of the
+          radiation (sky view {fmt(WP3?.svfScenario, 2)}): {fmt(v.spe_local_rate_msv_h, 2)} mSv/h inside versus{' '}
+          {fmt(v.spe_ext_rate_cal_msv_h, 1)} outside. Accumulated dose {fmt(v.dose_spe_msv, 2)} of {fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv.{' '}
           {v.radio_class === 'VERDE'
-            ? `El repetidor ha restablecido el enlace (${formatT(EVA07_DOC.threat_windows_t_min.sombra_radio[1])}).`
-            : 'Sin enlace: la telemetría se guarda en el traje hasta recuperarlo.'}
+            ? `The relay has restored the link (${formatT(EVA07_DOC.threat_windows_t_min.sombra_radio[1])}).`
+            : 'No link: telemetry is stored in the suit until it is restored.'}
         </Notice>
       )}
 
       {/* Mapa */}
-      <section aria-label="Mapa de la ruta" className="rounded-lg border border-line bg-panel overflow-hidden">
+      <section aria-label="Route map" className="rounded-lg border border-line bg-panel overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-line">
-          <Segmented label="Capa base del mapa" options={LAYER_OPTIONS} value={baseLayer} onChange={setBaseLayer} />
+          <Segmented label="Map base layer" options={LAYER_OPTIONS} value={baseLayer} onChange={setBaseLayer} />
           <div className="flex items-center gap-1">
-            <button type="button" aria-label="Acercar el mapa" onClick={() => setZoom((z) => Math.min(MAP_MAX_ZOOM, z + 1))} className={ICON_BUTTON}>
+            <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(MAP_MAX_ZOOM, z + 1))} className={ICON_BUTTON}>
               <Plus className="w-4 h-4" aria-hidden />
             </button>
-            <button type="button" aria-label="Alejar el mapa" onClick={() => setZoom((z) => Math.max(MAP_MIN_ZOOM, z - 1))} className={ICON_BUTTON}>
+            <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(MAP_MIN_ZOOM, z - 1))} className={ICON_BUTTON}>
               <Minus className="w-4 h-4" aria-hidden />
             </button>
             <Button
@@ -904,7 +937,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               }}
             >
               <Crosshair className="w-4 h-4" aria-hidden />
-              Centrar ruta
+              Center route
             </Button>
           </div>
           {!isEvac && (
@@ -917,17 +950,17 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 className={markMode ? 'bg-raised font-medium' : undefined}
               >
                 <MapPin className="w-4 h-4" aria-hidden />
-                {markMode ? 'Pulsa el mapa para marcar' : 'Marcar punto'}
+                {markMode ? 'Click the map to mark' : 'Mark point'}
               </Button>
-              {markMode && <Segmented label="Tipo de punto" options={POINT_KIND_OPTIONS} value={pointKind} onChange={setPointKind} />}
+              {markMode && <Segmented label="Point type" options={POINT_KIND_OPTIONS} value={pointKind} onChange={setPointKind} />}
               {customPoints.length > 0 && (
                 <>
-                  <button type="button" disabled={pointBusy} aria-label="Deshacer el último punto" title="Deshacer el último punto" onClick={() => void dropPoint(customPoints[customPoints.length - 1].id)} className={ICON_BUTTON}>
+                  <button type="button" disabled={pointBusy} aria-label="Undo last point" title="Undo last point" onClick={() => void dropPoint(customPoints[customPoints.length - 1].id)} className={ICON_BUTTON}>
                     <Undo2 className="w-4 h-4" aria-hidden />
                   </button>
                   <Button size="sm" variant="quiet" disabled={pointBusy} onClick={() => void dropPoint()}>
                     <Trash2 className="w-4 h-4" aria-hidden />
-                    Borrar puntos ({customPoints.length})
+                    Clear points ({customPoints.length})
                   </Button>
                 </>
               )}
@@ -936,18 +969,18 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
         </div>
         {customPoints.length > 0 && (
           <div className="px-3 py-2 border-b border-line space-y-2">
-            {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3" aria-live="polite">El motor está replanificando la ruta…</p>}
+            {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3" aria-live="polite">The engine is replanning the route…</p>}
             {planCurrent && (plan?.summary?.detoured_legs.length ?? 0) > 0 && (
               <p className="t-label text-ink-3">
-                La astronauta y su sendero siguen la ruta replanificada; la nominal queda en rojo punteado. Los tiempos de cada fase siguen siendo los de la cronología guardada.
+                The astronaut and her trail follow the replanned route; the nominal one stays as a dotted red line. Phase times still follow the stored timeline.
               </p>
             )}
             {sample.position.route === 'inalcanzable' && (
               <Notice level="red" role="alert">
-                La astronauta está en un tramo que el motor da por inalcanzable: su posición se dibuja en línea recta entre los nodos, no sobre una ruta.
+                The astronaut is on a leg the engine marks as unreachable: her position is drawn on a straight line between nodes, not on a route.
               </Notice>
             )}
-            {!reported.online && <Notice level="red">Sin enlace con el motor: los puntos de esta pantalla pueden no estar al día.</Notice>}
+            {!reported.online && <Notice level="red">No link to the engine: the points on this screen may be out of date.</Notice>}
           </div>
         )}
 
@@ -957,7 +990,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
             ref={visorRef}
             tabIndex={0}
             role="application"
-            aria-label="Mapa de la ruta. Flechas para desplazar, más y menos para ampliar."
+            aria-label="Route map. Arrow keys to pan, plus and minus to zoom."
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -1045,7 +1078,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   <g>
                     <line x1={astro.x} y1={astro.y} x2={p.x} y2={p.y} stroke={PALETTE.green} strokeWidth="2.5" strokeDasharray="8 6" />
                     <text x={(astro.x + p.x) / 2 + 8} y={(astro.y + p.y) / 2} className="num" fill={PALETTE.green} fontSize="12" fontWeight="600" stroke={PALETTE.ground} strokeWidth="3" paintOrder="stroke">
-                      Escape a WP3 · {fmt(v.wp3_time_min, 1)} min
+                      Escape to WP3 · {fmt(v.wp3_time_min, 1)} min
                     </text>
                   </g>
                 );
@@ -1057,7 +1090,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   <g>
                     <line x1={astro.x} y1={astro.y} x2={p.x} y2={p.y} stroke={col} strokeWidth="2.5" strokeDasharray="8 6" />
                     <text x={(astro.x + p.x) / 2 + 8} y={(astro.y + p.y) / 2} className="num" fill={col} fontSize="12" fontWeight="600" stroke={PALETTE.ground} strokeWidth="3" paintOrder="stroke">
-                      Retorno a la Base · {fmt(v.base_time_min, 1)} min
+                      Return to Base · {fmt(v.base_time_min, 1)} min
                     </text>
                   </g>
                 );
@@ -1170,7 +1203,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
             <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-end justify-between gap-3">
               <p className={`min-w-0 rounded-md bg-ground/85 px-2 py-1 t-label text-ink-2 `}>
                 {MARS_TREK_LAYERS[baseLayer].attribution}, {LAYER_RESOLUTION[baseLayer]}
-                {zoom > TREK_MAX_ZOOM ? `, ampliada ×${scale}` : ''}. {hillshade ? 'Relieve del terreno a 20 m.' : 'Relieve no disponible: el motor de cálculo no responde.'} Ctrl + rueda para ampliar.
+                {zoom > TREK_MAX_ZOOM ? `, magnified ×${scale}` : ''}. {hillshade ? 'Terrain relief at 20 m.' : 'Relief unavailable: the compute engine is not responding.'} Ctrl + wheel to zoom.
               </p>
               <div className="shrink-0 flex flex-col items-end rounded-md bg-ground/85 px-2 py-1 num t-label text-ink" aria-hidden>
                 <div className="h-1.5 border-x border-b border-ink" style={{ width: scaleBarM / metersPerPx }} />
@@ -1182,21 +1215,21 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       </section>
 
       {customPoints.length > 0 && (
-        <Panel title="Puntos marcados" aside={`${customPoints.length} en el motor`} bodyClassName="space-y-4">
+        <Panel title="Marked points" aside={`${customPoints.length} in the engine`} bodyClassName="space-y-4">
           <PointList points={customPoints} onRemove={(id) => void dropPoint(id)} busy={pointBusy} />
           {reported.hazardModel && <p className="t-label text-ink-3">{reported.hazardModel.note}</p>}
           <div>
-            <h3 className="text-sm font-semibold text-ink mb-1.5">Redecisión de emergencia con estos puntos</h3>
+            <h3 className="text-sm font-semibold text-ink mb-1.5">Emergency re-decision with these points</h3>
             <EmergencyRedecision data={emergency} canonicalWp3Min={PLANNER_WALKBACK.wp3.time_min} />
           </div>
         </Panel>
       )}
 
       {/* Controles del traje (unidad de muñeca) y lecturas */}
-      <Panel title="Controles del traje" aside={`Unidad de muñeca del ${UX_LABELS.suit}`} bodyClassName="space-y-4">
+      <Panel title="Suit controls" aside={`${UX_LABELS.suit} wrist unit`} bodyClassName="space-y-4">
         {isEvac ? (
           <p className="text-sm text-ink-2">
-            La malla, el registro de muestras, las lecturas y el modo del visor están en pausa hasta llegar al refugio.
+            The grid, sample logging, readings and visor mode are paused until the shelter is reached.
           </p>
         ) : (
           <>
@@ -1205,10 +1238,10 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 size="sm"
                 variant={showHexGrid ? 'secondary' : 'quiet'}
                 aria-pressed={showHexGrid}
-                title="Zona 1: malla del terreno coloreada por pendiente"
+                title="Zone 1: terrain grid colored by slope"
                 onClick={() => {
                   if (!showHexGrid && hexCells.length === 0) {
-                    onNotify('La malla de pendientes no está disponible', 'La sirve el motor de cálculo, que ahora no responde.', 'amber');
+                    onNotify('Slope grid unavailable', 'It is served by the compute engine, which is not responding.', 'amber');
                     return;
                   }
                   setShowHexGrid((g) => !g);
@@ -1216,26 +1249,26 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 className={showHexGrid ? 'bg-raised font-medium' : undefined}
               >
                 <Layers className="w-4 h-4" aria-hidden />
-                Malla de pendientes
+                Slope grid
               </Button>
 
               <Button
                 size="sm"
                 variant="quiet"
                 aria-disabled={!isruOpen}
-                title={isruOpen ? 'Zona 2: registrar una muestra en WP1' : 'Zona 2: solo durante el muestreo en WP1'}
+                title={isruOpen ? 'Zone 2: log a sample at WP1' : 'Zone 2: only during sampling at WP1'}
                 onClick={() => {
                   if (!isruOpen) {
-                    onNotify('Ahora no se pueden registrar muestras', 'Solo durante el muestreo en WP1 (de T+28 a T+75).', 'amber');
+                    onNotify('Samples cannot be logged now', 'Only during sampling at WP1 (T+28 to T+75).', 'amber');
                     return;
                   }
                   setIsruSamples((s) => [...s, sample.t_min]);
-                  onNotify(`Muestra ISRU n.º ${isruSamples.length + 1} registrada`, `WP1, ${formatT(sample.t_min)}. Sulfatos hidratados (≥ ${fmt(waypoint('WP1')?.h2oWtPct)} % de H₂O en roca total).`, 'green');
+                  onNotify(`ISRU sample #${isruSamples.length + 1} logged`, `WP1, ${formatT(sample.t_min)}. Hydrated sulfates (≥ ${fmt(waypoint('WP1')?.h2oWtPct)}% H₂O in bulk rock).`, 'green');
                 }}
                 className={isruOpen ? undefined : 'opacity-60'}
               >
                 <FlaskConical className="w-4 h-4" aria-hidden />
-                Registrar muestra ISRU ({isruSamples.length})
+                Log ISRU sample ({isruSamples.length})
               </Button>
 
               <Button
@@ -1243,21 +1276,21 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 variant={showBaseReturn ? 'secondary' : 'quiet'}
                 aria-pressed={showBaseReturn}
                 disabled={isPreEva || isHold}
-                title={`Zona 4: vuelta directa a la Base${isPreEva ? '' : `, ${fmt(v.base_time_min, 1)} min, ${v.base_viable ? 'viable' : 'no viable'}`}`}
+                title={`Zone 4: direct return to Base${isPreEva ? '' : `, ${fmt(v.base_time_min, 1)} min, ${v.base_viable ? 'viable' : 'not viable'}`}`}
                 onClick={() => {
                   const next = !showBaseReturn;
                   setShowBaseReturn(next);
                   if (next)
                     onNotify(
-                      'Retorno a la Base trazado en el mapa',
-                      `${fmt(v.base_time_min, 1)} min, ${v.base_viable ? 'viable' : 'no viable'}${v.base_dose_proj_msv > 0 ? `. Dosis prevista: ${fmt(v.base_dose_proj_msv, 2)} mSv` : ''}.`,
+                      'Return to Base drawn on the map',
+                      `${fmt(v.base_time_min, 1)} min, ${v.base_viable ? 'viable' : 'not viable'}${v.base_dose_proj_msv > 0 ? `. Projected dose: ${fmt(v.base_dose_proj_msv, 2)} mSv` : ''}.`,
                       v.base_viable ? 'cyan' : 'red'
                     );
                 }}
                 className={showBaseReturn ? 'bg-raised font-medium' : undefined}
               >
                 <Undo2 className="w-4 h-4" aria-hidden />
-                Trazar retorno a la Base
+                Draw return to Base
               </Button>
 
               <Button
@@ -1265,18 +1298,18 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 variant={showDiagnostics ? 'secondary' : 'quiet'}
                 aria-expanded={showDiagnostics}
                 aria-controls="traje-detalle"
-                title="Zona 3: consumibles, dosis y muestras"
+                title="Zone 3: consumables, dose and samples"
                 onClick={() => setShowDiagnostics((d) => !d)}
                 className={showDiagnostics ? 'bg-raised font-medium' : undefined}
               >
                 <ChevronDown className={`w-4 h-4 transition-transform ${showDiagnostics ? 'rotate-180' : ''}`} aria-hidden />
-                Consumibles y dosis
+                Consumables and dose
               </Button>
 
               <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                 <span className="t-label text-ink-3">{dialHint}</span>
                 <Segmented
-                  label="Modo del visor"
+                  label="Visor mode"
                   options={DIAL_OPTIONS}
                   value={String(dialPos) as DialValue}
                   onChange={(d) => setDialPos(Number(d) as 1 | 2 | 3)}
@@ -1285,18 +1318,18 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-6 gap-y-3 border-t border-line pt-3">
-              <Stat label="Potencia metabólica" value={fmt(v.metabolic_power_w)} unit="W" level={powerLevel} hint={powerSource} />
-              <Stat label="Consumo de O₂" value={fmt(v.o2_l_min, 2)} unit="L/min" level={o2RateLevel} />
-              <Stat label="Presión del traje" value={fmt(SUIT_SCENARIO.pressureKpa, 1)} unit="kPa" hint="Valor supuesto" />
+              <Stat label="Metabolic power" value={fmt(v.metabolic_power_w)} unit="W" level={powerLevel} hint={powerSource} />
+              <Stat label="O₂ consumption" value={fmt(v.o2_l_min, 2)} unit="L/min" level={o2RateLevel} />
+              <Stat label="Suit pressure" value={fmt(SUIT_SCENARIO.pressureKpa, 1)} unit="kPa" hint="Assumed value" />
               {inputs ? (
                 <>
-                  <Stat label="Pendiente" value={`${fmt(inputs.cell_slope_deg, 1)}°`} level={slopeLevel} hint={plain(sample.phase.location)} />
-                  <Stat label="Inercia térmica" value={fmt(inputs.cell_tiu)} unit="TIU" level={tiuLevel} hint={`Coeficiente de terreno ${fmt(terrainEta(inputs.cell_tiu), 1)}`} />
-                  <Stat label="Cielo visible" value={fmt(inputs.cell_svf, 2)} />
+                  <Stat label="Slope" value={`${fmt(inputs.cell_slope_deg, 1)}°`} level={slopeLevel} hint={plain(sample.phase.location)} />
+                  <Stat label="Thermal inertia" value={fmt(inputs.cell_tiu)} unit="TIU" level={tiuLevel} hint={`Terrain coefficient ${fmt(terrainEta(inputs.cell_tiu), 1)}`} />
+                  <Stat label="Sky view" value={fmt(inputs.cell_svf, 2)} />
                 </>
               ) : (
                 <p className="col-span-2 sm:col-span-3 t-label text-ink-3 self-center">
-                  Sin lectura del terreno: la astronauta está en el hábitat ({plain(sample.phase.location)}).
+                  No terrain reading: the astronaut is in the habitat ({plain(sample.phase.location)}).
                 </p>
               )}
             </div>
@@ -1304,24 +1337,24 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
             {showDiagnostics && (
               <div id="traje-detalle" className="border-t border-line pt-2">
                 <div className="grid sm:grid-cols-2 gap-x-10">
-                  <Row label="O₂ primario" level={o2Level} value={`${fmt(v.o2_remaining_pct, 1)} % (${fmt(v.o2_remaining_g)} g)`} />
-                  <Row label="Autonomía de O₂ al ritmo actual" value={isPreEva ? 'Sin consumo todavía' : isHold ? 'De sobra, a cubierto' : capitalize(durationText(tO2))} />
-                  <Row label="Agua de refrigeración" value={`${fmt(SUIT_SCENARIO.coolingWaterKg, 1)} kg (valor supuesto)`} />
-                  <Row label="Batería" value={`${fmt(SUIT_SCENARIO.batteryWh)} Wh (valor supuesto)`} />
-                  <Row label="Dosis de la tormenta solar" level={doseLevel} value={`${fmt(v.dose_spe_msv, 2)} de ${fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv`} />
-                  <Row label="Aviso de dosis a partir de" value={`${fmt(limits('eva_spe_dose_budget_msv').amber, 1)} mSv`} />
-                  <Row label="Dosis de fondo (GCR)" value={`${fmt(v.dose_gcr_msv, 3)} mSv`} />
-                  <Row label="Polvo en suspensión" level={tauLevel} value={`τ ${fmt(v.dust_tau, 1)}`} />
-                  <Row label="Muestras ISRU" value={`${isruSamples.length} ${isruSamples.length === 1 ? 'registrada' : 'registradas'}`} />
-                  <Row label="Baliza de radio UHF" value={`${fmt(REFERENCE_FIGURES.radio_beacon_freq_mhz)} MHz`} />
+                  <Row label="Primary O₂" level={o2Level} value={`${fmt(v.o2_remaining_pct, 1)} % (${fmt(v.o2_remaining_g)} g)`} />
+                  <Row label="O₂ endurance at current rate" value={isPreEva ? 'No consumption yet' : isHold ? 'Ample, under cover' : capitalize(durationText(tO2))} />
+                  <Row label="Cooling water" value={`${fmt(SUIT_SCENARIO.coolingWaterKg, 1)} kg (assumed value)`} />
+                  <Row label="Battery" value={`${fmt(SUIT_SCENARIO.batteryWh)} Wh (assumed value)`} />
+                  <Row label="Solar storm dose" level={doseLevel} value={`${fmt(v.dose_spe_msv, 2)} of ${fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv`} />
+                  <Row label="Dose warning from" value={`${fmt(limits('eva_spe_dose_budget_msv').amber, 1)} mSv`} />
+                  <Row label="Background dose (GCR)" value={`${fmt(v.dose_gcr_msv, 3)} mSv`} />
+                  <Row label="Airborne dust" level={tauLevel} value={`τ ${fmt(v.dust_tau, 1)}`} />
+                  <Row label="ISRU samples" value={`${isruSamples.length} logged`} />
+                  <Row label="UHF radio beacon" value={`${fmt(REFERENCE_FIGURES.radio_beacon_freq_mhz)} MHz`} />
                   <Row
-                    label="Reglas de seguridad"
-                    value={isPreEva ? 'en espera' : sample.source === 'api' ? 'calculadas por el motor' : 'copia local'}
+                    label="Safety rules"
+                    value={isPreEva ? 'on standby' : sample.source === 'api' ? 'computed by the engine' : 'local copy'}
                   />
                 </div>
                 <p className="t-label text-ink-3 mt-2">
-                  En esta fase: {phaseDetail}. El modelo no calcula el consumo de agua ni de batería. En {formatT(T_DECISION_MIN)} el motor de cálculo parte de{' '}
-                  {fmt(PLANNER_WALKBACK.t_vital_lcvg_min)} min de agua y {fmt(PLANNER_WALKBACK.t_vital_battery_min)} min de batería.
+                  In this phase: {phaseDetail}. The model does not compute water or battery use. At {formatT(T_DECISION_MIN)} the compute engine starts from{' '}
+                  {fmt(PLANNER_WALKBACK.t_vital_lcvg_min)} min of water and {fmt(PLANNER_WALKBACK.t_vital_battery_min)} min of battery.
                 </p>
               </div>
             )}

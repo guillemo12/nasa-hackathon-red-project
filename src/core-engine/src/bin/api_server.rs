@@ -596,7 +596,7 @@ fn sample_eva07(doc: &Value, t_target: f64) -> Option<Value> {
             "state": "PRE_EVA",
             "state_code": "PRE_EVA",
             "primary_cause": "PRE_EVA",
-            "engine": "sin evaluar: astronauta en la Base (fase de consola)",
+            "engine": "not evaluated: astronaut at Base (console phase)",
         })
     } else {
         let spe_rate = if has("spe") { SPE_PEAK_ENVELOPE_MSV_H } else { GCR_SURFACE_RATE_MSV_H };
@@ -844,7 +844,7 @@ fn build_terrain_json(state: &AppState) -> String {
         "h3_res": res,
         "grid_cells": grid.len(),
         "crs": "IAU_2015:49900",
-        "note": "Cada nodo toma sin interpolar los atributos de la celda H3 que lo contiene. Cota, pendiente, SVF y RSSI derivan del DTM CTX de 20 m; TIU y H2O solo existen en las zonas de escenario [E].",
+        "note": "Each node takes, without interpolation, the attributes of the H3 cell that contains it. Elevation, slope, SVF and RSSI derive from the 20 m CTX DTM; TIU and H2O exist only in the scenario zones [E].",
         "aoi": { "lat_min": aoi.lat_min, "lat_max": aoi.lat_max, "lon_e_min": aoi.lon_min, "lon_e_max": aoi.lon_max },
         "rows": rows,
         "cols": cols,
@@ -1087,7 +1087,7 @@ fn leg_json(grid: &H3MarsGrid, leg_idx: usize, start_h3: u64, path: &PathResult)
 }
 
 fn point_label(points: &[ReportedPoint], id: u32) -> String {
-    points.iter().find(|p| p.id == id).map_or_else(|| format!("punto {id}"), |p| p.label.clone())
+    points.iter().find(|p| p.id == id).map_or_else(|| format!("point {id}"), |p| p.label.clone())
 }
 
 /// D* Lite plan of every canonical leg on the real res-12 terrain at the sustained pace, under
@@ -1132,7 +1132,7 @@ fn compute_route_plan(
             Some(p) => leg_json(grid, li, ca, p),
             None => json!({
                 "leg_id": leg.id, "from": NODE_IDS[leg.from], "to": NODE_IDS[leg.to],
-                "error": if points.is_empty() { "sin ruta en la malla" } else { "inalcanzable" },
+                "error": if points.is_empty() { "no route on the grid" } else { "unreachable" },
             }),
         };
         if !points.is_empty() {
@@ -1143,13 +1143,13 @@ fn compute_route_plan(
                 .collect();
             dev.insert("caused_by".into(), json!(cause_json));
             dev.insert("search".into(), json!(match corridor {
-                Some(w) => format!("corredor de {w:.0} m a cada lado del tramo"),
-                None => "malla completa".to_string(),
+                Some(w) => format!("a corridor of {w:.0} m on each side of the leg"),
+                None => "the full grid".to_string(),
             }));
             match (&path, base_path) {
                 (None, _) => {
                     let u = unreachable.clone().unwrap_or_else(|| red_atlas_core::reported_points::Unreachable {
-                        reason: "sin ruta en la malla".into(),
+                        reason: "no route on the grid".into(),
                         blocking_points: vec![],
                     });
                     dev.insert("status".into(), json!("inalcanzable"));
@@ -1196,7 +1196,7 @@ fn compute_route_plan(
         "grid": { "path": GRID_PARQUET_REL, "resolution": grid.res, "cells": grid.len(),
                   "planner_fingerprint": format!("{:016x}", grid.planner_fingerprint()) },
         "pace": { "speed_cap_mps": weights.pace.speed_cap_mps, "power_cap_w": weights.pace.power_cap_w },
-        "conditions": "nominales: τ 0,7, solo GCR, ritmo de retorno sostenido",
+        "conditions": "nominal: τ 0.7, GCR only, sustained return pace",
         "corridor_half_width_m": ROUTE_CORRIDOR_HALF_WIDTH_M,
         "spe_envelope_msv_h": SPE_PEAK_ENVELOPE_MSV_H,
         "points_version": version,
@@ -1217,8 +1217,7 @@ fn compute_route_plan(
 
 /// Number in Spanish notation (decimal comma), without trailing zeros.
 fn es_num(x: f64) -> String {
-    let s = format!("{}", round_to(x, 2));
-    s.replace('.', ",")
+    format!("{}", round_to(x, 2))
 }
 
 fn hazard_model_json() -> Value {
@@ -1228,7 +1227,7 @@ fn hazard_model_json() -> Value {
         "caution_cost_factor": REPORTED_HAZARD_CAUTION_COST_FACTOR,
         "snap_max_m": REPORTED_POINT_SNAP_MAX_M,
         "note": format!(
-            "Supuesto de diseño: un PELIGRO excluye las celdas a menos de {} m (2,5 píxeles del DTM CTX de 20 m más el error al marcar en el mapa de muñeca) y encarece ×{} entrar en las que están a menos de {} m; los tramos afectados se replanifican en toda la malla. Un REFUGIO es candidato en la decisión de emergencia: gana el refugio que la malla confirma (SVF ≤ {}) al que se llega antes; uno sin confirmar solo si no hay otro alcanzable. Un punto ISRU es solo de interés: no se añade como destino.",
+            "Design assumption: a HAZARD excludes cells within {} m (2.5 pixels of the 20 m CTX DTM plus the error of marking on the wrist map) and applies a ×{} cost to entering cells within {} m; affected legs are replanned on the full grid. A SHELTER is a candidate in the emergency decision: the grid-confirmed shelter (SVF ≤ {}) reached first wins; an unconfirmed one only if no other is reachable. An ISRU point is of interest only: it is not added as a destination.",
             es_num(REPORTED_HAZARD_EXCLUSION_RADIUS_M), es_num(REPORTED_HAZARD_CAUTION_COST_FACTOR),
             es_num(REPORTED_HAZARD_CAUTION_RADIUS_M), es_num(SHELTER_SVF_MAX as f64)
         ),
@@ -1240,11 +1239,11 @@ fn point_json(grid: &H3MarsGrid, p: &ReportedPoint) -> Value {
     let cell = snap_cell(grid, p.lat_deg, p.lon_e_deg).and_then(|h| grid.get_cell(h));
     let effect = match p.kind {
         ReportedKind::Hazard => format!(
-            "Zona de exclusión de {} m y de precaución hasta {} m: la ruta se replanifica para rodearla.",
+            "Exclusion zone of {} m and caution zone up to {} m: the route is replanned to go around it.",
             es_num(REPORTED_HAZARD_EXCLUSION_RADIUS_M), es_num(REPORTED_HAZARD_CAUTION_RADIUS_M)
         ),
-        ReportedKind::Shelter => "Candidato de refugio en la decisión de emergencia (T+105), junto a WP3.".into(),
-        ReportedKind::Isru => "Punto de interés: se guarda y se enseña, pero no se añade como destino (cambiaría el O₂ y la cronología de la EVA).".into(),
+        ReportedKind::Shelter => "Shelter candidate in the emergency decision (T+105), alongside WP3.".into(),
+        ReportedKind::Isru => "Point of interest: stored and shown, but not added as a destination (it would change the O₂ budget and the EVA timeline).".into(),
     };
     json!({
         "id": p.id,
@@ -1294,11 +1293,11 @@ fn emergency_json(grid: &H3MarsGrid, points: &[ReportedPoint], version: u64) -> 
     let st = &d.decision.status;
     let chosen = &d.candidates[d.chosen];
     json!({
-        "engine": "t105_decision_with_reports (red-atlas-core, Rust): Walkback Limit Dual en WP2 con WP3 y los refugios marcados",
+        "engine": "t105_decision_with_reports (red-atlas-core, Rust): Dual Walkback Limit at WP2 with WP3 and the reported shelters",
         "points_version": version,
         "decision_t_min": red_atlas_shared::EVA07_DECISION_T_MIN,
-        "rule": format!("Primero los refugios que la malla del terreno confirma (SVF de la celda ≤ {}, el mismo que usa el modelo de dosis; en WP3 es el valor de escenario) y, entre ellos, el de menor tiempo de escape al ritmo de emergencia; si empatan, WP3. Un refugio marcado que la malla da a cielo abierto solo se usa si no se puede llegar a ninguno confirmado. Con peligros marcados, las rutas se buscan en toda la malla y rodean sus zonas.", es_num(SHELTER_SVF_MAX as f64)),
-        "canonical_note": "La cronología EVA-07, la orden de voz y la tarjeta de evacuación siguen el escenario canónico (refugio WP3); este bloque es la redecisión del motor con los puntos marcados.",
+        "rule": format!("Shelters confirmed by the terrain grid come first (cell SVF ≤ {}, the same limit the dose model uses; at WP3 it is the scenario value) and, among them, the one with the shortest escape time at emergency pace; on a tie, WP3. A reported shelter that the grid shows as open sky is used only if no confirmed one can be reached. With reported hazards, routes are searched on the full grid and go around their zones.", es_num(SHELTER_SVF_MAX as f64)),
+        "canonical_note": "The EVA-07 timeline, the voice order and the evacuation card follow the canonical scenario (WP3 shelter); this block is the engine re-deciding with the reported points.",
         "uses_reported_shelter": chosen.reported,
         "chosen_id": chosen.id,
         "chosen_label": chosen.label,
@@ -1339,7 +1338,7 @@ fn current_plan(state: &AppState) -> Option<Arc<Value>> {
     } else {
         let started = std::time::Instant::now();
         let (v, _) = compute_route_plan(grid, &points, Some(baseline), version);
-        println!("[api_server] Ruta replanificada con {} puntos (versión {version}) en {:.2} s",
+        println!("[api_server] Route replanned with {} points (version {version}) in {:.2} s",
                  points.len(), started.elapsed().as_secs_f64());
         v
     };
@@ -1406,7 +1405,7 @@ fn enriched_geojson(state: &AppState) -> Value {
                     "decision_t105".into(),
                     json!({
                         "source": PLANNER_WALKBACK_JSON_REL,
-                        "conditions": "decisión en T+105: envolvente SPE de 8 mSv/h × SVF de cada celda; ritmo de escape a WP3, retorno sostenido a la Base",
+                        "conditions": "decision at T+105: SPE envelope of 8 mSv/h × SVF of each cell; escape pace to WP3, sustained return to Base",
                         "walked_length_m": d.get("length_m"),
                         "estimated_time_min": d.get("time_min"),
                         "mean_power_w": d.get("mean_power_w"),
@@ -1419,8 +1418,8 @@ fn enriched_geojson(state: &AppState) -> Value {
                 props.insert(
                     "planner".into(),
                     json!({
-                        "engine": "D* Lite metabólico (red-atlas-core) sobre la malla H3 res 12 del terreno real",
-                        "conditions": "nominales: τ 0,7, solo GCR, ritmo sostenido (1,0 m/s y 585 W de tope)",
+                        "engine": "Metabolic D* Lite (red-atlas-core) on the H3 res 12 grid of the real terrain",
+                        "conditions": "nominal: τ 0.7, GCR only, sustained pace (1.0 m/s and 585 W cap)",
                         "walked_length_m": l.get("length_m"),
                         "estimated_time_min": l.get("time_min"),
                         "mean_power_w": l.get("mean_power_w"),
@@ -1567,7 +1566,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
                         p.version += 1;
                         point
                     };
-                    println!("[api_server] Punto marcado: {} ({:.6}, {:.6})", point.label, point.lat_deg, point.lon_e_deg);
+                    println!("[api_server] Point reported: {} ({:.6}, {:.6})", point.label, point.lat_deg, point.lon_e_deg);
                     let grid: &H3MarsGrid = state.grid12.as_deref().unwrap_or(&state.grid9);
                     let body = json!({ "point": point_json(grid, &point), "points_version": state.points.lock().map_or(0, |p| p.version) });
                     send_json(&mut stream, "201 Created", &body.to_string());
@@ -1622,7 +1621,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
                 "seed": seed,
                 "trials": trials,
                 "mars_solar_hour": CHAOS_SOLAR_HOUR,
-                "corridor": format!("corredor sintético de Melas Chasma, H3 res {CHAOS_CORRIDOR_RES}, celdas ordenadas por índice"),
+                "corridor": format!("synthetic Melas Chasma corridor, H3 res {CHAOS_CORRIDOR_RES}, cells sorted by index"),
                 "corridor_cells": state.chaos_cells.len(),
                 "dose_budget_msv": EVA_SPE_DOSE_BUDGET_MSV,
                 "report": report,
@@ -1658,7 +1657,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
             let body = json!({
                 "synced": true,
                 "simulated": true,
-                "transport": "sin sesión Zenoh real en la demo: paquete preparado y verificado en la consola",
+                "transport": "no real Zenoh session in the demo: bundle prepared and verified in the console",
                 "key_expr": "redatlas/eva07/mission/bundle_sync",
                 "checksum_algo": "SHA-256",
                 "checksum": state.bundle.sha256_hex,
@@ -1680,14 +1679,14 @@ fn main() {
     let geojson = read_json(GEOJSON_REL, Some(GEOJSON_FALLBACK)).expect("valid triangulo_supervivencia.geojson");
 
     let grid9 = H3MarsGrid::load_grid_parquet(repo_path(GRID_RES9_REL)).expect("load res-9 terrain grid parquet");
-    println!("[api_server] Malla de terreno res 9: {} celdas ({GRID_RES9_REL})", grid9.len());
+    println!("[api_server] Terrain grid res 9: {} cells ({GRID_RES9_REL})", grid9.len());
     let grid12 = match H3MarsGrid::load_grid_parquet(repo_path(GRID_PARQUET_REL)) {
         Ok(g) => {
-            println!("[api_server] Malla de terreno res 12: {} celdas ({GRID_PARQUET_REL})", g.len());
+            println!("[api_server] Terrain grid res 12: {} cells ({GRID_PARQUET_REL})", g.len());
             Some(Arc::new(g))
         }
         Err(e) => {
-            println!("[api_server] AVISO: sin malla res 12 ({e}); terreno y lupa caen a res 9, sin plan de ruta");
+            println!("[api_server] WARNING: no res 12 grid ({e}); terrain and magnifier fall back to res 9, no route plan");
             None
         }
     };
@@ -1727,7 +1726,7 @@ fn main() {
             let (plan, paths) = compute_route_plan(&grid, &[], None, 0);
             let _ = st.baseline_paths.set(paths);
             let _ = st.route_plan.set(plan);
-            println!("[api_server] Plan de ruta D* Lite listo en {:.1} s", started.elapsed().as_secs_f64());
+            println!("[api_server] D* Lite route plan ready in {:.1} s", started.elapsed().as_secs_f64());
         });
     }
 

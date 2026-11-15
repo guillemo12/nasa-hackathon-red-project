@@ -107,7 +107,7 @@ fn hazard_on_the_destination_is_reported_as_unreachable() {
     let out = plan_leg(grid(), node(0), node(1), &[hazard], &nominal(), &CostWeights::default(), CORRIDOR_M, Some(&base));
     assert!(out.path.is_none());
     let why = out.unreachable.expect("reason");
-    assert!(why.reason.contains("destino"), "{}", why.reason);
+    assert!(why.reason.contains("destination"), "{}", why.reason);
     assert_eq!(why.blocking_points, vec![3]);
 }
 

@@ -41,11 +41,11 @@ export function certify(run: ChaosRun): Certification {
   const shelterNotWorse = r.survived_with_wp3_shelter >= r.survived_base_only;
   const completed = r.trials === run.trials && r.trials > 0;
   const authorized = completed && shelterNotWorse && consistentWithReference;
-  let reason = 'Ruta autorizada: el cambio al refugio protege la misión y la pasada cuadra con la referencia exportada.';
-  if (!completed) reason = 'La pasada no ha terminado todas las simulaciones.';
-  else if (!shelterNotWorse) reason = 'El cambio al refugio da peor resultado que volver a la Base: hay que volver al trazado.';
+  let reason = 'Route authorized: switching to the shelter protects the mission and the run matches the exported reference.';
+  if (!completed) reason = 'The run has not finished all simulations.';
+  else if (!shelterNotWorse) reason = 'Switching to the shelter does worse than returning to Base: go back to route planning.';
   else if (!consistentWithReference)
-    reason = 'La pasada se aparta de la referencia exportada más de 3 σ: hay que revisar el trazado o repetirla.';
+    reason = 'The run deviates from the exported reference by more than 3 σ: review the route or run it again.';
   return {
     authorized,
     completed,

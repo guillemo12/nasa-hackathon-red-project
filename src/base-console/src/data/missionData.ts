@@ -15,6 +15,18 @@ import type {
   WaypointNode,
 } from '@/types/mission';
 
+/** Geology arrives in Spanish in the mission GeoJSON; it is shown in English. */
+const GEOLOGY_EN: Record<string, string> = {
+  'Terraza aluvial (abanico distal) sobre el piso de la cuenca SW de Melas':
+    'Alluvial terrace (distal fan) on the floor of the SW Melas basin',
+  'Deposito estratificado claro con sulfatos polihidratados interestratificados con monohidratados':
+    'Light-toned layered deposit with polyhydrated sulfates interbedded with monohydrated sulfates',
+  'Contacto entre lobulo de deslizamiento, traza de falla normal y bancos de polvo fino':
+    'Contact between a landslide lobe, a normal fault trace and fine dust banks',
+  'Alcoba bajo cornisa en la base de un escarpe de coladas basalticas estratificadas':
+    'Alcove under an overhang at the foot of a scarp of layered basaltic flows',
+};
+
 interface GeoFeature {
   type: string;
   id?: string;
@@ -49,9 +61,9 @@ export const CHAOS_REFERENCE = chaosReferenceJson as unknown as {
 
 const SHORT_LABELS: Record<NodeId, string> = {
   BASE: 'BASE ALPHA',
-  WP1: 'WP1 SULFATOS',
-  WP2: 'WP2 TALUD',
-  WP3: 'WP3 REFUGIO',
+  WP1: 'WP1 SULFATES',
+  WP2: 'WP2 SLOPE',
+  WP3: 'WP3 SHELTER',
 };
 
 const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
@@ -107,7 +119,7 @@ export const CANONICAL_WAYPOINTS: WaypointNode[] = TRIANGULO_GEOJSON.features
       svfDem: num(p.sky_view_factor_dem),
       radioLosBase: Boolean(p.radio_los_base),
       h2oWtPct: typeof p.h2o_wt_pct === 'number' ? p.h2o_wt_pct : null,
-      geology: String(p.geology),
+      geology: GEOLOGY_EN[String(p.geology)] ?? String(p.geology),
       distFromBaseM: cumulativeDistance(id),
     };
   });
@@ -156,7 +168,7 @@ export const SUIT_SCENARIO = {
 export const UX_LABELS = {
   sol: 142,
   operator: 'Aris Thorne',
-  operatorRole: 'OPERADOR JEFE',
-  astronaut: 'Dra. Elena Rostova',
+  operatorRole: 'LEAD OPERATOR',
+  astronaut: 'Dr. Elena Rostova',
   suit: 'xEMU-04',
 } as const;

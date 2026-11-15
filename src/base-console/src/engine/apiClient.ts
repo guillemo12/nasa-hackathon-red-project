@@ -44,7 +44,7 @@ async function getJson<T>(url: string, timeoutMs = 8000, init?: RequestInit): Pr
     return (await res.json()) as T;
   } catch (err) {
     if (err instanceof ApiError) throw err;
-    throw new ApiError('API Rust no disponible');
+    throw new ApiError('Rust API unavailable');
   } finally {
     window.clearTimeout(timer);
   }
@@ -117,7 +117,7 @@ export function fetchRoutePlan(pointsVersion = 0): Promise<RoutePlan> {
           await new Promise((r) => window.setTimeout(r, 1500));
         }
       }
-      throw new ApiError('El plan de ruta sigue calculándose');
+      throw new ApiError('Route plan still being computed');
     })().catch((err) => {
       routePlanPromise = null;
       throw err;

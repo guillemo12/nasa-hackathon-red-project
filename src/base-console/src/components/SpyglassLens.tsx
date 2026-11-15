@@ -80,24 +80,24 @@ function readLens(data: LensData, mode: SpyglassMode) {
   const shelterHere = res ? res.sectors.left_mola.cells_shelter > 0 : shelterCenter;
 
   const water: Finding | null = isruCenter
-    ? { text: `Sulfatos hidratados en el centro, apto para ISRU (${fmt(ISRU_H2O_MIN_PCT)} % o más)`, level: 'none' }
+    ? { text: `Hydrated sulfates at the center, fit for ISRU (${fmt(ISRU_H2O_MIN_PCT)} % or more)`, level: 'none' }
     : isruHere
-      ? { text: 'Hay sulfatos hidratados dentro de la lupa', level: 'none' }
+      ? { text: 'Hydrated sulfates inside the lens', level: 'none' }
       : null;
   const trap: Finding | null = trapCenter
-    ? { text: `Trampa de polvo en el centro (menos de ${tiuLimits.red} TIU)`, level: 'red' }
+    ? { text: `Dust trap at the center (under ${tiuLimits.red} TIU)`, level: 'red' }
     : trapHere
-      ? { text: 'Hay trampas de polvo dentro de la lupa', level: 'amber' }
+      ? { text: 'Dust traps inside the lens', level: 'amber' }
       : null;
   const shelter: Finding | null = shelterCenter
-    ? { text: `Refugio en el centro (cielo visible de ${fmt(SHELTER_SVF_MAX, 2)} o menos)`, level: 'none' }
+    ? { text: `Shelter at the center (sky view ${fmt(SHELTER_SVF_MAX, 2)} or less)`, level: 'none' }
     : shelterHere
-      ? { text: 'Hay refugio dentro de la lupa', level: 'none' }
+      ? { text: 'Shelter inside the lens', level: 'none' }
       : null;
   const steep: Finding | null = steepCenter
-    ? { text: `Pendiente crítica en el centro (más de ${slopeRed}°)`, level: 'red' }
+    ? { text: `Critical slope at the center (over ${slopeRed}°)`, level: 'red' }
     : steepHere
-      ? { text: `Hay taludes de más de ${slopeRed}° dentro de la lupa`, level: 'amber' }
+      ? { text: `Slopes over ${slopeRed}° inside the lens`, level: 'amber' }
       : null;
 
   // Cifras del centro; la que no existe en los datos no se enseña.
@@ -109,51 +109,51 @@ function readLens(data: LensData, mode: SpyglassMode) {
 
   const message =
     data.status === 'outside'
-      ? 'Fuera del terreno'
+      ? 'Off the terrain'
       : data.status === 'loading'
-        ? 'Leyendo el terreno…'
+        ? 'Reading the terrain…'
         : data.status === 'noapi' && !node
-          ? 'Sin datos aquí: solo los hay en los puntos de la ruta'
+          ? 'No data here: only at the route points'
           : null;
 
   // Una capa: nombre de la capa, su valor en el centro y lo que significa.
   let single: { title: string; value: string | null; findings: Finding[] };
   if (mode === 'xray-crism') {
     single = {
-      title: 'Agua (CRISM)',
+      title: 'Water (CRISM)',
       value: values.north,
       findings: [
         h2o === null
-          ? { text: 'Sin dato de agua en el centro', level: 'none' }
+          ? { text: 'No water data at the center', level: 'none' }
           : isruCenter
             ? water!
-            : { text: `Centro no apto para ISRU (menos del ${fmt(ISRU_H2O_MIN_PCT)} %)`, level: 'none' },
+            : { text: `Center not fit for ISRU (under ${fmt(ISRU_H2O_MIN_PCT)} %)`, level: 'none' },
         ...(!isruCenter && water ? [water] : []),
       ],
     };
   } else if (mode === 'xray-themis') {
     single = {
-      title: 'Inercia térmica (THEMIS)',
+      title: 'Thermal inertia (THEMIS)',
       value: values.right,
       findings: [
         tiu === null
-          ? { text: 'Sin dato de inercia en el centro', level: 'none' }
+          ? { text: 'No thermal inertia data at the center', level: 'none' }
           : trapCenter
             ? trap!
             : tiuLevel === 'amber'
-              ? { text: `Regolito blando en el centro (de ${tiuLimits.red} a ${tiuLimits.amber} TIU)`, level: 'amber' }
-              : { text: 'Roca firme en el centro', level: 'none' },
+              ? { text: `Soft regolith at the center (${tiuLimits.red} to ${tiuLimits.amber} TIU)`, level: 'amber' }
+              : { text: 'Firm rock at the center', level: 'none' },
         ...(!trapCenter && trap ? [trap] : []),
       ],
     };
   } else {
     const found = [shelter, steep].filter((f): f is Finding => f !== null);
     single = {
-      title: 'Relieve (MOLA)',
+      title: 'Relief (MOLA)',
       value: values.left === null ? null : svf === null ? values.left : `${values.left} · SVF ${fmt(svf, 2)}`,
       findings: found.length
         ? found
-        : [{ text: slope === null ? 'Sin dato de pendiente en el centro' : 'Sin taludes ni refugio dentro de la lupa', level: 'none' }],
+        : [{ text: slope === null ? 'No slope data at the center' : 'No steep slopes or shelter inside the lens', level: 'none' }],
     };
   }
 
@@ -216,7 +216,7 @@ export const SpyglassLens: React.FC<Props> = ({
   const textInside = size >= INSIDE_TEXT_MIN_PX;
   const name = label ?? nearest;
   const detail = res
-    ? `Celda H3 …${res.center.h3_hex.slice(-7, -3)}${radiusM !== null ? `, radio de ${fmt(q)} m` : ''}`
+    ? `H3 cell …${res.center.h3_hex.slice(-7, -3)}${radiusM !== null ? `, radius ${fmt(q)} m` : ''}`
     : undefined;
   const centerValues = xray ? single.value : [values.north, values.right, values.left].filter(Boolean).join(', ');
 
@@ -328,7 +328,7 @@ export const SpyglassLens: React.FC<Props> = ({
         >
           {name}
           {onClose ? (
-            <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className={closeBtn}>
+            <button type="button" onClick={onClose} aria-label={`Remove the lens at ${name}`} className={closeBtn}>
               <X className="w-4 h-4" aria-hidden />
             </button>
           ) : (
@@ -339,10 +339,10 @@ export const SpyglassLens: React.FC<Props> = ({
         <div data-lens-card className="mt-1 max-w-64 px-2 py-1 rounded-md bg-ground/90 t-label text-ink-2 tabular-nums text-center pointer-events-auto" title={detail}>
           <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
             {name && <span className="text-ink font-medium">{name}</span>}
-            {frozen && <span>(fija)</span>}
+            {frozen && <span>(pinned)</span>}
             {elev !== null && <span>· {fmt(elev)} m</span>}
             {onClose && (
-              <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className={`-my-1 -mr-1.5 ${closeBtn}`}>
+              <button type="button" onClick={onClose} aria-label={`Remove the lens at ${name}`} className={`-my-1 -mr-1.5 ${closeBtn}`}>
                 <X className="w-4 h-4" aria-hidden />
               </button>
             )}
@@ -352,9 +352,9 @@ export const SpyglassLens: React.FC<Props> = ({
           {findings.map((f, i) => (
             <div key={i} className={levelTextClass(f.level)}>{f.text}</div>
           ))}
-          {!message && !xray && svf !== null && <div>Cielo visible en el centro (SVF) {fmt(svf, 2)}</div>}
+          {!message && !xray && svf !== null && <div>Sky view at the center (SVF) {fmt(svf, 2)}</div>}
           {lat !== null && lonE !== null && <div className="text-ink-3 whitespace-nowrap">{fmtCoords(lat, lonE)}</div>}
-          {node && <div className="text-ink-3">Dato del punto de la ruta</div>}
+          {node && <div className="text-ink-3">Route point data</div>}
         </div>
       )}
     </div>
@@ -371,21 +371,21 @@ export const LensReadout: React.FC<{
   onClose: () => void;
 }> = ({ name, mode, data, lat, lonE, onClose }) => {
   const { node, svf, elev, values, message, findings } = readLens(data, mode);
-  const figures = [values.north, values.right, values.left, svf !== null ? `cielo visible ${fmt(svf, 2)}` : null].filter(Boolean).join(' · ');
+  const figures = [values.north, values.right, values.left, svf !== null ? `sky view ${fmt(svf, 2)}` : null].filter(Boolean).join(' · ');
   return (
     <li className="py-2 border-t border-line first:border-t-0 first:pt-0 last:pb-0 t-label text-ink-2 tabular-nums">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-ink">{name}</span>
         {elev !== null && <span>{fmt(elev)} m</span>}
-        <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className={`ml-auto -my-1 -mr-1.5 ${closeBtn}`}>
+        <button type="button" onClick={onClose} aria-label={`Remove the lens at ${name}`} className={`ml-auto -my-1 -mr-1.5 ${closeBtn}`}>
           <X className="w-4 h-4" aria-hidden />
         </button>
       </div>
-      {message ? <div>{message}</div> : figures && <div className="text-ink">En el centro: {figures}</div>}
+      {message ? <div>{message}</div> : figures && <div className="text-ink">At the center: {figures}</div>}
       {findings.map((f, i) => (
         <div key={i} className={levelTextClass(f.level)}>{f.text}</div>
       ))}
-      <div className="text-ink-3">{fmtCoords(lat, lonE)}{node ? ' · dato del punto de la ruta' : ''}</div>
+      <div className="text-ink-3">{fmtCoords(lat, lonE)}{node ? ' · route point data' : ''}</div>
     </li>
   );
 };

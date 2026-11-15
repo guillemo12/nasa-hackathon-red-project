@@ -176,16 +176,16 @@ export function App() {
         simulated: res.simulated,
       });
       notify(
-        res.simulated ? 'Ruta preparada para el traje (enlace simulado)' : 'Ruta enviada al traje',
-        `Terreno y ruta: ${(res.bundle_bytes / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MB. Huella ${res.checksum.slice(0, 12)}…`,
+        res.simulated ? 'Route ready for the suit (simulated link)' : 'Route sent to the suit',
+        `Terrain and route: ${(res.bundle_bytes / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 })} MB. Checksum ${res.checksum.slice(0, 12)}…`,
         'green'
       );
     } catch {
       setSync({ status: 'error' });
       setApiHealth(null);
       notify(
-        'No se ha podido enviar: el traje no ha recibido nada',
-        'El motor de cálculo no responde. Cuando vuelva la conexión, envíala otra vez.',
+        'Upload failed: the suit received nothing',
+        'The compute engine is not responding. Send it again when the connection returns.',
         'red'
       );
     }
@@ -198,17 +198,17 @@ export function App() {
         const [run] = await Promise.all([fetchChaosMode(seed, trials), wait(MIN_BUSY_MS)]);
         setChaos({ status: 'done', run, finishedAt: Date.now() });
         notify(
-          `Simulación terminada: ${run.trials.toLocaleString('es-ES')} salidas (semilla ${run.seed})`,
-          `A salvo en el ${run.report.survival_rate_with_shelter_pct.toLocaleString('es-ES')} % con el refugio WP3 y en el ${run.report.survival_rate_base_only_pct.toLocaleString('es-ES')} % solo con la Base.`,
+          `Simulation complete: ${run.trials.toLocaleString('en-US')} EVAs (seed ${run.seed})`,
+          `Safe in ${run.report.survival_rate_with_shelter_pct.toLocaleString('en-US')} % with the WP3 shelter and ${run.report.survival_rate_base_only_pct.toLocaleString('en-US')} % with the Base only.`,
           'cyan'
         );
       } catch (err) {
-        const message = err instanceof ApiError ? err.message : 'Error desconocido';
+        const message = err instanceof ApiError ? err.message : 'Unknown error';
         setChaos({ status: 'error', run: null, error: message });
         setApiHealth(null);
         notify(
-          'No se ha podido simular',
-          'El motor de cálculo no responde. Se mantiene la referencia de la misión.',
+          'Simulation failed',
+          'The compute engine is not responding. Keeping the mission reference.',
           'red'
         );
       }
