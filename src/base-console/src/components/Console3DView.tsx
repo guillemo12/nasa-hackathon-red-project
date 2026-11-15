@@ -12,7 +12,10 @@ import {
   UX_LABELS,
   waypoint,
 } from '@/data/missionData';
-import { fetchHexGrid, fetchRoutePlan, fetchSpyglass, fetchTerrain } from '@/engine/apiClient';
+import * as THREE from 'three';
+import { fetchHexGrid, fetchOrthoMeta, fetchRoutePlan, fetchSpyglass, fetchTerrain } from '@/engine/apiClient';
+import { usePoints } from '@/engine/reportedPoints';
+import { EmergencyRedecision, POINT_COLOR, PointList, RouteImpact, useEmergency } from '@/components/ReportedPointsPanel';
 import { CHAOS_VISIBLE_TRIALS, certify } from '@/engine/chaos';
 import { formatT } from '@/engine/evaModel';
 import { compassPoint, fmt, fmtCoords, haversineM, insideAoi, nodeLabel } from '@/engine/geo';
@@ -28,6 +31,7 @@ import type {
   HexCell,
   NodeId,
   Notify,
+  OrthoMeta,
   RoutePlan,
   SpyglassMode,
   SyncState,
@@ -144,7 +148,12 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [sceneVersion, setSceneVersion] = useState(0);
 
-  const [layers, setLayers] = useState<TwinLayers>({ mola: true, crism: true, themis: true, h3o: true });
+  const [layers, setLayers] = useState<TwinLayers>({ ortho: true, mola: true, crism: true, themis: true, h3o: true });
+  const [ortho, setOrtho] = useState<{ status: 'loading' | 'ok' | 'error' | 'missing'; meta: OrthoMeta | null }>({ status: 'loading', meta: null });
+  const reported = usePoints();
+  const pointsVersion = Math.max(0, reported.version);
+  const planCurrent = plan !== null && (plan.points_version ?? 0) === pointsVersion;
+  const emergency = useEmergency(reported.version, apiOnline && reported.points.length > 0);
   const [mode, setMode] = useState<SpyglassMode>('tri-sector');
   const [lastXray, setLastXray] = useState<SpyglassMode>('xray-crism');
   const [lensSize, setLensSize] = useState(LENS_DEFAULT_PX);
@@ -185,11 +194,74 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       .catch(() => undefined)
       .finally(() => active && setLoading(false));
     fetchHexGrid().then((c) => active && setHexCells(c)).catch(() => undefined);
-    fetchRoutePlan().then((p) => active && setPlan(p)).catch(() => undefined);
     return () => {
       active = false;
     };
   }, [apiOnline]);
+
+  // Plan del motor: se vuelve a pedir cuando cambian los puntos marcados en Telemetría EVA.
+  useEffect(() => {
+    if (!apiOnline) return;
+    let active = true;
+    fetchRoutePlan(pointsVersion)
+      .then((p) => active && setPlan(p))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [apiOnline, pointsVersion]);
+
+  // Imagen orbital del suelo (CTX 6 m co-registrado con el DTM). Si no carga, el terreno se
+  // queda con el color por cota de siempre y la capa lo dice.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene || !terrain) return;
+    let active = true;
+    let tex: THREE.Texture | null = null;
+    setOrtho((o) => ({ ...o, status: 'loading' }));
+    fetchOrthoMeta()
+      .then((meta) => {
+        if (!active) return;
+        if (!meta) {
+          setOrtho({ status: 'missing', meta: null });
+          return;
+        }
+        new THREE.TextureLoader().load(
+          meta.url,
+          (t) => {
+            if (!active) {
+              t.dispose();
+              return;
+            }
+            tex = t;
+            scene.setOrtho(meta, t);
+            setOrtho({ status: 'ok', meta });
+          },
+          undefined,
+          () => active && setOrtho({ status: 'error', meta })
+        );
+      })
+      .catch(() => active && setOrtho({ status: 'error', meta: null }));
+    return () => {
+      active = false;
+      void tex;
+    };
+  }, [terrain, sceneVersion]);
+
+  useEffect(() => {
+    const hm = reported.hazardModel;
+    sceneRef.current?.setReportedPoints(
+      reported.points.map((p) => ({
+        id: p.id,
+        kind: p.kind,
+        lat: p.lat,
+        lonE: p.lon_e,
+        color: POINT_COLOR[p.kind],
+        exclusionM: p.kind === 'PELIGRO' ? hm?.exclusion_radius_m : undefined,
+        cautionM: p.kind === 'PELIGRO' ? hm?.caution_radius_m : undefined,
+      }))
+    );
+  }, [reported.points, reported.hazardModel, sceneVersion]);
 
   // ------------------------------------------------------------------ escena
   useEffect(() => {
@@ -339,14 +411,22 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   }, [hexCells, sceneVersion]);
 
   useEffect(() => {
+    const nominalOfDetours: RoutePath[] = (plan?.legs ?? []).flatMap((l) =>
+      l.deviation?.status === 'desviada' && l.deviation.nominal_route
+        ? [{ id: `nom-${l.leg_id}`, color: PALETTE.red, dashed: true, points: l.deviation.nominal_route.map(([lat, lonE]) => ({ lat, lonE })) }]
+        : []
+    );
     const routes: RoutePath[] = PLANNED_LEGS.map((leg) => {
       const planned = plan?.legs.find((l) => l.leg_id === leg.id && !l.error);
+      const unreachable = plan?.legs.find((l) => l.leg_id === leg.id)?.deviation?.status === 'inalcanzable';
       const a = waypoint(leg.from);
       const b = waypoint(leg.to);
       return {
         id: leg.id,
         // Ruta del planificador en cian; el tramo de escape WP2 → WP3, en verde (wireframe 3d-console).
-        color: leg.id === 'L3' ? PALETTE.green : PALETTE.cyan,
+        // Un tramo inalcanzable por un peligro marcado: recta roja discontinua, no una ruta.
+        color: unreachable ? PALETTE.red : leg.id === 'L3' ? PALETTE.green : PALETTE.cyan,
+        dashed: unreachable,
         points: planned
           ? planned.profile.map((p) => ({ lat: p.lat, lonE: p.lon_e }))
           : a && b
@@ -355,7 +435,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       };
     });
     sceneRef.current?.setRoutes(
-      routes,
+      [...nominalOfDetours, ...routes],
       CANONICAL_WAYPOINTS.map((w) => ({ lat: w.lat, lonE: w.lonE, color: NODE_COLOR[w.id] }))
     );
   }, [plan, sceneVersion]);
@@ -631,7 +711,17 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     a && b ? { lat: (a.lat + b.lat) / 2, lonE: (a.lonE + b.lonE) / 2 } : null;
 
   const layerItems: Array<{ key: keyof TwinLayers; title: string; sub: string }> = [
-    { key: 'mola', title: 'Relieve (MOLA)', sub: `Pendientes de más de ${limits('slope_deg').red}° y refugios` },
+    {
+      key: 'ortho',
+      title: 'Imagen orbital (MRO CTX)',
+      sub:
+        ortho.status === 'ok' && ortho.meta
+          ? `${fmt(ortho.meta.resolution_m)} m por píxel, en grises (banda roja de CTX); alineada con el relieve`
+          : ortho.status === 'loading'
+            ? 'Cargando la imagen…'
+            : 'No disponible: el terreno se pinta por cota',
+    },
+    { key: 'mola', title: 'Relieve y pendientes (DTM CTX)', sub: `DTM de 20 m a escala real; pendientes de más de ${limits('slope_deg').red}° y refugios` },
     { key: 'crism', title: 'Sulfatos (CRISM)', sub: `Zonas con ${fmt(ISRU_H2O_MIN_PCT)} % de agua o más` },
     { key: 'themis', title: 'Inercia térmica (THEMIS)', sub: `Trampas de polvo, menos de ${limits('thermal_inertia_tiu').red} TIU` },
     { key: 'h3o', title: 'Malla hexagonal', sub: hexCells.length ? 'Refugios, trampas de polvo y zonas con agua, celda a celda' : 'No disponible sin el relieve' },
@@ -808,11 +898,26 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               <div>Sistema de referencia IAU_2015:49900</div>
               <div>
                 {terrain
-                  ? `Terreno a 20 m, con el relieve exagerado ×${fmt(VERTICAL_EXAGGERATION, 1)}`
+                  ? `Terreno: DTM estéreo CTX de ${fmt(terrain.spacing_m)} m, ${VERTICAL_EXAGGERATION === 1 ? 'relieve a escala real (sin exagerar)' : `relieve exagerado ×${fmt(VERTICAL_EXAGGERATION, 1)}`}`
                   : 'Sin terreno: plano con los puntos de los datos de la misión'}
               </div>
+              {ortho.meta && (
+                <div>
+                  Imagen: {ortho.meta.instrument}, {ortho.meta.mission}, {fmt(ortho.meta.resolution_m)} m por píxel ({ortho.meta.source_id}).
+                  Co-registrada con el DTM: {fmt(ortho.meta.coregistration.shift_east_m)} m al este y {fmt(ortho.meta.coregistration.shift_north_m)} m al norte. {ortho.meta.credit}.
+                </div>
+              )}
             </div>
           )}
+          <p data-imagery-credit className="max-w-full rounded-md bg-ground/85 px-2 py-0.5 t-label text-ink-2 text-center">
+            {layers.ortho && ortho.status === 'ok' && ortho.meta
+              ? `Imagen MRO CTX ${fmt(ortho.meta.resolution_m)} m/píxel (NASA/JPL/MSSS, mosaico USGS) · relieve DTM CTX ${fmt(terrain?.spacing_m ?? 20)} m a escala real`
+              : layers.ortho && ortho.status === 'loading' && terrain
+                ? 'Cargando la imagen orbital…'
+                : terrain
+                  ? `Sin imagen orbital: color por cota · relieve DTM CTX ${fmt(terrain.spacing_m)} m a escala real`
+                  : 'Sin terreno'}
+          </p>
           <div
             className="pointer-events-auto max-w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-md border border-line bg-ground/90 pl-3 pr-1 py-1 t-label text-ink-2 tabular-nums"
             title={`Sistema de referencia IAU_2015:49900. ${terrain ? 'Terreno a 20 m.' : 'Sin terreno cargado.'}`}
@@ -857,6 +962,16 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
                   />
                 ))}
               </ul>
+            </Panel>
+          )}
+          {reported.points.length > 0 && (
+            <Panel title="Puntos de la astronauta" defaultOpen aside={<span className="whitespace-nowrap">{reported.points.length}</span>} bodyClassName="space-y-3">
+              {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3">El motor está replanificando la ruta…</p>}
+              <PointList points={reported.points} />
+              <Disclosure summary="Redecisión de emergencia con estos puntos">
+                <EmergencyRedecision data={emergency} canonicalWp3Min={WB.wp3.time_min} />
+              </Disclosure>
+              <p className="t-label text-ink-3">Se marcan y se borran en Telemetría EVA.</p>
             </Panel>
           )}
           <Panel

@@ -8,9 +8,9 @@ El aspecto y el tono siguen [`DESIGN.md`](DESIGN.md): una sola tipografía (IBM 
 
 ## Pantallas
 
-1. **Cartografía (`Console3DView.tsx`, `SpyglassLens.tsx`, `engine/twinScene.ts`):** el mapa 3D manda. Relieve real (DTM CTX de 20 m), malla hexagonal, ruta del planificador pegada al terreno y cámara orbitable. La **lupa** lee el terreno bajo el cursor en tres capas (agua, inercia térmica y relieve) o en una sola; la rueda cambia su tamaño, `Espacio` el modo, doble clic o `Intro` fija hasta tres lupas para comparar y las flechas la mueven. Paneles plegables: capas, triángulo de supervivencia, astronauta, meteorología y enlace, margen de retorno y simulación de imprevistos.
+1. **Cartografía (`Console3DView.tsx`, `SpyglassLens.tsx`, `engine/twinScene.ts`):** el mapa 3D manda. Relieve real (DTM CTX de 20 m, a escala real, sin exagerar) cubierto con la **imagen orbital MRO CTX de 6 m** del sitio (mosaico controlado de USGS, co-registrado con el DTM; ver `data/nasa-layers/ortho_ctx_6m_route.json`), con pendientes, sulfatos, inercia térmica y malla hexagonal como capas activables encima. Si la imagen no carga, el terreno se pinta por cota como antes y la capa lo dice. Malla hexagonal, ruta del planificador pegada al terreno y cámara orbitable. La **lupa** lee el terreno bajo el cursor en tres capas (agua, inercia térmica y relieve) o en una sola; la rueda cambia su tamaño, `Espacio` el modo, doble clic o `Intro` fija hasta tres lupas para comparar y las flechas la mueven. Paneles plegables: capas, triángulo de supervivencia, astronauta, meteorología y enlace, margen de retorno y simulación de imprevistos.
 2. **Planificador (`RoutePlannerView.tsx`, `RouteProfileChart.tsx`):** responde a «¿puedo autorizar esta salida?». Veredicto y acciones arriba; después el perfil del camino (cota, pendiente y terreno; potencia, O₂, batería y radio en «Más detalle»), los tramos con tiempo, coste y dosis, los consumibles y la **simulación de imprevistos**: el motor repite la salida con imprevistos al azar en T+105 y se compara con la referencia de la misión (10.000 salidas, semilla 42: 96,0 % a salvo con el refugio WP3 frente a 23,8 % solo con la Base). Simular autoriza el envío de la ruta al traje; también exporta el GeoJSON.
-3. **Telemetría EVA (`EvaHudView.tsx`):** cronología de T−45 a T+165, estado, **margen de retorno** a la Base y al refugio WP3, y el mapa con el sendero del visor: cian en marcha, con borde punteado ámbar en taludes de más de 18°, chevrones rojos en la evacuación y verde en el refugio. En la evacuación hay una sola tarjeta con la orden (344° NNO · 595 m · 9,4 min), su voz de menos de 8 s y un botón de confirmación. `/multiemergencia` abre esta pantalla en T+105.
+3. **Telemetría EVA (`EvaHudView.tsx`):** «Marcar punto» guarda en el motor puntos ISRU, PELIGRO o REFUGIO; se ven también en Cartografía y en el Planificador (`engine/reportedPoints.ts`, `components/ReportedPointsPanel.tsx`). Un PELIGRO abre una zona de exclusión de 50 m (y de precaución hasta 100 m) y el motor replanifica los tramos que la cruzan; la pantalla dice qué tramo se desvía, cuántos metros y minutos añade y por qué, o que un tramo queda inalcanzable. Un REFUGIO entra como candidato en la redecisión de emergencia de T+105. Un punto ISRU es solo de interés. Cronología de T−45 a T+165, estado, **margen de retorno** a la Base y al refugio WP3, y el mapa con el sendero del visor: cian en marcha, con borde punteado ámbar en taludes de más de 18°, chevrones rojos en la evacuación y verde en el refugio. En la evacuación hay una sola tarjeta con la orden (344° NNO · 595 m · 9,4 min), su voz de menos de 8 s y un botón de confirmación. `/multiemergencia` abre esta pantalla en T+105.
 
 La barra superior lleva la navegación, el estado de la salida, el reloj de misión, «Sistema» (diagnóstico, con los códigos de estado `0x01`…`0x05`) y «Simular emergencia».
 
@@ -47,10 +47,13 @@ npm run build
 |---|---|
 | `GET /api/health` | Estado y recuento de celdas H3 cargadas (res 9 y res 12). |
 | `GET /api/eva07?t=<min>` | Estado de la EVA-07 en ese minuto: valores por fase, O₂ y dosis integrados, posición, objetivo, rumbo y estado de `GuardrailFsm::evaluate`. |
-| `GET /api/terrain` | Malla regular de 30 m con cota, pendiente, SVF, TIU, H₂O y RSSI de la malla H3 res 12. |
+| `GET /api/terrain` | Malla regular de 20 m (el paso del DTM CTX) con cota, pendiente, SVF, TIU, H₂O y RSSI de la malla H3 res 12. |
+| `GET /api/ortho`, `GET /api/ortho.png` | Procedencia y límites (lon Este 0–360) de la imagen CTX de 6 m, y la imagen. |
 | `GET /api/hexgrid` | Las 462 celdas res 9 con los vértices de cada hexágono. |
 | `GET /api/spyglass?lat=&lon=&radius_m=` | Consulta de la lupa: celda central y celdas de cada sector de 120°. |
-| `GET /api/route-plan` | Plan D\* Lite de cada tramo con su perfil celda a celda. |
+| `GET /api/route-plan` | Plan D\* Lite de cada tramo con su perfil celda a celda; con puntos marcados, cada tramo lleva `deviation` (desviado, sin cambios o inalcanzable, metros y minutos añadidos, causa) y el plan lleva `summary` y `points_version`. |
+| `GET /api/points`, `POST /api/points?kind=&lat=&lon=&t=`, `DELETE /api/points[?id=]` | Puntos marcados (estado compartido en la API, en memoria: se pierde al reiniciarla). |
+| `GET /api/emergency` | Redecisión de T+105 con WP3 y los refugios marcados como candidatos y los peligros aplicados a las rutas. |
 | `GET /api/geojson` | GeoJSON de P1 con tiempo, coste metabólico y dosis por tramo, y el SHA-256 del paquete. |
 | `GET /api/chaos-mode?seed=&trials=` | Pasada del Chaos Mode (hasta 10.000) sobre el mismo corredor que la referencia. |
 | `POST /api/zenoh-sync` | Prepara y verifica (SHA-256) el paquete pre-EVA. El enlace Zenoh está simulado en la demo. |
@@ -60,4 +63,6 @@ npm run build
 - Las tipografías (IBM Plex Sans y JetBrains Mono) van incluidas en la aplicación. Las teselas del mapa de Telemetría EVA vienen de NASA Mars Trek (`trek.nasa.gov`); sin red queda solo el relieve del terreno.
 - La inercia térmica y el agua solo existen en discos alrededor de los nodos (valores supuestos del escenario); fuera de ellos la lupa lo dice.
 - El envío al traje está simulado: la API prepara el paquete y calcula su SHA-256, pero no hay enlace real.
+- Los puntos marcados viven en la memoria de la API: se pierden al reiniciarla. La cronología EVA-07, la orden de voz y la tarjeta de evacuación siguen el escenario canónico (refugio WP3); la redecisión con los puntos marcados se enseña aparte.
+- El mapa de Telemetría EVA sigue usando las teselas globales de Mars Trek (Viking 232 m, MOLA 463 m); la imagen CTX de 6 m solo está en Cartografía.
 - Los colores de estado siguen los documentos de UX y viven en `src/theme.ts`.

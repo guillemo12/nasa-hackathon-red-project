@@ -16,9 +16,11 @@ import {
   legBetween,
   waypoint,
 } from '@/data/missionData';
-import { fetchHexGrid, fetchRoutePlan, fetchTerrain } from '@/engine/apiClient';
+import { ApiError, fetchHexGrid, fetchRoutePlan, fetchTerrain } from '@/engine/apiClient';
+import { addPoint, clearPoints, removePoint, usePoints } from '@/engine/reportedPoints';
+import { EmergencyRedecision, POINT_COLOR, PointList, RouteImpact, redecisionDiffers, useEmergency } from '@/components/ReportedPointsPanel';
 import { causeLabel, formatT, openSkyWindowMin } from '@/engine/evaModel';
-import { bearingWords, compassPoint, fmt, fmtCoords, haversineM, hillshadeDataUrl, minutesWords, nodeLabel } from '@/engine/geo';
+import { bearingWords, compassPoint, fmt, haversineM, hillshadeDataUrl, minutesWords, nodeLabel } from '@/engine/geo';
 import {
   MARS_TREK_LAYERS,
   TILE_SIZE,
@@ -29,7 +31,7 @@ import {
 } from '@/engine/marsTrekTiles';
 import { P1_CONSTANTS, classify, limits, terrainEta, type Level } from '@/engine/thresholds';
 import { AR_PATH, LEVEL_COLOR, NODE_COLOR, PALETTE, RADIO_CLASS_LEVEL, STATE_STYLE } from '@/theme';
-import type { Eva07Sample, HexCell, Notify, RoutePlan, TerrainGrid } from '@/types/mission';
+import type { Eva07Sample, HexCell, Notify, ReportedKind, RoutePlan, TerrainGrid } from '@/types/mission';
 
 interface EvaHudViewProps {
   sample: Eva07Sample;
@@ -39,14 +41,6 @@ interface EvaHudViewProps {
   onToggleLive: () => void;
   onSelectTimeMin: (tMin: number) => void;
   onNotify: Notify;
-}
-
-interface CustomMapPoint {
-  id: number;
-  lat: number;
-  lonE: number;
-  label: string;
-  kind: 'ISRU' | 'PELIGRO' | 'REFUGIO';
 }
 
 type VoiceStatus = 'idle' | 'playing' | 'done' | 'blocked' | 'unavailable';
@@ -86,12 +80,11 @@ const LAYER_OPTIONS: Array<{ value: MarsTrekLayerId; label: string }> = [
   { value: 'viking', label: 'Imagen' },
   { value: 'mola', label: 'Relieve' },
 ];
-const POINT_KIND_OPTIONS: Array<{ value: CustomMapPoint['kind']; label: string }> = [
+const POINT_KIND_OPTIONS: Array<{ value: ReportedKind; label: string }> = [
   { value: 'ISRU', label: 'ISRU' },
   { value: 'PELIGRO', label: 'Peligro' },
   { value: 'REFUGIO', label: 'Refugio' },
 ];
-const POINT_KIND_TEXT: Record<CustomMapPoint['kind'], string> = { ISRU: 'ISRU', PELIGRO: 'peligro', REFUGIO: 'refugio' };
 /** Dial mecánico de tres posiciones de la unidad de muñeca. */
 type DialValue = '1' | '2' | '3';
 const DIAL_OPTIONS: Array<{ value: DialValue; label: string; hint: string }> = [
@@ -178,8 +171,10 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const [zoom, setZoom] = useState<number>(MAP_DEFAULT_ZOOM);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lonE: number }>(MAP_CENTER);
   const [markMode, setMarkMode] = useState(false);
-  const [pointKind, setPointKind] = useState<CustomMapPoint['kind']>('ISRU');
-  const [customPoints, setCustomPoints] = useState<CustomMapPoint[]>([]);
+  const [pointKind, setPointKind] = useState<ReportedKind>('PELIGRO');
+  const reported = usePoints();
+  const customPoints = reported.points;
+  const [pointBusy, setPointBusy] = useState(false);
 
   const [hexCells, setHexCells] = useState<HexCell[]>([]);
   const [terrain, setTerrain] = useState<TerrainGrid | null>(null);
@@ -192,11 +187,53 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     let active = true;
     fetchHexGrid().then((c) => active && setHexCells(c)).catch(() => undefined);
     fetchTerrain().then((t) => active && setTerrain(t)).catch(() => undefined);
-    fetchRoutePlan().then((p) => active && setPlan(p)).catch(() => undefined);
     return () => {
       active = false;
     };
   }, [apiOnline]);
+
+  // El plan se vuelve a pedir cada vez que cambian los puntos marcados (lo replanifica el motor).
+  useEffect(() => {
+    if (!apiOnline) return;
+    let active = true;
+    fetchRoutePlan(Math.max(0, reported.version))
+      .then((p) => active && setPlan(p))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [apiOnline, reported.version]);
+  const planCurrent = plan !== null && (plan.points_version ?? 0) === Math.max(0, reported.version);
+  const emergency = useEmergency(reported.version, apiOnline && customPoints.length > 0);
+
+  const markPoint = async (kind: ReportedKind, lat: number, lonE: number) => {
+    setPointBusy(true);
+    try {
+      const pt = await addPoint(kind, lat, lonE, tMin);
+      onNotify(`${pt.label} guardado en el motor`, pt.effect, kind === 'PELIGRO' ? 'amber' : kind === 'REFUGIO' ? 'green' : 'cyan');
+    } catch (err) {
+      onNotify(
+        'No se ha guardado el punto',
+        err instanceof ApiError && err.status === 400
+          ? 'Cae fuera de la zona con malla del terreno: el motor no puede usarlo.'
+          : 'El motor de cálculo no responde: el punto no ha llegado a la Base ni al planificador.',
+        'red'
+      );
+    } finally {
+      setPointBusy(false);
+    }
+  };
+  const dropPoint = async (id?: number) => {
+    setPointBusy(true);
+    try {
+      if (id === undefined) await clearPoints();
+      else await removePoint(id);
+    } catch {
+      onNotify('No se ha borrado', 'El motor de cálculo no responde.', 'red');
+    } finally {
+      setPointBusy(false);
+    }
+  };
 
   const hillshade = useMemo(() => (terrain ? hillshadeDataUrl(terrain) : ''), [terrain]);
 
@@ -419,7 +456,13 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     const leg = legBetween(sample.position.from, sample.phase.goal);
     const full = leg ? legPath(leg.id) : [];
     const flags = (leg && steepByLeg.get(leg.id)) || [];
-    const start = Math.floor(sample.position.frac * Math.max(0, full.length - 1));
+    // La API pone a la astronauta sobre esta misma ruta: el sendero empieza en el punto de la
+    // ruta más cercano a ella (no en una fracción de índices, que no es una fracción de metros).
+    const pLat = sample.position.lat ?? 0;
+    const pLon = sample.position.lon_e ?? 0;
+    const start = full.length
+      ? full.reduce((best, p, i) => (haversineM(pLat, pLon, p.lat, p.lonE) < haversineM(pLat, pLon, full[best].lat, full[best].lonE) ? i : best), 0)
+      : 0;
     const rest = full.slice(start + 1).map((p) => toScreen(p.lat, p.lonE));
     const path = [astro, ...rest, toScreen(goal.lat, goal.lonE)];
     const steep = [Boolean(flags[start]), ...full.slice(start + 1).map((_, i) => Boolean(flags[start + 1 + i])), Boolean(flags[full.length - 1])];
@@ -438,7 +481,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     if (run.length > 1) steepRuns.push(run);
     return { path, steepRuns };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sample.position.frac, sample.position.from, sample.phase.goal, sample.position.at_goal, plan, steepByLeg, zoom, mapCenter, visorSize, isPreEva]);
+  }, [sample.position.frac, sample.position.lat, sample.position.lon_e, sample.position.from, sample.phase.goal, sample.position.at_goal, plan, steepByLeg, zoom, mapCenter, visorSize, isPreEva]);
   const arPath = arTrack.path;
   // `helmet-vision.md` §2.3: cian en nominal, precaución y varias amenazas; rojo con chevrones en
   // evacuación; verde en refugio. El ámbar solo bordea los tramos con talud de más de 18°.
@@ -495,9 +538,8 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     const rect = visorRef.current?.getBoundingClientRect();
     if (!rect) return;
     const { lat, lonE } = screenToLatLon(e.clientX - rect.left, e.clientY - rect.top);
-    const next: CustomMapPoint = { id: Date.now(), lat, lonE, label: `Punto ${customPoints.length + 1}`, kind: pointKind };
-    setCustomPoints((prev) => [...prev, next]);
-    onNotify(`${next.label} (${POINT_KIND_TEXT[next.kind]}) añadido`, fmtCoords(lat, lonE), 'cyan');
+    if (pointBusy) return;
+    void markPoint(pointKind, lat, lonE);
   };
   const handleMapKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const step = 60;
@@ -624,8 +666,15 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     </div>
   );
 
+  const redecisionNote = redecisionDiffers(emergency, PLANNER_WALKBACK.wp3.time_min);
+
   return (
     <div className="space-y-4">
+      {redecisionNote && (
+        <Notice level={redecisionNote.level} role={redecisionNote.level === 'red' ? 'alert' : 'status'}>
+          {redecisionNote.text}
+        </Notice>
+      )}
       {evacCard}
 
       {/* Cronología, estado y margen de retorno: un solo bloque bajo, para que mande el mapa */}
@@ -873,10 +922,10 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               {markMode && <Segmented label="Tipo de punto" options={POINT_KIND_OPTIONS} value={pointKind} onChange={setPointKind} />}
               {customPoints.length > 0 && (
                 <>
-                  <button type="button" aria-label="Deshacer el último punto" title="Deshacer el último punto" onClick={() => setCustomPoints((p) => p.slice(0, -1))} className={ICON_BUTTON}>
+                  <button type="button" disabled={pointBusy} aria-label="Deshacer el último punto" title="Deshacer el último punto" onClick={() => void dropPoint(customPoints[customPoints.length - 1].id)} className={ICON_BUTTON}>
                     <Undo2 className="w-4 h-4" aria-hidden />
                   </button>
-                  <Button size="sm" variant="quiet" onClick={() => setCustomPoints([])}>
+                  <Button size="sm" variant="quiet" disabled={pointBusy} onClick={() => void dropPoint()}>
                     <Trash2 className="w-4 h-4" aria-hidden />
                     Borrar puntos ({customPoints.length})
                   </Button>
@@ -885,6 +934,22 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
             </div>
           )}
         </div>
+        {customPoints.length > 0 && (
+          <div className="px-3 py-2 border-b border-line space-y-2">
+            {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3" aria-live="polite">El motor está replanificando la ruta…</p>}
+            {planCurrent && (plan?.summary?.detoured_legs.length ?? 0) > 0 && (
+              <p className="t-label text-ink-3">
+                La astronauta y su sendero siguen la ruta replanificada; la nominal queda en rojo punteado. Los tiempos de cada fase siguen siendo los de la cronología guardada.
+              </p>
+            )}
+            {sample.position.route === 'inalcanzable' && (
+              <Notice level="red" role="alert">
+                La astronauta está en un tramo que el motor da por inalcanzable: su posición se dibuja en línea recta entre los nodos, no sobre una ruta.
+              </Notice>
+            )}
+            {!reported.online && <Notice level="red">Sin enlace con el motor: los puntos de esta pantalla pueden no estar al día.</Notice>}
+          </div>
+        )}
 
         <div className="relative">
 
@@ -961,6 +1026,13 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   );
                 })}
 
+              {/* Ruta nominal de los tramos desviados, atenuada, para ver el rodeo */}
+              {planCurrent &&
+                plan?.legs.map((l) =>
+                  l.deviation?.status === 'desviada' && l.deviation.nominal_route ? (
+                    <polyline key={`nom-${l.leg_id}`} data-nominal-route={l.leg_id} points={pts(l.deviation.nominal_route.map(([la, lo]) => ({ lat: la, lonE: lo })))} fill="none" stroke={PALETTE.red} strokeOpacity="0.55" strokeWidth="1.5" strokeDasharray="1 4" />
+                  ) : null
+                )}
               {/* Triángulo planificado */}
               {PLANNED_LEGS.map((leg) => (
                 <polyline key={leg.id} points={pts(legPath(leg.id))} fill="none" stroke={PALETTE.text2} strokeOpacity="0.55" strokeWidth="1.5" strokeDasharray="2 5" />
@@ -1067,10 +1139,17 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
 
               {/* Puntos marcados por la astronauta */}
               {customPoints.map((pt) => {
-                const p = toScreen(pt.lat, pt.lonE);
-                const color = pt.kind === 'PELIGRO' ? PALETTE.red : pt.kind === 'REFUGIO' ? PALETTE.green : PALETTE.cyan;
+                const p = toScreen(pt.lat, pt.lon_e);
+                const color = POINT_COLOR[pt.kind];
+                const hm = reported.hazardModel;
                 return (
-                  <g key={pt.id}>
+                  <g key={pt.id} data-reported-point={pt.kind}>
+                    {pt.kind === 'PELIGRO' && hm && (
+                      <>
+                        <circle cx={p.x} cy={p.y} r={hm.caution_radius_m / metersPerPx} fill="none" stroke={color} strokeOpacity="0.7" strokeWidth="1.5" strokeDasharray="4 4" />
+                        <circle cx={p.x} cy={p.y} r={hm.exclusion_radius_m / metersPerPx} fill={color} fillOpacity="0.18" stroke={color} strokeWidth="1.5" />
+                      </>
+                    )}
                     <circle cx={p.x} cy={p.y} r="9" fill={color} fillOpacity="0.25" stroke={color} strokeWidth="2" />
                     <text x={p.x + 13} y={p.y + 4} className="num" fill={PALETTE.text} fontSize="12" fontWeight="600" stroke={PALETTE.ground} strokeWidth="3" paintOrder="stroke">
                       {pt.label}
@@ -1101,6 +1180,17 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
           </div>
         </div>
       </section>
+
+      {customPoints.length > 0 && (
+        <Panel title="Puntos marcados" aside={`${customPoints.length} en el motor`} bodyClassName="space-y-4">
+          <PointList points={customPoints} onRemove={(id) => void dropPoint(id)} busy={pointBusy} />
+          {reported.hazardModel && <p className="t-label text-ink-3">{reported.hazardModel.note}</p>}
+          <div>
+            <h3 className="text-sm font-semibold text-ink mb-1.5">Redecisión de emergencia con estos puntos</h3>
+            <EmergencyRedecision data={emergency} canonicalWp3Min={PLANNER_WALKBACK.wp3.time_min} />
+          </div>
+        </Panel>
+      )}
 
       {/* Controles del traje (unidad de muñeca) y lecturas */}
       <Panel title="Controles del traje" aside={`Unidad de muñeca del ${UX_LABELS.suit}`} bodyClassName="space-y-4">

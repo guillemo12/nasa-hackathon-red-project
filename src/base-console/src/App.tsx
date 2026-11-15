@@ -14,6 +14,7 @@ import {
 } from '@/engine/apiClient';
 import { isCertified } from '@/engine/chaos';
 import { sampleEva07Local } from '@/engine/evaModel';
+import { usePoints } from '@/engine/reportedPoints';
 import type { ChaosState, ConsoleView, Eva07Sample, SyncState, Tone } from '@/types/mission';
 
 const VIEW_TO_PATH: Record<ConsoleView, string> = {
@@ -135,6 +136,9 @@ export function App() {
   // El modelo local responde al instante; si la API está arriba, su muestra (con el estado del
   // motor Rust) sustituye a la local cuando llega. Sin API no se lanza ninguna petición.
   const localSample = useMemo(() => sampleEva07Local(tMin), [tMin]);
+  // La API coloca a la astronauta sobre la ruta vigente: si la astronauta marca un peligro y el
+  // motor replanifica, la muestra del mismo minuto se vuelve a pedir.
+  const pointsVersion = usePoints().version;
   useEffect(() => {
     if (!apiOnline) {
       setApiSample(null);
@@ -152,7 +156,7 @@ export function App() {
     return () => {
       active = false;
     };
-  }, [tMin, apiOnline]);
+  }, [tMin, apiOnline, pointsVersion]);
 
   const sample: Eva07Sample =
     apiSample && Math.abs(apiSample.t_min - localSample.t_min) < 0.005 ? apiSample : localSample;

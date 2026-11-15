@@ -16,6 +16,8 @@ import {
   waypoint,
 } from '@/data/missionData';
 import { fetchEnrichedGeoJson, fetchRoutePlan } from '@/engine/apiClient';
+import { usePoints } from '@/engine/reportedPoints';
+import { EmergencyRedecision, PointList, RouteImpact, useEmergency } from '@/components/ReportedPointsPanel';
 import { CHAOS_VISIBLE_TRIALS, certify, sigmaPct } from '@/engine/chaos';
 import { ISRU_H2O_MIN_PCT, classify, limits } from '@/engine/thresholds';
 import type { Level } from '@/engine/thresholds';
@@ -91,7 +93,12 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const reported = usePoints();
+  const pointsVersion = Math.max(0, reported.version);
+  const planCurrent = plan !== null && (plan.points_version ?? 0) === pointsVersion;
+  const emergency = useEmergency(reported.version, apiOnline && reported.points.length > 0);
 
+  // El motor replanifica cuando la astronauta marca o borra un punto: se vuelve a pedir el plan.
   useEffect(() => {
     if (!apiOnline) {
       setPlan(null);
@@ -99,14 +106,14 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
     }
     let active = true;
     setPlanLoading(true);
-    fetchRoutePlan()
+    fetchRoutePlan(pointsVersion)
       .then((p) => active && setPlan(p))
       .catch(() => active && setPlan(null))
       .finally(() => active && setPlanLoading(false));
     return () => {
       active = false;
     };
-  }, [apiOnline]);
+  }, [apiOnline, pointsVersion]);
 
   const run = chaos.status === 'done' ? chaos.run : null;
   const cert = run ? certify(run) : null;
@@ -280,6 +287,26 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
           </div>
         </section>
       </header>
+
+      {reported.points.length > 0 && (
+        <Panel title="Puntos que ha marcado la astronauta" aside={`${reported.points.length} en el motor`} bodyClassName="space-y-4">
+          {planCurrent ? <RouteImpact plan={plan} /> : <p className="text-sm text-ink-3">El motor está replanificando la ruta…</p>}
+          {planCurrent && plan?.summary && plan.summary.detoured_legs.length > 0 && (
+            <div className="flex flex-wrap gap-x-8 gap-y-2">
+              <Stat label="Tramos desviados" value={plan.summary.detoured_legs.join(', ')} />
+              <Stat label="Distancia añadida" value={`${plan.summary.added_length_m >= 0 ? '+' : ''}${fmt(plan.summary.added_length_m)}`} unit="m" />
+              <Stat label="Tiempo añadido" value={`${plan.summary.added_time_min >= 0 ? '+' : ''}${fmt(plan.summary.added_time_min, 1)}`} unit="min" />
+              <Stat label="O₂ añadido" value={`${plan.summary.added_o2_liters >= 0 ? '+' : ''}${fmt(plan.summary.added_o2_liters, 2)}`} unit="L" />
+            </div>
+          )}
+          <PointList points={reported.points} />
+          {reported.hazardModel && <p className="t-label text-ink-3">{reported.hazardModel.note}</p>}
+          <Disclosure summary="Redecisión de emergencia con estos puntos" defaultOpen>
+            <EmergencyRedecision data={emergency} canonicalWp3Min={WB.wp3.time_min} />
+          </Disclosure>
+          <p className="t-label text-ink-3">Los puntos se marcan y se borran en Telemetría EVA. El GeoJSON exportado lleva el plan replanificado y la lista de puntos.</p>
+        </Panel>
+      )}
 
       {/* Perfil de la ruta y hitos */}
       <Panel

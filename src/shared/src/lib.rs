@@ -114,6 +114,25 @@ pub const ISRU_WATER_MIN_PCT: f32 = 12.0;
 pub const SHELTER_SVF_MAX: f32 = 0.20;
 
 // ----------------------------------------------------------------------------
+// 1a. Points reported by the astronaut during the EVA (supuesto de diseño, declarado)
+// ----------------------------------------------------------------------------
+
+/// Radius of the exclusion zone around a reported HAZARD point, m: the planner treats every
+/// cell whose center is closer than this as impassable. Design assumption: 2.5 pixels of the
+/// 20 m CTX DTM (the smallest feature the terrain model resolves) plus ~10 m for where the
+/// astronaut places the mark on the wrist map.
+pub const REPORTED_HAZARD_EXCLUSION_RADIUS_M: f64 = 50.0;
+/// Outer radius of the caution ring around a reported HAZARD point, m (design assumption:
+/// twice the exclusion radius). Cells in the ring stay passable at a higher cost.
+pub const REPORTED_HAZARD_CAUTION_RADIUS_M: f64 = 100.0;
+/// Cost multiplier of an edge that enters the caution ring (design assumption). Time, O2 and
+/// dose are not changed: only the planner's preference.
+pub const REPORTED_HAZARD_CAUTION_COST_FACTOR: f64 = 3.0;
+/// Largest distance from the reported point to the cell the planner uses for a reported
+/// SHELTER or ISRU point, m (it snaps to the nearest grid cell).
+pub const REPORTED_POINT_SNAP_MAX_M: f64 = 30.0;
+
+// ----------------------------------------------------------------------------
 // 1b. P1 reference metabolic model
 //     M = 120 + eta*0.285*W*v + W*v*sin(theta) / (0.25*(1 - s))   [W],  W = mass*g_Mars
 // ----------------------------------------------------------------------------

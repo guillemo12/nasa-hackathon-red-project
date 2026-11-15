@@ -154,6 +154,9 @@ export interface Eva07Sample {
     at_goal: boolean;
     target_bearing_deg: number | null;
     target_distance_m: number;
+    /** Solo de la API: la posición va sobre la ruta del planificador (nominal o replanificada). */
+    route?: 'nominal' | 'planificada' | 'replanificada' | 'inalcanzable';
+    route_remaining_m?: number;
   };
   values: Eva07EventValues;
   guardrail: GuardrailFrame;
@@ -315,6 +318,55 @@ export interface PlannedLeg {
   spe_envelope_dose_msv: number;
   profile: RouteSample[];
   error?: string;
+  /** Solo con puntos marcados: qué ha hecho el motor con el tramo. */
+  deviation?: LegDeviation;
+}
+
+export type ReportedKind = 'ISRU' | 'PELIGRO' | 'REFUGIO';
+
+/** Punto marcado desde Telemetría EVA y guardado en el motor (`/api/points`). */
+export interface ReportedPoint {
+  id: number;
+  kind: ReportedKind;
+  label: string;
+  lat: number;
+  lon_e: number;
+  t_min: number | null;
+  /** Qué hace el motor con él, en una frase. */
+  effect: string;
+  /** Valores de la celda res 12 donde cae (null si queda fuera de la malla). */
+  cell: {
+    elev_m: number | null;
+    slope_deg: number | null;
+    sky_view_factor: number | null;
+    thermal_inertia_tiu: number | null;
+    isru_h2o_pct: number | null;
+    dtm_shelter: boolean;
+  } | null;
+}
+
+export interface HazardModel {
+  exclusion_radius_m: number;
+  caution_radius_m: number;
+  caution_cost_factor: number;
+  snap_max_m: number;
+  note: string;
+}
+
+export interface LegDeviation {
+  status: 'desviada' | 'sin_cambios' | 'inalcanzable' | 'sin_referencia';
+  caused_by: Array<{ id: number; label: string; nominal_min_distance_m: number }>;
+  search: string;
+  nominal_length_m?: number;
+  nominal_time_min?: number;
+  added_length_m?: number;
+  added_time_min?: number;
+  added_o2_liters?: number;
+  min_distance_to_hazard_m?: number | null;
+  /** Ruta nominal (lat, lon E) para dibujarla atenuada junto al desvío. */
+  nominal_route?: Array<[number, number]>;
+  reason?: string;
+  blocking_points?: Array<{ id: number; label: string }>;
 }
 
 export interface RoutePlan {
@@ -323,4 +375,78 @@ export interface RoutePlan {
   pace: { speed_cap_mps: number; power_cap_w: number };
   grid: { path: string; resolution: number; cells: number; planner_fingerprint: string };
   legs: PlannedLeg[];
+  points_version?: number;
+  reported_points?: ReportedPoint[];
+  hazard_model?: HazardModel;
+  replanned?: boolean;
+  summary?: {
+    detoured_legs: string[];
+    unreachable_legs: string[];
+    added_length_m: number;
+    added_time_min: number;
+    added_o2_liters: number;
+  };
+}
+
+export interface EmergencyRoute {
+  length_m: number;
+  time_min: number;
+  o2_liters: number;
+  dose_spe_msv: number;
+  route: Array<[number, number]>;
+}
+
+/** Redecisión de T+105 del motor con los puntos marcados (`/api/emergency`). */
+export interface EmergencyDecision {
+  points_version: number;
+  decision_t_min: number;
+  rule: string;
+  canonical_note: string;
+  uses_reported_shelter: boolean;
+  chosen_id: string;
+  chosen_label: string;
+  active_target: string;
+  dynamic_goal_switched: boolean;
+  base_feasible: boolean;
+  t_vital_min: number;
+  t_walkback_base_min: number;
+  t_walkback_shelter_min: number;
+  base: EmergencyRoute | null;
+  candidates: Array<{
+    id: string;
+    label: string;
+    reported: boolean;
+    lat: number;
+    lon_e: number;
+    on_grid: boolean;
+    cell_svf: number | null;
+    dtm_confirms_shelter: boolean;
+    reachable: boolean;
+    chosen: boolean;
+    escape: EmergencyRoute | null;
+  }>;
+  error?: string;
+}
+
+/** Procedencia de la imagen orbital del gemelo 3D (`/api/ortho`). */
+export interface OrthoMeta {
+  url: string;
+  width: number;
+  height: number;
+  bounds: { lat_min: number; lat_max: number; lon_e_min: number; lon_e_max: number };
+  resolution_m: number;
+  mission: string;
+  instrument: string;
+  product: string;
+  source_id: string;
+  citation: string;
+  credit: string;
+  band: string;
+  coregistration: {
+    shift_east_m: number;
+    shift_north_m: number;
+    quadrant_spread_m: number;
+    residual_m: number;
+    reference_product: string;
+  };
 }

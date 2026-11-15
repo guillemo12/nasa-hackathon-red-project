@@ -250,6 +250,32 @@ pub fn max_speed_under_caps(
     speed_cap.min(power_speed).max(PACE_MIN_SPEED_MPS)
 }
 
+/// Penalty zone around a point (center in planetocentric latitude, East longitude 0-360).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ZonePenalty {
+    pub lat_deg: f64,
+    pub lon_e_deg: f64,
+    pub exclusion_radius_m: f64,
+    pub caution_radius_m: f64,
+    pub caution_factor: f64,
+}
+
+/// Local (east, north) position in m on the tangent plane at the fixed site reference (Base
+/// node), the frame of the planner's positions, bearings and walked lengths.
+pub fn local_xy(lat_deg: f64, lon_e_deg: f64) -> (f64, f64) {
+    let (la0, lo0) = (SITE_REFERENCE_LAT_DEG, SITE_REFERENCE_LON_DEG);
+    let mut dlon = lon_e_deg - lo0;
+    if dlon > 180.0 {
+        dlon -= 360.0;
+    } else if dlon < -180.0 {
+        dlon += 360.0;
+    }
+    (
+        MARS_RADIUS_M * la0.to_radians().cos() * dlon.to_radians(),
+        MARS_RADIUS_M * (lat_deg - la0).to_radians(),
+    )
+}
+
 /// Full evaluation of one directed edge.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct EdgeEval {
@@ -476,6 +502,9 @@ pub struct MetabolicDStarPlanner {
     h3_to_idx: HashMap<u64, usize>,
     /// Local (east, north) position in m of each cell center (NaN for non-H3 test ids).
     pos: Vec<(f64, f64)>,
+    /// Cost multiplier of every edge that enters the cell: 1 = none, `INFINITY` = excluded
+    /// (impassable). Set by `set_zone_penalties` (points reported during the EVA).
+    penalty: Vec<f64>,
     // Pre-allocated scratch buffers for zero-allocation replanning
     g_score: Vec<f64>,
     rhs: Vec<f64>,
@@ -504,24 +533,11 @@ impl MetabolicDStarPlanner {
         }
         // Local tangent plane at the fixed site reference (Base node), so that positions,
         // bearings and walked lengths do not depend on which cells the graph contains.
-        let latlon: Vec<(f64, f64)> = cells.iter().map(|c| h3_to_lat_lon(c.h3_index)).collect();
-        let origin = Some((SITE_REFERENCE_LAT_DEG, SITE_REFERENCE_LON_DEG));
-        let pos = latlon
+        let pos = cells
             .iter()
-            .map(|&(la, lo)| match origin {
-                Some((la0, lo0)) if la.is_finite() => {
-                    let mut dlon = lo - lo0;
-                    if dlon > 180.0 {
-                        dlon -= 360.0;
-                    } else if dlon < -180.0 {
-                        dlon += 360.0;
-                    }
-                    (
-                        MARS_RADIUS_M * la0.to_radians().cos() * dlon.to_radians(),
-                        MARS_RADIUS_M * (la - la0).to_radians(),
-                    )
-                }
-                _ => (f64::NAN, f64::NAN),
+            .map(|c| {
+                let (la, lo) = h3_to_lat_lon(c.h3_index);
+                if la.is_finite() { local_xy(la, lo) } else { (f64::NAN, f64::NAN) }
             })
             .collect();
         for (u, neighbors) in adj.iter().enumerate() {
@@ -538,6 +554,7 @@ impl MetabolicDStarPlanner {
             rev_adj,
             h3_to_idx,
             pos,
+            penalty: vec![1.0; n],
             g_score: vec![f64::INFINITY; n],
             rhs: vec![f64::INFINITY; n],
             open_key: vec![DStarKey(f64::INFINITY, f64::INFINITY); n],
@@ -573,14 +590,89 @@ impl MetabolicDStarPlanner {
         hazards: &ActiveHazards,
         weights: &CostWeights,
     ) -> EdgeEval {
-        edge_eval(
-            &self.cells[u],
-            &self.cells[v],
-            dist_m,
-            self.bearing_deg(u, v),
-            hazards,
-            weights,
-        )
+        self.eval_edge_with_bearing(u, v, dist_m, self.bearing_deg(u, v), hazards, weights)
+    }
+
+    /// `edge_eval` plus the zone penalty of the destination cell (`set_zone_penalties`): an
+    /// excluded cell is impassable, a penalized one multiplies only the planner cost (time,
+    /// O2 and dose of the edge are physical and do not change).
+    #[inline]
+    fn eval_edge_with_bearing(
+        &self,
+        u: usize,
+        v: usize,
+        dist_m: f64,
+        bearing_deg: Option<f64>,
+        hazards: &ActiveHazards,
+        weights: &CostWeights,
+    ) -> EdgeEval {
+        let p = self.penalty[v];
+        if !p.is_finite() {
+            return EdgeEval::IMPASSABLE;
+        }
+        let mut e = edge_eval(&self.cells[u], &self.cells[v], dist_m, bearing_deg, hazards, weights);
+        if p != 1.0 {
+            e.total_cost *= p;
+        }
+        e
+    }
+
+    /// Replaces the zone penalties (reported hazard points). Every cell whose center is closer
+    /// than `exclusion_radius_m` to a zone center is excluded; closer than `caution_radius_m`,
+    /// its incoming edges cost `caution_factor` times more. Overlapping zones keep the largest
+    /// penalty. Changed cells are marked dirty, so the next `plan_path` to the same goal repairs
+    /// the search incrementally (D* Lite). Returns the number of excluded and penalized cells.
+    pub fn set_zone_penalties(&mut self, zones: &[ZonePenalty]) -> (usize, usize) {
+        let centers: Vec<(f64, f64)> = zones
+            .iter()
+            .map(|z| local_xy(z.lat_deg, z.lon_e_deg))
+            .collect();
+        let (mut excluded, mut penalized) = (0, 0);
+        for i in 0..self.cells.len() {
+            let (x, y) = self.pos[i];
+            let mut p: f64 = 1.0;
+            if x.is_finite() {
+                for (z, &(cx, cy)) in zones.iter().zip(&centers) {
+                    let d = (x - cx).hypot(y - cy);
+                    if d < z.exclusion_radius_m {
+                        p = f64::INFINITY;
+                    } else if d < z.caution_radius_m {
+                        p = p.max(z.caution_factor.max(1.0));
+                    }
+                }
+            }
+            if !p.is_finite() {
+                excluded += 1;
+            } else if p > 1.0 {
+                penalized += 1;
+            }
+            if p != self.penalty[i] {
+                self.penalty[i] = p;
+                self.mark_dirty(i);
+            }
+        }
+        (excluded, penalized)
+    }
+
+    /// True if the cell is inside an exclusion zone (`set_zone_penalties`).
+    pub fn is_excluded(&self, h3: u64) -> bool {
+        self.h3_to_idx
+            .get(&h3)
+            .is_some_and(|&i| !self.penalty[i].is_finite())
+    }
+
+    fn mark_dirty(&mut self, idx: usize) {
+        if !self.dirty_mark[idx] {
+            self.dirty_mark[idx] = true;
+            self.dirty_nodes.push(idx);
+        }
+        for k in 0..self.rev_adj[idx].len() {
+            let p = self.rev_adj[idx][k].0;
+            if !self.dirty_mark[p] {
+                self.dirty_mark[p] = true;
+                self.dirty_nodes.push(p);
+            }
+        }
     }
 
     /// Evaluates the straight leg between cells `a` and `b` along the H3 grid line, or `None`
@@ -609,14 +701,7 @@ impl MetabolicDStarPlanner {
         let mut out = Vec::with_capacity(idx.len() - 1);
         let mut cost = 0.0;
         for w in idx.windows(2) {
-            let e = edge_eval(
-                &self.cells[w[0]],
-                &self.cells[w[1]],
-                step,
-                Some(bearing),
-                hazards,
-                weights,
-            );
+            let e = self.eval_edge_with_bearing(w[0], w[1], step, Some(bearing), hazards, weights);
             if !e.total_cost.is_finite() {
                 return None;
             }
@@ -835,16 +920,7 @@ impl MetabolicDStarPlanner {
     pub fn update_cell_hazard(&mut self, h3: u64, updated_cell: HexCellState64B) {
         if let Some(&idx) = self.h3_to_idx.get(&h3) {
             self.cells[idx] = updated_cell;
-            if !self.dirty_mark[idx] {
-                self.dirty_mark[idx] = true;
-                self.dirty_nodes.push(idx);
-            }
-            for &(p, _) in &self.rev_adj[idx] {
-                if !self.dirty_mark[p] {
-                    self.dirty_mark[p] = true;
-                    self.dirty_nodes.push(p);
-                }
-            }
+            self.mark_dirty(idx);
         }
     }
 

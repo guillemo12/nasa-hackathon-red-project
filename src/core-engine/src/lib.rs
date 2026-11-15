@@ -4,5 +4,6 @@ pub mod stochastic_hazard;
 pub mod metabolic_dstar;
 pub mod neuro_symbolic;
 pub mod mission;
+pub mod reported_points;
 
 pub use red_atlas_shared as shared;

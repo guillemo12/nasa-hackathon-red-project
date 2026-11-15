@@ -10,12 +10,16 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use h3o::{CellIndex, Resolution};
 use red_atlas_core::h3_mars_grid::{h3_to_lat_lon, lat_lon_to_h3, H3MarsGrid, MARS_RADIUS_M};
 use red_atlas_core::metabolic_dstar::{
-    metabolic_o2_rate_l_min, pandolf_mars_metabolic_watts, CostWeights, MetabolicDStarPlanner,
+    metabolic_o2_rate_l_min, pandolf_mars_metabolic_watts, CostWeights, PathResult,
+};
+use red_atlas_core::reported_points::{
+    hazards_on_route, min_distance_to_hazards, plan_leg, snap_cell, t105_decision_with_reports,
+    ReportedKind, ReportedPoint,
 };
 use red_atlas_core::mission::{
     chaos_corridor_cells, repo_path, CHAOS_CORRIDOR_RES, CHAOS_MODE_JSON_REL, CHAOS_SEED,
@@ -30,6 +34,8 @@ use red_atlas_shared::{
     GCR_SURFACE_RATE_MSV_H, HAZARD_FLAG_ISRU_WATER, HAZARD_FLAG_NLOS, HAZARD_FLAG_REGOLITH_TRAP,
     HAZARD_FLAG_SHELTER, HAZARD_FLAG_SLOPE_CRITICAL, O2_DENSITY_G_PER_L, SPE_PEAK_ENVELOPE_MSV_H,
     SUIT_O2_PRIMARY_USABLE_G, SURVIVAL_TRIANGLE_LEGS, SURVIVAL_TRIANGLE_SITE, WP2_RAMP_SLOPE_DEG,
+    REPORTED_HAZARD_CAUTION_COST_FACTOR, REPORTED_HAZARD_CAUTION_RADIUS_M,
+    REPORTED_HAZARD_EXCLUSION_RADIUS_M, REPORTED_POINT_SNAP_MAX_M, SHELTER_SVF_MAX,
 };
 use serde_json::{json, Value};
 
@@ -37,6 +43,11 @@ const EVENTS_JSON_REL: &str = "data/mission-scenarios/eva07_events.json";
 const GEOJSON_REL: &str = "data/mission-scenarios/triangulo_supervivencia.geojson";
 const LAYERS_CATALOG_REL: &str = "data/nasa-layers/layers_catalog.json";
 const GRID_RES9_REL: &str = "data/nasa-layers/hexgrid_route_res9_hexcell64b.parquet";
+/// Orbital texture of the 3D twin and its provenance (`red_atlas_p1.terrain.ortho_texture`).
+const ORTHO_PNG_REL: &str = "data/nasa-layers/ortho_ctx_6m_route.png";
+const ORTHO_JSON_REL: &str = "data/nasa-layers/ortho_ctx_6m_route.json";
+/// Most points the API keeps at once (the planner replans every leg they touch).
+const MAX_REPORTED_POINTS: usize = 40;
 
 /// Compile-time copies, used only if the runtime files cannot be read.
 const EVENTS_JSON_FALLBACK: &str = include_str!("../../../../data/mission-scenarios/eva07_events.json");
@@ -47,8 +58,9 @@ const GEOJSON_FALLBACK: &str =
 const MARS_SOL_OVER_EARTH_DAY: f64 = 88_775.244 / 86_400.0;
 /// LMST at T+0 (P1: departure 14:45 LMST), in Mars local minutes.
 const DEPARTURE_LMST_MIN: f64 = 14.0 * 60.0 + 45.0;
-/// Spacing of the terrain heightfield served to the 3D twin, m.
-const TERRAIN_SPACING_M: f64 = 30.0;
+/// Spacing of the terrain heightfield served to the 3D twin, m: the posting of the CTX DTM
+/// (20 m), so the mesh neither drops nor invents relief.
+const TERRAIN_SPACING_M: f64 = 20.0;
 /// Half-width of the planner corridor around each leg, m (same as the T+105 decision).
 const ROUTE_CORRIDOR_HALF_WIDTH_M: f64 = 200.0;
 /// Largest Spyglass radius the API answers, m.
@@ -65,8 +77,22 @@ struct AppState {
     chaos_cells: Vec<HexCellState64B>,
     terrain_json: OnceLock<String>,
     hexgrid_json: OnceLock<String>,
+    /// Nominal plan (no reported points): JSON and the walked route of each leg.
     route_plan: OnceLock<Value>,
+    baseline_paths: OnceLock<Vec<Option<PathResult>>>,
+    /// Points reported from the EVA HUD, shared by every screen.
+    points: Mutex<PointsState>,
+    /// Plan and emergency decision for the current `PointsState::version`.
+    plan_cache: Mutex<Option<(u64, Arc<Value>)>>,
+    emergency_cache: Mutex<Option<(u64, Arc<Value>)>>,
     bundle: Bundle,
+}
+
+#[derive(Default)]
+struct PointsState {
+    version: u64,
+    next_id: u32,
+    list: Vec<ReportedPoint>,
 }
 
 #[derive(Clone, Copy)]
@@ -112,7 +138,7 @@ fn send_json(stream: &mut TcpStream, status: &str, body: &str) {
         "HTTP/1.1 {status}\r\n\
          Content-Type: application/json; charset=utf-8\r\n\
          Access-Control-Allow-Origin: *\r\n\
-         Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
+         Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n\
          Access-Control-Allow-Headers: Content-Type\r\n\
          Cache-Control: no-store\r\n\
          Content-Length: {}\r\n\
@@ -121,6 +147,21 @@ fn send_json(stream: &mut TcpStream, status: &str, body: &str) {
         body
     );
     let _ = stream.write_all(resp.as_bytes());
+    let _ = stream.flush();
+}
+
+fn send_bytes(stream: &mut TcpStream, content_type: &str, body: &[u8]) {
+    let head = format!(
+        "HTTP/1.1 200 OK\r\n\
+         Content-Type: {content_type}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Cache-Control: no-cache\r\n\
+         Content-Length: {}\r\n\
+         Connection: close\r\n\r\n",
+        body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
     let _ = stream.flush();
 }
 
@@ -669,6 +710,55 @@ fn sample_eva07(doc: &Value, t_target: f64) -> Option<Value> {
     }))
 }
 
+/// Puts the astronaut of a `sample_eva07` sample on the walked route of the current plan (the
+/// nominal one, or the one replanned around the reported hazards) instead of the straight line
+/// between nodes: same fraction of the leg, measured along the walked distance. The phase
+/// timing stays the scenario's. A leg the plan marks unreachable keeps the straight line and is
+/// flagged (`route: "inalcanzable"`).
+fn place_on_planned_route(smp: &mut Value, plan: &Value) {
+    let Some(pos) = smp.get("position") else { return };
+    let (from, to, frac) = (s(pos, "from").to_string(), s(pos, "to").to_string(), f(pos, "frac"));
+    if from == to {
+        return;
+    }
+    let goal = smp.get("phase").map_or(String::new(), |p| s(p, "goal").to_string());
+    let Some(leg) = plan
+        .get("legs")
+        .and_then(Value::as_array)
+        .and_then(|legs| legs.iter().find(|l| s(l, "from") == from && s(l, "to") == to))
+    else {
+        return;
+    };
+    let status = leg.get("deviation").map_or("nominal", |d| match s(d, "status") {
+        "desviada" => "replanificada",
+        "inalcanzable" => "inalcanzable",
+        _ => "planificada",
+    });
+    let pts: Vec<(f64, f64, f64)> = leg
+        .get("profile")
+        .and_then(Value::as_array)
+        .map(|p| p.iter().map(|x| (f(x, "d_m"), f(x, "lat"), f(x, "lon_e"))).collect())
+        .unwrap_or_default();
+    let Some(pos) = smp.get_mut("position").and_then(Value::as_object_mut) else { return };
+    pos.insert("route".into(), json!(if pts.len() < 2 { "inalcanzable" } else { status }));
+    if pts.len() < 2 {
+        return;
+    }
+    let total = pts[pts.len() - 1].0;
+    let d = frac.clamp(0.0, 1.0) * total;
+    let k = pts.iter().position(|p| p.0 >= d).unwrap_or(pts.len() - 1).max(1);
+    let (a, b) = (pts[k - 1], pts[k]);
+    let u = if b.0 > a.0 { ((d - a.0) / (b.0 - a.0)).clamp(0.0, 1.0) } else { 1.0 };
+    pos.insert("lat".into(), json!(round_to(a.1 + (b.1 - a.1) * u, 6)));
+    pos.insert("lon_e".into(), json!(round_to(a.2 + (b.2 - a.2) * u, 6)));
+    pos.insert("route_remaining_m".into(), json!(round_to(total - d, 0)));
+    // Towards an intermediate node (not the escape or the return, whose figures come from the
+    // decision), the distance left is the one left on the walked route.
+    if goal == to && goal != "WP3" && goal != "BASE" {
+        pos.insert("target_distance_m".into(), json!(round_to(total - d, 0)));
+    }
+}
+
 // ============================================================================
 // Terrain, hex grid, Spyglass and routes on P1's real grid
 // ============================================================================
@@ -908,11 +998,8 @@ fn spyglass_json(state: &AppState, lat: f64, lon_e: f64, radius_m: f64) -> Resul
     }))
 }
 
-/// D* Lite plan of every canonical leg on P1's res-12 terrain at the sustained pace, under
-/// nominal conditions (τ 0.7, GCR only). `spe_envelope_dose_msv` is what the same path would
-/// cost under the 8 mSv/h design envelope (rate × SVF of each cell walked).
-fn compute_route_plan(grid: &H3MarsGrid) -> Value {
-    let nominal = ActiveHazards {
+fn nominal_conditions() -> ActiveHazards {
+    ActiveHazards {
         h1_dust_storm: false,
         h2_spe_radiation: false,
         h3_regolith_slope: false,
@@ -921,81 +1008,190 @@ fn compute_route_plan(grid: &H3MarsGrid) -> Value {
         wind_speed_ms: ActiveHazards::default().wind_speed_ms,
         spe_dose_rate_msv_h: GCR_SURFACE_RATE_MSV_H,
         rssi_dbm: ActiveHazards::default().rssi_dbm,
-    };
+    }
+}
+
+/// Latitude / East longitude of a route profile, decimated to at most ~160 samples.
+fn route_latlon(path: &PathResult) -> Vec<Value> {
+    let keep = (path.profile.len() / 160).max(1);
+    path.profile
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % keep == 0 || i + 1 == path.profile.len())
+        .map(|(_, s)| {
+            let (la, lo) = h3_to_lat_lon(s.h3);
+            json!([round_to(la, 6), round_to(lo, 6)])
+        })
+        .collect()
+}
+
+/// JSON of one planned leg (figures and profile of the walked route).
+fn leg_json(grid: &H3MarsGrid, leg_idx: usize, start_h3: u64, path: &PathResult) -> Value {
+    let leg = &SURVIVAL_TRIANGLE_LEGS[leg_idx];
+    let a = &SURVIVAL_TRIANGLE_SITE[leg.from];
+    let mut samples = Vec::with_capacity(path.profile.len() + 1);
+    let start = grid.get_cell(start_h3);
+    samples.push(json!({
+        "d_m": 0.0, "t_min": 0.0,
+        "elev_m": start.map_or(Value::Null, |c| num(c.elev_m, 1)),
+        "grade_deg": Value::Null, "speed_mps": Value::Null, "power_w": Value::Null,
+        "tiu": start.map_or(Value::Null, |c| num(c.thermal_inertia_tiu, 0)),
+        "svf": start.map_or(Value::Null, |c| num(c.sky_view_factor, 2)),
+        "rssi_dbm": start.map_or(Value::Null, |c| num(c.los_base_rssi_dbm, 1)),
+        "lat": round_to(a.lat_deg, 6), "lon_e": round_to(a.lon_deg, 6),
+    }));
+    let mut envelope_dose = 0.0;
+    let mut prev_t = 0.0;
+    let step_keep = (path.profile.len() / 160).max(1);
+    for (i, smp) in path.profile.iter().enumerate() {
+        let cell = grid.get_cell(smp.h3);
+        let svf = cell
+            .map(|c| c.sky_view_factor)
+            .filter(|v| !is_no_data(*v))
+            .unwrap_or(1.0) as f64;
+        envelope_dose += SPE_PEAK_ENVELOPE_MSV_H as f64 * svf.clamp(0.0, 1.0) * (smp.cum_time_min - prev_t) / 60.0;
+        prev_t = smp.cum_time_min;
+        if i % step_keep == 0 || i + 1 == path.profile.len() {
+            let (lat, lon) = h3_to_lat_lon(smp.h3);
+            samples.push(json!({
+                "d_m": round_to(smp.cum_dist_m, 1),
+                "t_min": round_to(smp.cum_time_min, 2),
+                "elev_m": cell.map_or(Value::Null, |c| num(c.elev_m, 1)),
+                "grade_deg": round_to(smp.grade_deg, 1),
+                "speed_mps": round_to(smp.speed_mps, 2),
+                "power_w": round_to(smp.power_w, 0),
+                "tiu": cell.map_or(Value::Null, |c| num(c.thermal_inertia_tiu, 0)),
+                "svf": cell.map_or(Value::Null, |c| num(c.sky_view_factor, 2)),
+                "rssi_dbm": cell.map_or(Value::Null, |c| num(c.los_base_rssi_dbm, 1)),
+                "lat": round_to(lat, 6), "lon_e": round_to(lon, 6),
+            }));
+        }
+    }
+    json!({
+        "leg_id": leg.id,
+        "from": NODE_IDS[leg.from],
+        "to": NODE_IDS[leg.to],
+        "straight_distance_m": leg.distance_m,
+        "bearing_deg": leg.bearing_deg,
+        "length_m": round_to(path.length_m, 1),
+        "time_min": round_to(path.estimated_time_min, 2),
+        "mean_speed_mps": round_to(path.mean_speed_mps(), 3),
+        "mean_power_w": round_to(path.mean_power_w(), 1),
+        "o2_liters": round_to(path.estimated_o2_liters, 2),
+        "o2_grams": round_to(path.estimated_o2_liters * O2_DENSITY_G_PER_L, 1),
+        "gcr_dose_msv": round_to(path.estimated_rad_msv, 4),
+        "spe_envelope_dose_msv": round_to(envelope_dose, 3),
+        "cells": path.path_h3.len(),
+        "profile": samples,
+    })
+}
+
+fn point_label(points: &[ReportedPoint], id: u32) -> String {
+    points.iter().find(|p| p.id == id).map_or_else(|| format!("punto {id}"), |p| p.label.clone())
+}
+
+/// D* Lite plan of every canonical leg on P1's res-12 terrain at the sustained pace, under
+/// nominal conditions (τ 0.7, GCR only), with the HAZARD points reported from the EVA.
+/// `spe_envelope_dose_msv` is what the same path would cost under the 8 mSv/h design envelope
+/// (rate × SVF of each cell walked).
+///
+/// With `baseline` (the nominal walked routes), a leg whose nominal route does not enter any
+/// hazard zone keeps it (raising costs off the optimum cannot move it); the others are
+/// replanned and carry a `deviation` block (status, metres and minutes added, causes).
+fn compute_route_plan(
+    grid: &H3MarsGrid,
+    points: &[ReportedPoint],
+    baseline: Option<&[Option<PathResult>]>,
+    version: u64,
+) -> (Value, Vec<Option<PathResult>>) {
+    let nominal = nominal_conditions();
     let weights = CostWeights::default();
     let mut legs = Vec::new();
-    for leg in SURVIVAL_TRIANGLE_LEGS.iter() {
+    let mut paths = Vec::new();
+    let (mut detoured, mut unreachable_legs) = (Vec::<String>::new(), Vec::<String>::new());
+    let (mut added_len, mut added_time, mut added_o2) = (0.0, 0.0, 0.0);
+    for (li, leg) in SURVIVAL_TRIANGLE_LEGS.iter().enumerate() {
         let (a, b) = (&SURVIVAL_TRIANGLE_SITE[leg.from], &SURVIVAL_TRIANGLE_SITE[leg.to]);
         let (Some(ca), Some(cb)) = (
             grid.nearest_cell(a.lat_deg, a.lon_deg).map(|c| c.h3_index),
             grid.nearest_cell(b.lat_deg, b.lon_deg).map(|c| c.h3_index),
         ) else {
+            paths.push(None);
             continue;
         };
-        let sub = grid.corridor_around(ca, &[cb], ROUTE_CORRIDOR_HALF_WIDTH_M);
-        let (cells, adj) = sub.planner_graph();
-        let mut planner = MetabolicDStarPlanner::new(cells, adj);
-        let Some(path) = planner.plan_path(ca, cb, &nominal, &weights) else {
-            legs.push(json!({ "leg_id": leg.id, "from": NODE_IDS[leg.from], "to": NODE_IDS[leg.to], "error": "sin ruta en la malla" }));
-            continue;
+        let base_path = baseline.and_then(|bp| bp.get(li)).and_then(Option::as_ref);
+        let causes: Vec<(u32, f64)> = base_path.map(|p| hazards_on_route(p, points)).unwrap_or_default();
+        let (path, corridor, unreachable) = match base_path {
+            Some(p) if causes.is_empty() => (Some(p.clone()), Some(ROUTE_CORRIDOR_HALF_WIDTH_M), None),
+            _ => {
+                let out = plan_leg(grid, ca, cb, points, &nominal, &weights, ROUTE_CORRIDOR_HALF_WIDTH_M, base_path);
+                (out.path, out.corridor_half_width_m, out.unreachable)
+            }
         };
-        let mut samples = Vec::with_capacity(path.profile.len() + 1);
-        let start = grid.get_cell(ca);
-        samples.push(json!({
-            "d_m": 0.0, "t_min": 0.0,
-            "elev_m": start.map_or(Value::Null, |c| num(c.elev_m, 1)),
-            "grade_deg": Value::Null, "speed_mps": Value::Null, "power_w": Value::Null,
-            "tiu": start.map_or(Value::Null, |c| num(c.thermal_inertia_tiu, 0)),
-            "svf": start.map_or(Value::Null, |c| num(c.sky_view_factor, 2)),
-            "rssi_dbm": start.map_or(Value::Null, |c| num(c.los_base_rssi_dbm, 1)),
-            "lat": round_to(a.lat_deg, 6), "lon_e": round_to(a.lon_deg, 6),
-        }));
-        let mut envelope_dose = 0.0;
-        let mut prev_t = 0.0;
-        let step_keep = (path.profile.len() / 160).max(1);
-        for (i, smp) in path.profile.iter().enumerate() {
-            let cell = grid.get_cell(smp.h3);
-            let svf = cell
-                .map(|c| c.sky_view_factor)
-                .filter(|v| !is_no_data(*v))
-                .unwrap_or(1.0) as f64;
-            envelope_dose += SPE_PEAK_ENVELOPE_MSV_H as f64 * svf.clamp(0.0, 1.0) * (smp.cum_time_min - prev_t) / 60.0;
-            prev_t = smp.cum_time_min;
-            if i % step_keep == 0 || i + 1 == path.profile.len() {
-                let (lat, lon) = h3_to_lat_lon(smp.h3);
-                samples.push(json!({
-                    "d_m": round_to(smp.cum_dist_m, 1),
-                    "t_min": round_to(smp.cum_time_min, 2),
-                    "elev_m": cell.map_or(Value::Null, |c| num(c.elev_m, 1)),
-                    "grade_deg": round_to(smp.grade_deg, 1),
-                    "speed_mps": round_to(smp.speed_mps, 2),
-                    "power_w": round_to(smp.power_w, 0),
-                    "tiu": cell.map_or(Value::Null, |c| num(c.thermal_inertia_tiu, 0)),
-                    "svf": cell.map_or(Value::Null, |c| num(c.sky_view_factor, 2)),
-                    "rssi_dbm": cell.map_or(Value::Null, |c| num(c.los_base_rssi_dbm, 1)),
-                    "lat": round_to(lat, 6), "lon_e": round_to(lon, 6),
-                }));
+        let mut v = match &path {
+            Some(p) => leg_json(grid, li, ca, p),
+            None => json!({
+                "leg_id": leg.id, "from": NODE_IDS[leg.from], "to": NODE_IDS[leg.to],
+                "error": if points.is_empty() { "sin ruta en la malla" } else { "inalcanzable" },
+            }),
+        };
+        if !points.is_empty() {
+            let mut dev = serde_json::Map::new();
+            let cause_json: Vec<Value> = causes
+                .iter()
+                .map(|(id, d)| json!({ "id": id, "label": point_label(points, *id), "nominal_min_distance_m": round_to(*d, 1) }))
+                .collect();
+            dev.insert("caused_by".into(), json!(cause_json));
+            dev.insert("search".into(), json!(match corridor {
+                Some(w) => format!("corredor de {w:.0} m a cada lado del tramo"),
+                None => "malla completa".to_string(),
+            }));
+            match (&path, base_path) {
+                (None, _) => {
+                    let u = unreachable.clone().unwrap_or_else(|| red_atlas_core::reported_points::Unreachable {
+                        reason: "sin ruta en la malla".into(),
+                        blocking_points: vec![],
+                    });
+                    dev.insert("status".into(), json!("inalcanzable"));
+                    dev.insert("reason".into(), json!(u.reason));
+                    dev.insert("blocking_points".into(), json!(u.blocking_points.iter()
+                        .map(|id| json!({ "id": id, "label": point_label(points, *id) })).collect::<Vec<_>>()));
+                    unreachable_legs.push(leg.id.to_string());
+                }
+                (Some(p), Some(bp)) => {
+                    let changed = p.smoothed_h3 != bp.smoothed_h3;
+                    let dl = p.length_m - bp.length_m;
+                    let dt = p.estimated_time_min - bp.estimated_time_min;
+                    let do2 = p.estimated_o2_liters - bp.estimated_o2_liters;
+                    dev.insert("status".into(), json!(if changed { "desviada" } else { "sin_cambios" }));
+                    dev.insert("nominal_length_m".into(), json!(round_to(bp.length_m, 1)));
+                    dev.insert("nominal_time_min".into(), json!(round_to(bp.estimated_time_min, 2)));
+                    dev.insert("added_length_m".into(), json!(round_to(dl, 1)));
+                    dev.insert("added_time_min".into(), json!(round_to(dt, 2)));
+                    dev.insert("added_o2_liters".into(), json!(round_to(do2, 2)));
+                    let clearance = min_distance_to_hazards(p, points);
+                    dev.insert("min_distance_to_hazard_m".into(),
+                        if clearance.is_finite() { json!(round_to(clearance, 1)) } else { Value::Null });
+                    dev.insert("nominal_route".into(), json!(route_latlon(bp)));
+                    if changed {
+                        detoured.push(leg.id.to_string());
+                        added_len += dl;
+                        added_time += dt;
+                        added_o2 += do2;
+                    }
+                }
+                (Some(_), None) => {
+                    dev.insert("status".into(), json!("sin_referencia"));
+                }
+            }
+            if let Some(o) = v.as_object_mut() {
+                o.insert("deviation".into(), Value::Object(dev));
             }
         }
-        legs.push(json!({
-            "leg_id": leg.id,
-            "from": NODE_IDS[leg.from],
-            "to": NODE_IDS[leg.to],
-            "straight_distance_m": leg.distance_m,
-            "bearing_deg": leg.bearing_deg,
-            "length_m": round_to(path.length_m, 1),
-            "time_min": round_to(path.estimated_time_min, 2),
-            "mean_speed_mps": round_to(path.mean_speed_mps(), 3),
-            "mean_power_w": round_to(path.mean_power_w(), 1),
-            "o2_liters": round_to(path.estimated_o2_liters, 2),
-            "o2_grams": round_to(path.estimated_o2_liters * O2_DENSITY_G_PER_L, 1),
-            "gcr_dose_msv": round_to(path.estimated_rad_msv, 4),
-            "spe_envelope_dose_msv": round_to(envelope_dose, 3),
-            "cells": path.path_h3.len(),
-            "profile": samples,
-        }));
+        legs.push(v);
+        paths.push(path);
     }
-    json!({
+    let plan = json!({
         "engine": "MetabolicDStarPlanner::plan_path (red-atlas-core, Rust)",
         "grid": { "path": P1_GRID_PARQUET_REL, "resolution": grid.res, "cells": grid.len(),
                   "planner_fingerprint": format!("{:016x}", grid.planner_fingerprint()) },
@@ -1003,7 +1199,179 @@ fn compute_route_plan(grid: &H3MarsGrid) -> Value {
         "conditions": "nominales: τ 0,7, solo GCR, ritmo de retorno sostenido",
         "corridor_half_width_m": ROUTE_CORRIDOR_HALF_WIDTH_M,
         "spe_envelope_msv_h": SPE_PEAK_ENVELOPE_MSV_H,
+        "points_version": version,
+        "reported_points": points.iter().map(|p| point_json(grid, p)).collect::<Vec<_>>(),
+        "hazard_model": hazard_model_json(),
+        "replanned": points.iter().any(|p| p.kind == ReportedKind::Hazard),
+        "summary": {
+            "detoured_legs": detoured,
+            "unreachable_legs": unreachable_legs,
+            "added_length_m": round_to(added_len, 1),
+            "added_time_min": round_to(added_time, 2),
+            "added_o2_liters": round_to(added_o2, 2),
+        },
         "legs": legs,
+    });
+    (plan, paths)
+}
+
+/// Number in Spanish notation (decimal comma), without trailing zeros.
+fn es_num(x: f64) -> String {
+    let s = format!("{}", round_to(x, 2));
+    s.replace('.', ",")
+}
+
+fn hazard_model_json() -> Value {
+    json!({
+        "exclusion_radius_m": REPORTED_HAZARD_EXCLUSION_RADIUS_M,
+        "caution_radius_m": REPORTED_HAZARD_CAUTION_RADIUS_M,
+        "caution_cost_factor": REPORTED_HAZARD_CAUTION_COST_FACTOR,
+        "snap_max_m": REPORTED_POINT_SNAP_MAX_M,
+        "note": format!(
+            "Supuesto de diseño: un PELIGRO excluye las celdas a menos de {} m (2,5 píxeles del DTM CTX de 20 m más el error al marcar en el mapa de muñeca) y encarece ×{} entrar en las que están a menos de {} m; los tramos afectados se replanifican en toda la malla. Un REFUGIO es candidato en la decisión de emergencia: gana el refugio que la malla confirma (SVF ≤ {}) al que se llega antes; uno sin confirmar solo si no hay otro alcanzable. Un punto ISRU es solo de interés: no se añade como destino.",
+            es_num(REPORTED_HAZARD_EXCLUSION_RADIUS_M), es_num(REPORTED_HAZARD_CAUTION_COST_FACTOR),
+            es_num(REPORTED_HAZARD_CAUTION_RADIUS_M), es_num(SHELTER_SVF_MAX as f64)
+        ),
+    })
+}
+
+/// A reported point with the grid values of its cell and what the engine does with it.
+fn point_json(grid: &H3MarsGrid, p: &ReportedPoint) -> Value {
+    let cell = snap_cell(grid, p.lat_deg, p.lon_e_deg).and_then(|h| grid.get_cell(h));
+    let effect = match p.kind {
+        ReportedKind::Hazard => format!(
+            "Zona de exclusión de {} m y de precaución hasta {} m: la ruta se replanifica para rodearla.",
+            es_num(REPORTED_HAZARD_EXCLUSION_RADIUS_M), es_num(REPORTED_HAZARD_CAUTION_RADIUS_M)
+        ),
+        ReportedKind::Shelter => "Candidato de refugio en la decisión de emergencia (T+105), junto a WP3.".into(),
+        ReportedKind::Isru => "Punto de interés: se guarda y se enseña, pero no se añade como destino (cambiaría el O₂ y la cronología de la EVA).".into(),
+    };
+    json!({
+        "id": p.id,
+        "kind": p.kind.code(),
+        "label": p.label,
+        "lat": round_to(p.lat_deg, 6),
+        "lon_e": round_to(p.lon_e_deg, 6),
+        "t_min": p.t_min,
+        "effect": effect,
+        "cell": cell.map_or(Value::Null, |c| json!({
+            "elev_m": num(c.elev_m, 1),
+            "slope_deg": num(c.slope_deg, 1),
+            "sky_view_factor": num(c.sky_view_factor, 2),
+            "thermal_inertia_tiu": num(c.thermal_inertia_tiu, 0),
+            "isru_h2o_pct": num(c.isru_h2o_pct, 1),
+            "dtm_shelter": !is_no_data(c.sky_view_factor) && c.sky_view_factor <= SHELTER_SVF_MAX,
+        })),
+    })
+}
+
+/// The T+105 decision with the reported points (`/api/emergency`).
+fn emergency_json(grid: &H3MarsGrid, points: &[ReportedPoint], version: u64) -> Value {
+    let d = match t105_decision_with_reports(grid, points) {
+        Ok(d) => d,
+        Err(e) => return json!({ "error": e, "points_version": version }),
+    };
+    let route = |p: &PathResult| json!({
+        "length_m": round_to(p.length_m, 1),
+        "time_min": round_to(p.estimated_time_min, 3),
+        "o2_liters": round_to(p.estimated_o2_liters, 2),
+        "dose_spe_msv": round_to(p.estimated_rad_msv, 3),
+        "route": route_latlon(p),
+    });
+    let candidates: Vec<Value> = d.candidates.iter().enumerate().map(|(i, c)| json!({
+        "id": c.id,
+        "label": c.label,
+        "reported": c.reported,
+        "lat": round_to(c.lat_deg, 6),
+        "lon_e": round_to(c.lon_e_deg, 6),
+        "on_grid": c.h3.is_some(),
+        "cell_svf": c.cell_svf.map(|v| round_to(v, 2)),
+        "dtm_confirms_shelter": c.dtm_confirms_shelter,
+        "reachable": c.escape_path.is_some(),
+        "chosen": i == d.chosen,
+        "escape": c.escape_path.as_ref().map_or(Value::Null, route),
+    })).collect();
+    let st = &d.decision.status;
+    let chosen = &d.candidates[d.chosen];
+    json!({
+        "engine": "t105_decision_with_reports (red-atlas-core, Rust): Walkback Limit Dual en WP2 con WP3 y los refugios marcados",
+        "points_version": version,
+        "decision_t_min": red_atlas_shared::EVA07_DECISION_T_MIN,
+        "rule": format!("Primero los refugios que la malla del terreno confirma (SVF de la celda ≤ {}, el mismo que usa el modelo de dosis; en WP3 es el valor de escenario de P1) y, entre ellos, el de menor tiempo de escape al ritmo de emergencia; si empatan, WP3. Un refugio marcado que la malla da a cielo abierto solo se usa si no se puede llegar a ninguno confirmado. Con peligros marcados, las rutas se buscan en toda la malla y rodean sus zonas.", es_num(SHELTER_SVF_MAX as f64)),
+        "canonical_note": "La cronología EVA-07, la orden de voz y la tarjeta de evacuación siguen el escenario canónico (refugio WP3); este bloque es la redecisión del motor con los puntos marcados.",
+        "uses_reported_shelter": chosen.reported,
+        "chosen_id": chosen.id,
+        "chosen_label": chosen.label,
+        "active_target": if st.dynamic_goal_switched { chosen.id.clone() } else { "BASE".to_string() },
+        "dynamic_goal_switched": st.dynamic_goal_switched,
+        "base_feasible": st.base_feasible,
+        "t_vital_min": round_to(d.decision.t_vital_min, 3),
+        "t_walkback_base_min": round_to(st.t_walkback_base_min as f64, 3),
+        "t_walkback_shelter_min": round_to(st.t_walkback_shelter_min as f64, 3),
+        "time_switch": d.decision.time_switch,
+        "rad_switch": d.decision.rad_switch,
+        "base": d.decision.base_path.as_ref().map_or(Value::Null, route),
+        "candidates": candidates,
+    })
+}
+
+/// Current plan (nominal plus reported points), computed once per points version.
+fn current_plan(state: &AppState) -> Option<Arc<Value>> {
+    let base_json = state.route_plan.get()?;
+    let baseline = state.baseline_paths.get()?;
+    let grid = state.grid12.as_ref()?;
+    let (version, points) = {
+        let p = state.points.lock().ok()?;
+        (p.version, p.list.clone())
+    };
+    let mut cache = state.plan_cache.lock().ok()?;
+    if let Some((v, plan)) = cache.as_ref() {
+        if *v == version {
+            return Some(Arc::clone(plan));
+        }
+    }
+    let plan = if points.is_empty() {
+        let mut v = base_json.clone();
+        if let Some(o) = v.as_object_mut() {
+            o.insert("points_version".into(), json!(version));
+        }
+        v
+    } else {
+        let started = std::time::Instant::now();
+        let (v, _) = compute_route_plan(grid, &points, Some(baseline), version);
+        println!("[api_server] Ruta replanificada con {} puntos (versión {version}) en {:.2} s",
+                 points.len(), started.elapsed().as_secs_f64());
+        v
+    };
+    let plan = Arc::new(plan);
+    *cache = Some((version, Arc::clone(&plan)));
+    Some(plan)
+}
+
+fn current_emergency(state: &AppState) -> Option<Arc<Value>> {
+    let grid = state.grid12.as_ref()?;
+    let (version, points) = {
+        let p = state.points.lock().ok()?;
+        (p.version, p.list.clone())
+    };
+    let mut cache = state.emergency_cache.lock().ok()?;
+    if let Some((v, e)) = cache.as_ref() {
+        if *v == version {
+            return Some(Arc::clone(e));
+        }
+    }
+    let e = Arc::new(emergency_json(grid, &points, version));
+    *cache = Some((version, Arc::clone(&e)));
+    Some(e)
+}
+
+fn points_json(state: &AppState) -> Value {
+    let p = state.points.lock().expect("points lock");
+    let grid: &H3MarsGrid = state.grid12.as_deref().unwrap_or(&state.grid9);
+    json!({
+        "points_version": p.version,
+        "hazard_model": hazard_model_json(),
+        "points": p.list.iter().map(|x| point_json(grid, x)).collect::<Vec<_>>(),
     })
 }
 
@@ -1011,7 +1379,9 @@ fn compute_route_plan(grid: &H3MarsGrid) -> Value {
 /// (`src/shared/README.md` §2): metabolic cost, expected SPE dose and estimated time.
 fn enriched_geojson(state: &AppState) -> Value {
     let mut out = state.geojson.clone();
-    let plan = state.route_plan.get();
+    // The plan the console shows: nominal, or replanned around the reported hazards.
+    let current = current_plan(state);
+    let plan = current.as_deref();
     if let Some(features) = out.get_mut("features").and_then(Value::as_array_mut) {
         for feat in features {
             let Some(props) = feat.get_mut("properties").and_then(Value::as_object_mut) else {
@@ -1069,6 +1439,8 @@ fn enriched_geojson(state: &AppState) -> Value {
             json!({
                 "generated_by": "red-atlas-core api_server",
                 "route_plan_available": plan.is_some(),
+                "points_version": plan.and_then(|p| p.get("points_version")).cloned().unwrap_or(Value::Null),
+                "reported_points": plan.and_then(|p| p.get("reported_points")).cloned().unwrap_or(json!([])),
                 "grid_parquet": P1_GRID_PARQUET_REL,
                 "bundle_sha256": state.bundle.sha256_hex,
                 "bundle_bytes": state.bundle.bytes,
@@ -1112,12 +1484,19 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
                 "h3_res12_cells": state.grid12.as_ref().map_or(0, |g| g.len()),
                 "events": state.events_doc.get("events").and_then(Value::as_array).map_or(0, Vec::len),
                 "route_plan_ready": state.route_plan.get().is_some(),
+                "points_version": state.points.lock().map_or(0, |p| p.version),
+                "ortho_available": repo_path(ORTHO_PNG_REL).exists(),
             });
             send_json(&mut stream, "200 OK", &body.to_string());
         }
         ("GET", "/api/eva07") => match query_f64(query, "t") {
             Some(t) => match sample_eva07(&state.events_doc, t) {
-                Some(ev) => send_json(&mut stream, "200 OK", &ev.to_string()),
+                Some(mut ev) => {
+                    if let Some(plan) = current_plan(&state) {
+                        place_on_planned_route(&mut ev, &plan);
+                    }
+                    send_json(&mut stream, "200 OK", &ev.to_string())
+                }
                 None => send_json(&mut stream, "500 Internal Server Error", r#"{"error":"bad_events_json"}"#),
             },
             None => send_json(&mut stream, "200 OK", &state.events_doc.to_string()),
@@ -1145,12 +1524,89 @@ fn handle_client(mut stream: TcpStream, state: Arc<AppState>) {
                 _ => send_json(&mut stream, "400 Bad Request", r#"{"error":"lat_lon_required"}"#),
             }
         }
-        ("GET", "/api/route-plan") => match state.route_plan.get() {
+        ("GET", "/api/route-plan") => match current_plan(&state) {
             Some(plan) => send_json(&mut stream, "200 OK", &plan.to_string()),
             None if state.grid12.is_none() => {
                 send_json(&mut stream, "503 Service Unavailable", r#"{"error":"res12_grid_not_loaded"}"#)
             }
             None => send_json(&mut stream, "503 Service Unavailable", r#"{"error":"route_plan_computing"}"#),
+        },
+        ("GET", "/api/emergency") => match current_emergency(&state) {
+            Some(v) => send_json(&mut stream, "200 OK", &v.to_string()),
+            None => send_json(&mut stream, "503 Service Unavailable", r#"{"error":"res12_grid_not_loaded"}"#),
+        },
+        ("GET", "/api/points") => send_json(&mut stream, "200 OK", &points_json(&state).to_string()),
+        ("POST", "/api/points") => {
+            let kind = parse_query_param(query, "kind").and_then(|k| ReportedKind::parse(&k));
+            match (kind, query_f64(query, "lat"), query_f64(query, "lon")) {
+                (Some(kind), Some(lat), Some(lon)) => {
+                    let aoi = state.aoi;
+                    let lon = lon.rem_euclid(360.0);
+                    if lat < aoi.lat_min || lat > aoi.lat_max || lon < aoi.lon_min || lon > aoi.lon_max {
+                        send_json(&mut stream, "400 Bad Request", r#"{"error":"outside_grid"}"#);
+                        return;
+                    }
+                    let point = {
+                        let mut p = state.points.lock().expect("points lock");
+                        if p.list.len() >= MAX_REPORTED_POINTS {
+                            drop(p);
+                            send_json(&mut stream, "409 Conflict", r#"{"error":"too_many_points"}"#);
+                            return;
+                        }
+                        p.next_id += 1;
+                        let n = p.list.iter().filter(|x| x.kind == kind).count() + 1;
+                        let point = ReportedPoint {
+                            id: p.next_id,
+                            kind,
+                            lat_deg: lat,
+                            lon_e_deg: lon,
+                            label: format!("{} {n}", kind.label()),
+                            t_min: query_f64(query, "t"),
+                        };
+                        p.list.push(point.clone());
+                        p.version += 1;
+                        point
+                    };
+                    println!("[api_server] Punto marcado: {} ({:.6}, {:.6})", point.label, point.lat_deg, point.lon_e_deg);
+                    let grid: &H3MarsGrid = state.grid12.as_deref().unwrap_or(&state.grid9);
+                    let body = json!({ "point": point_json(grid, &point), "points_version": state.points.lock().map_or(0, |p| p.version) });
+                    send_json(&mut stream, "201 Created", &body.to_string());
+                }
+                _ => send_json(&mut stream, "400 Bad Request", r#"{"error":"kind_lat_lon_required","kinds":["PELIGRO","REFUGIO","ISRU"]}"#),
+            }
+        }
+        ("DELETE", "/api/points") => {
+            let id = parse_query_param(query, "id").and_then(|v| v.parse::<u32>().ok());
+            let mut p = state.points.lock().expect("points lock");
+            let before = p.list.len();
+            match id {
+                Some(id) => p.list.retain(|x| x.id != id),
+                None => p.list.clear(),
+            }
+            let removed = before - p.list.len();
+            if removed > 0 {
+                p.version += 1;
+            }
+            let body = json!({ "removed": removed, "points_version": p.version });
+            drop(p);
+            if id.is_some() && removed == 0 {
+                send_json(&mut stream, "404 Not Found", &body.to_string());
+            } else {
+                send_json(&mut stream, "200 OK", &body.to_string());
+            }
+        }
+        ("GET", "/api/ortho") => match read_json(ORTHO_JSON_REL, None) {
+            Some(mut meta) => {
+                if let Some(o) = meta.as_object_mut() {
+                    o.insert("url".into(), json!("/api/ortho.png"));
+                }
+                send_json(&mut stream, "200 OK", &meta.to_string());
+            }
+            None => send_json(&mut stream, "404 Not Found", r#"{"error":"ortho_missing"}"#),
+        },
+        ("GET", "/api/ortho.png") => match std::fs::read(repo_path(ORTHO_PNG_REL)) {
+            Ok(bytes) => send_bytes(&mut stream, "image/png", &bytes),
+            Err(_) => send_json(&mut stream, "404 Not Found", r#"{"error":"ortho_missing"}"#),
         },
         ("GET", "/api/chaos-mode") => {
             let seed = parse_query_param(query, "seed")
@@ -1249,6 +1705,17 @@ fn main() {
         terrain_json: OnceLock::new(),
         hexgrid_json: OnceLock::new(),
         route_plan: OnceLock::new(),
+        baseline_paths: OnceLock::new(),
+        // The version starts at the launch time (ms), so a console tab never mistakes the
+        // points of a restarted API for the ones it already has.
+        points: Mutex::new(PointsState {
+            version: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(1, |d| d.as_millis() as u64),
+            ..PointsState::default()
+        }),
+        plan_cache: Mutex::new(None),
+        emergency_cache: Mutex::new(None),
         bundle: compute_bundle(),
     });
 
@@ -1257,7 +1724,8 @@ fn main() {
         let st = Arc::clone(&state);
         std::thread::spawn(move || {
             let started = std::time::Instant::now();
-            let plan = compute_route_plan(&grid);
+            let (plan, paths) = compute_route_plan(&grid, &[], None, 0);
+            let _ = st.baseline_paths.set(paths);
             let _ = st.route_plan.set(plan);
             println!("[api_server] Plan de ruta D* Lite listo en {:.1} s", started.elapsed().as_secs_f64());
         });
@@ -1363,6 +1831,42 @@ mod tests {
         assert_eq!(state(110.0), "EVAC_SHELTER");
         assert_eq!(state(120.0), "SHELTER_HOLD");
         assert_eq!(state(165.0), "SHELTER_HOLD");
+    }
+
+    #[test]
+    fn astronaut_follows_the_planned_route_not_the_straight_line() {
+        let doc = events_doc();
+        // A time on L1 (Base -> WP1), halfway along its phase.
+        let t = (0..1650).map(|k| k as f64 / 10.0).find(|&t| {
+            let p = &sample_eva07(&doc, t).unwrap()["position"];
+            s(p, "from") == "BASE" && s(p, "to") == "WP1" && (f(p, "frac") - 0.5).abs() < 0.01
+        }).expect("a time halfway along L1");
+        let mut smp = sample_eva07(&doc, t).unwrap();
+        // A detour that bulges 100 m west of the straight line at its midpoint.
+        let (a, b) = (&SURVIVAL_TRIANGLE_SITE[0], &SURVIVAL_TRIANGLE_SITE[1]);
+        let mid = (0.5 * (a.lat_deg + b.lat_deg), 0.5 * (a.lon_deg + b.lon_deg) - 0.0017);
+        let d1 = haversine_m(a.lat_deg, a.lon_deg, mid.0, mid.1);
+        let d2 = d1 + haversine_m(mid.0, mid.1, b.lat_deg, b.lon_deg);
+        let plan = json!({ "legs": [{
+            "from": "BASE", "to": "WP1", "deviation": { "status": "desviada" },
+            "profile": [
+                { "d_m": 0.0, "lat": a.lat_deg, "lon_e": a.lon_deg },
+                { "d_m": d1, "lat": mid.0, "lon_e": mid.1 },
+                { "d_m": d2, "lat": b.lat_deg, "lon_e": b.lon_deg },
+            ],
+        }]});
+        place_on_planned_route(&mut smp, &plan);
+        let p = &smp["position"];
+        assert_eq!(s(p, "route"), "replanificada");
+        // Halfway along the walked distance: close to the bulge, not on the straight line.
+        let off = haversine_m(f(p, "lat"), f(p, "lon_e"), mid.0, mid.1);
+        assert!(off < 0.05 * d2, "{off} m from the detour midpoint");
+        assert!((f(p, "route_remaining_m") - (1.0 - f(p, "frac")) * d2).abs() <= 1.0);
+        // A node phase is left alone.
+        let mut at_base = sample_eva07(&doc, -30.0).unwrap();
+        let before = at_base.clone();
+        place_on_planned_route(&mut at_base, &plan);
+        assert_eq!(at_base, before);
     }
 
     #[test]

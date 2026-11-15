@@ -1,6 +1,8 @@
 // Escena Three.js del gemelo 3D. Todo lo que se dibuja sale de la malla H3 de P1 que sirve la
 // API (`/api/terrain`, `/api/hexgrid`, `/api/route-plan`); sin API queda un plano con el
-// triángulo del GeoJSON y la consola lo dice.
+// triángulo del GeoJSON y la consola lo dice. La imagen del suelo es el mosaico CTX de 6 m
+// co-registrado con el DTM (`/api/ortho`), proyectada por latitud y longitud sobre la malla; si
+// no carga, el terreno se pinta como antes, por cota y capas.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -9,13 +11,26 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { M_PER_DEG_LAT, mPerDegLon, terrainElevation } from '@/engine/geo';
 import { classify } from '@/engine/thresholds';
 import { PALETTE, TERRAIN } from '@/theme';
-import type { HexCell, TerrainGrid } from '@/types/mission';
+import type { HexCell, OrthoMeta, ReportedKind, TerrainGrid } from '@/types/mission';
 
 export interface TwinLayers {
+  /** Imagen orbital CTX de 6 m sobre el relieve. */
+  ortho: boolean;
   mola: boolean;
   crism: boolean;
   themis: boolean;
   h3o: boolean;
+}
+
+export interface TwinPoint {
+  id: number;
+  kind: ReportedKind;
+  lat: number;
+  lonE: number;
+  color: string;
+  /** Radios de la zona de un PELIGRO (exclusión y precaución), m. */
+  exclusionM?: number;
+  cautionM?: number;
 }
 
 export interface Aoi {
@@ -28,6 +43,8 @@ export interface Aoi {
 export interface RoutePath {
   id: string;
   color: string;
+  /** Ruta nominal de un tramo desviado: fina y discontinua. */
+  dashed?: boolean;
   points: Array<{ lat: number; lonE: number }>;
 }
 
@@ -41,8 +58,8 @@ export interface RayHit {
 
 /** Metros por unidad de escena. */
 export const SCENE_M = 500;
-/** Exageración vertical del relieve (se rotula en pantalla). */
-export const VERTICAL_EXAGGERATION = 1.5;
+/** Exageración vertical del relieve (se rotula en pantalla): escala real, sin exagerar. */
+export const VERTICAL_EXAGGERATION = 1;
 const FLAT_SCALE = 0.02;
 
 export class TwinScene {
@@ -53,13 +70,21 @@ export class TwinScene {
   private terrainMesh: THREE.Mesh;
   private terrainGeo: THREE.BufferGeometry;
   private overlay = new THREE.Group();
+  private pointsGroup = new THREE.Group();
+  private baseMaterial: THREE.MeshStandardMaterial;
+  private orthoMaterial: THREE.MeshStandardMaterial | null = null;
+  private layerMesh: THREE.Mesh;
+  private layerGeo: THREE.BufferGeometry;
+  private ambient: THREE.AmbientLight;
+  private sun: THREE.DirectionalLight;
+  private reported: TwinPoint[] = [];
   private chaosGroup = new THREE.Group();
   private raycaster = new THREE.Raycaster();
   private lineMaterials: LineMaterial[] = [];
   private frame = 0;
   private dirty = true;
   private disposed = false;
-  private layers: TwinLayers = { mola: true, crism: true, themis: false, h3o: true };
+  private layers: TwinLayers = { ortho: true, mola: true, crism: true, themis: false, h3o: true };
   private hexCells: HexCell[] = [];
   private routes: RoutePath[] = [];
   private nodes: Array<{ lat: number; lonE: number; color: string }> = [];
@@ -91,18 +116,40 @@ export class TwinScene {
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.display = 'block';
 
-    this.scene.add(new THREE.AmbientLight(TERRAIN.ambientLight, 0.85));
-    const sun = new THREE.DirectionalLight(TERRAIN.sunLight, 2.1);
-    sun.position.set(-6, 9, -5); // sol al noroeste
-    this.scene.add(sun);
+    this.ambient = new THREE.AmbientLight(TERRAIN.ambientLight, 0.85);
+    this.scene.add(this.ambient);
+    this.sun = new THREE.DirectionalLight(TERRAIN.sunLight, 2.1);
+    this.sun.position.set(-6, 9, -5); // sol al noroeste
+    this.scene.add(this.sun);
 
     this.terrainGeo = this.buildTerrainGeometry();
-    this.terrainMesh = new THREE.Mesh(
-      this.terrainGeo,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02, side: THREE.DoubleSide })
-    );
+    this.baseMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02, side: THREE.DoubleSide });
+    this.terrainMesh = new THREE.Mesh(this.terrainGeo, this.baseMaterial);
     this.scene.add(this.terrainMesh);
+    // Capas temáticas (pendiente, refugios, sulfatos, inercia térmica) sobre la imagen: misma
+    // malla, colores con transparencia por vértice.
+    this.layerGeo = new THREE.BufferGeometry();
+    this.layerGeo.setAttribute('position', this.terrainGeo.getAttribute('position'));
+    this.layerGeo.setIndex(this.terrainGeo.getIndex());
+    this.layerGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array((this.terrainGeo.getAttribute('position') as THREE.BufferAttribute).count * 4), 4));
+    this.layerMesh = new THREE.Mesh(
+      this.layerGeo,
+      new THREE.MeshBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      })
+    );
+    this.layerMesh.renderOrder = 1;
+    this.layerMesh.frustumCulled = false; // comparte posiciones con el terreno, que cambian con el relieve
+    this.layerMesh.visible = false;
+    this.scene.add(this.layerMesh);
     this.scene.add(this.overlay);
+    this.scene.add(this.pointsGroup);
     this.scene.add(this.chaosGroup);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -181,6 +228,7 @@ export class TwinScene {
     }
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(rows * cols * 3), 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(rows * cols * 2), 2));
     geo.setIndex(index);
     return geo;
   }
@@ -198,9 +246,20 @@ export class TwinScene {
     this.terrainGeo.computeBoundingSphere();
   }
 
+  /** La imagen orbital está cargada y la capa activa. */
+  private orthoOn(): boolean {
+    return this.layers.ortho && this.orthoMaterial !== null && this.terrain !== null;
+  }
+
+  /**
+   * Pinta el terreno. Sin imagen: color por cota con las capas mezcladas (aspecto de siempre).
+   * Con imagen: la textura CTX en el material y las capas en la malla transparente de encima,
+   * para que no tiñan ni oscurezcan la imagen donde no hay nada que señalar.
+   */
   private paintTerrain(): void {
     const t = this.terrain;
     const col = this.terrainGeo.getAttribute('color') as THREE.BufferAttribute;
+    const lay = this.layerGeo.getAttribute('color') as THREE.BufferAttribute;
     const low = new THREE.Color(TERRAIN.low);
     const high = new THREE.Color(TERRAIN.high);
     const cRed = new THREE.Color(PALETTE.red);
@@ -209,6 +268,13 @@ export class TwinScene {
     const cCyan = new THREE.Color(PALETTE.cyan);
     const cBlue = new THREE.Color(PALETTE.deepBlue);
     const tmp = new THREE.Color();
+    const ortho = this.orthoOn();
+    this.terrainMesh.material = ortho && this.orthoMaterial ? this.orthoMaterial : this.baseMaterial;
+    this.layerMesh.visible = ortho;
+    // La imagen ya trae las sombras reales del Sol (CTX, ~15° de elevación): la luz sintética
+    // solo se deja suave para leer la forma cuando la cámara se inclina.
+    this.sun.intensity = ortho ? 0.9 : 2.1;
+    this.ambient.intensity = ortho ? 1.9 : 0.85;
     if (!t) {
       for (let i = 0; i < col.count; i++) col.setXYZ(i, 0.12, 0.14, 0.18);
       col.needsUpdate = true;
@@ -220,29 +286,117 @@ export class TwinScene {
       const z = t.elev_m[i];
       if (z === null) {
         col.setXYZ(i, 0.05, 0.06, 0.08);
+        lay.setXYZW(i, 0, 0, 0, 0);
         continue;
       }
       tmp.copy(low).lerp(high, (z - t.elev_min_m) / span);
+      // Capa de encima (modo imagen): color y opacidad del rasgo más importante de la celda.
+      let lc: THREE.Color | null = null;
+      let la = 0;
       if (this.layers.mola) {
         const slope = classify('slope_deg', t.slope_deg[i]);
-        if (slope === 'red') tmp.lerp(cRed, 0.3);
+        if (slope === 'red') {
+          tmp.lerp(cRed, 0.3);
+          lc = cRed;
+          la = 0.32;
+        }
         const svf = t.sky_view_factor[i];
-        if (classify('shelter_sky_view_factor', svf) === 'green') tmp.lerp(cGreen, 0.85);
+        if (classify('shelter_sky_view_factor', svf) === 'green') {
+          tmp.lerp(cGreen, 0.85);
+          lc = cGreen;
+          la = 0.5;
+        }
       }
       if (this.layers.crism) {
         const h2o = t.isru_h2o_pct[i];
-        if (h2o !== null) tmp.lerp(classify('isru_h2o_wt_pct', h2o) === 'green' ? cCyan : cBlue, 0.7);
+        if (h2o !== null) {
+          const c = classify('isru_h2o_wt_pct', h2o) === 'green' ? cCyan : cBlue;
+          tmp.lerp(c, 0.7);
+          lc = c;
+          la = 0.55;
+        }
       }
       if (this.layers.themis) {
         const tiu = t.thermal_inertia_tiu[i];
         if (tiu !== null) {
           const level = classify('thermal_inertia_tiu', tiu);
-          tmp.lerp(level === 'red' ? cRed : level === 'amber' ? cAmber : cBlue, level === 'green' ? 0.45 : 0.75);
+          const c = level === 'red' ? cRed : level === 'amber' ? cAmber : cBlue;
+          tmp.lerp(c, level === 'green' ? 0.45 : 0.75);
+          lc = c;
+          la = level === 'green' ? 0.3 : 0.55;
         }
       }
       col.setXYZ(i, tmp.r, tmp.g, tmp.b);
+      if (lc) lay.setXYZW(i, lc.r, lc.g, lc.b, la);
+      else lay.setXYZW(i, 0, 0, 0, 0);
     }
     col.needsUpdate = true;
+    lay.needsUpdate = true;
+    this.invalidate();
+  }
+
+  /**
+   * Imagen orbital georreferenciada: coordenadas de textura por latitud y longitud de cada nodo
+   * contra los límites del ráster (lon Este 0-360, fila 0 al norte). Fuera de la imagen el borde
+   * se repite, pero la imagen cubre toda la AOI.
+   */
+  setOrtho(meta: OrthoMeta, texture: THREE.Texture): void {
+    if (this.disposed) {
+      texture.dispose();
+      return;
+    }
+    const uv = this.terrainGeo.getAttribute('uv') as THREE.BufferAttribute;
+    const t = this.terrain;
+    const rows = t?.rows ?? 2;
+    const cols = t?.cols ?? 2;
+    const b = meta.bounds;
+    for (let r = 0; r < rows; r++) {
+      const lat = this.aoi.lat_max - ((this.aoi.lat_max - this.aoi.lat_min) * r) / (rows - 1);
+      for (let c = 0; c < cols; c++) {
+        const lon = this.aoi.lon_e_min + ((this.aoi.lon_e_max - this.aoi.lon_e_min) * c) / (cols - 1);
+        // v = 0 abajo (sur) con `flipY` de Three: la fila 0 del PNG queda arriba, al norte.
+        uv.setXY(r * cols + c, (lon - b.lon_e_min) / (b.lon_e_max - b.lon_e_min), (lat - b.lat_min) / (b.lat_max - b.lat_min));
+      }
+    }
+    uv.needsUpdate = true;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    texture.needsUpdate = true;
+    this.orthoMaterial?.map?.dispose();
+    this.orthoMaterial?.dispose();
+    this.orthoMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0, side: THREE.DoubleSide });
+    this.paintTerrain();
+  }
+
+  /** Puntos marcados desde Telemetría EVA, con las zonas de los peligros pegadas al relieve. */
+  setReportedPoints(points: TwinPoint[]): void {
+    this.reported = points;
+    this.rebuildPoints();
+  }
+
+  private rebuildPoints(): void {
+    this.disposeGroup(this.pointsGroup);
+    for (const p of this.reported) {
+      const ring = (radiusM: number, widthPx: number, dashed: boolean) => {
+        const pts: THREE.Vector3[] = [];
+        for (let k = 0; k <= 64; k++) {
+          const a = (k / 64) * Math.PI * 2;
+          const dLat = (Math.cos(a) * radiusM) / M_PER_DEG_LAT;
+          const dLon = (Math.sin(a) * radiusM) / this.kLon;
+          pts.push(this.worldOf(p.lat + dLat, p.lonE + dLon, 6));
+        }
+        this.pointsGroup.add(this.fatLine(pts, p.color, widthPx, dashed));
+      };
+      if (p.exclusionM) ring(p.exclusionM, 3, false);
+      if (p.cautionM) ring(p.cautionM, 2, true);
+      const pin = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 16), new THREE.MeshBasicMaterial({ color: p.color, depthTest: false }));
+      pin.rotation.x = Math.PI;
+      pin.position.copy(this.worldOf(p.lat, p.lonE, 45));
+      pin.renderOrder = 6;
+      this.pointsGroup.add(pin);
+    }
     this.invalidate();
   }
 
@@ -357,7 +511,7 @@ export class TwinScene {
           }
         }
       }
-      if (pts.length >= 2) this.overlay.add(this.fatLine(pts, route.color, route.id === 'L3' ? 5 : 3.5));
+      if (pts.length >= 2) this.overlay.add(this.fatLine(pts, route.color, route.dashed ? 2 : route.id === 'L3' ? 5 : 3.5, route.dashed));
     }
 
     for (const node of this.nodes) {
@@ -379,7 +533,10 @@ export class TwinScene {
     this.layers = { ...layers };
     if (reliefChanged) this.applyRelief();
     this.paintTerrain();
-    if (reliefChanged || hexChanged) this.rebuildOverlay();
+    if (reliefChanged || hexChanged) {
+      this.rebuildOverlay();
+      this.rebuildPoints();
+    }
   }
 
   setHexCells(cells: HexCell[]): void {
@@ -550,8 +707,13 @@ export class TwinScene {
     this.controls.dispose();
     this.disposeGroup(this.overlay);
     this.disposeGroup(this.chaosGroup);
+    this.disposeGroup(this.pointsGroup);
     this.terrainGeo.dispose();
-    (this.terrainMesh.material as THREE.Material).dispose();
+    this.layerGeo.dispose();
+    (this.layerMesh.material as THREE.Material).dispose();
+    this.baseMaterial.dispose();
+    this.orthoMaterial?.map?.dispose();
+    this.orthoMaterial?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
