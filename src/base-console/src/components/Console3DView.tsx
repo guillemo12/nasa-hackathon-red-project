@@ -15,12 +15,12 @@ import {
 import { fetchHexGrid, fetchRoutePlan, fetchSpyglass, fetchTerrain } from '@/engine/apiClient';
 import { CHAOS_VISIBLE_TRIALS, certify } from '@/engine/chaos';
 import { formatT } from '@/engine/evaModel';
-import { compassPoint, fmt, haversineM, insideAoi } from '@/engine/geo';
+import { compassPoint, fmt, fmtCoords, haversineM, insideAoi, nodeLabel } from '@/engine/geo';
 import { ISRU_H2O_MIN_PCT, P1_CONSTANTS, classify, limits, type Level } from '@/engine/thresholds';
 import { TwinScene, VERTICAL_EXAGGERATION, type RoutePath, type TwinLayers } from '@/engine/twinScene';
 import { NODE_COLOR, PALETTE, RADIO_CLASS_LEVEL, STATE_STYLE } from '@/theme';
 import { RouteProfileChart } from '@/components/RouteProfileChart';
-import { SpyglassLens, type LensData } from '@/components/SpyglassLens';
+import { LensReadout, SpyglassLens, type LensData } from '@/components/SpyglassLens';
 import { Button, Disclosure, Notice, Panel, Row, Segmented, Stat, StatusDot, levelTextClass } from '@/components/ui';
 import type {
   ChaosState,
@@ -58,8 +58,12 @@ interface Anchor {
   lat: number;
   lonE: number;
   liftM: number;
-  /** Las etiquetas de nodo se separan del marcador alejándose del centro del triángulo. */
+  /** `label`: rótulo de nodo, tramo o simulación; `pin` y `main`: lupas ancladas al terreno. */
+  kind: 'label' | 'pin' | 'main';
+  /** Las etiquetas de nodo se separan del marcador alejándose del centro del triángulo… */
   radial?: boolean;
+  /** …y no salen del mapa ni se meten bajo la barra inferior. */
+  clamp?: boolean;
 }
 
 /** Tamaño de la lupa en pantalla (diámetro), px: límites de `strategic-3d-console.md` §1.2. */
@@ -90,8 +94,8 @@ const nodeName = (shortLabel: string) =>
     .map((w) => (/\d/.test(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()))
     .join(' ');
 
-/** El identificador «BASE» se escribe como nombre al mostrarlo; los WP son siglas. */
-const shownId = (id: string) => (id === 'BASE' ? 'Base' : id);
+/** Con el foco en uno de estos, las teclas son suyas y no de la lupa. */
+const KEY_OWNERS = 'input, select, textarea, button, a[href], summary, [contenteditable]:not([contenteditable="false"])';
 
 function nearestNode(lat: number, lonE: number): { label: string; node: (typeof CANONICAL_WAYPOINTS)[number]; distM: number } {
   let best = CANONICAL_WAYPOINTS[0];
@@ -103,7 +107,7 @@ function nearestNode(lat: number, lonE: number): { label: string; node: (typeof 
       best = w;
     }
   }
-  return { label: d <= NODE_SNAP_M ? best.id : d < 400 ? `A ${fmt(d)} m de ${shownId(best.id)}` : 'Cuenca suroeste', node: best, distM: d };
+  return { label: d <= NODE_SNAP_M ? best.id : d < 400 ? `A ${fmt(d)} m de ${nodeLabel(best.id)}` : 'Cuenca suroeste', node: best, distM: d };
 }
 
 export const Console3DView: React.FC<Console3DViewProps> = ({
@@ -120,6 +124,10 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const sceneRef = useRef<TwinScene | null>(null);
   const anchors = useRef(new Map<string, Anchor>());
   const mainEl = useRef<HTMLDivElement | null>(null);
+  const bottomBar = useRef<HTMLDivElement | null>(null);
+  const hovering = useRef(false);
+  const sideCol = useRef<HTMLDivElement | null>(null);
+  const layoutRef = useRef<() => void>(() => undefined);
   const cursor = useRef({ x: 0, y: 0 });
   const pendingMove = useRef<{ x: number; y: number } | null>(null);
   const moveFrame = useRef(0);
@@ -151,11 +159,16 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const [profileOpen, setProfileOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
+  /** La lupa libre (o la congelada) está encima de una fijada: calla sus rótulos. */
+  const [overPin, setOverPin] = useState(false);
+  const overPinRef = useRef(false);
 
   const lensSizeRef = useRef(lensSize);
   lensSizeRef.current = lensSize;
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
+  const lensVisibleRef = useRef(lensVisible);
+  lensVisibleRef.current = lensVisible;
   const apiRef = useRef(apiOnline);
   apiRef.current = apiOnline;
 
@@ -185,22 +198,123 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     const scene = new TwinScene(mount, AOI, terrain);
     sceneRef.current = scene;
     let lastCam = '';
-    scene.onFrame = () => {
+    let lastCard = { w: 256, h: 84 };
+    // Coloca los rótulos anclados al terreno y resuelve los choques: ninguna etiqueta de nodo,
+    // tramo o simulación se queda bajo una lupa, las de nodo no salen del mapa ni se meten bajo
+    // la barra inferior, y la lupa libre calla sus rótulos si está encima de una fijada.
+    const layout = () => {
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      const floor = height - (bottomBar.current ? bottomBar.current.offsetHeight + 12 : 0) - 4;
+      // En pantalla ancha las columnas de paneles van encima del mapa: las etiquetas de nodo las esquivan.
+      const side = sideCol.current && window.matchMedia('(min-width: 80rem)').matches ? sideCol.current.offsetWidth + 12 : 0;
       const centroid = scene.project(scene.worldOf(CENTROID.lat, CENTROID.lonE));
+      const pinR = lensSizeRef.current * 0.3;
+      const mainR = lensSizeRef.current / 2;
+      const circles: Array<{ x: number; y: number; r: number; el: HTMLElement | null }> = [];
+      let main: { x: number; y: number; r: number; el: HTMLElement | null } | null =
+        !frozenRef.current && lensVisibleRef.current ? { ...cursor.current, r: mainR, el: mainEl.current } : null;
+      const labels: Array<{ a: Anchor; x: number; y: number; visible: boolean }> = [];
       anchors.current.forEach((a) => {
         const p = scene.project(scene.worldOf(a.lat, a.lonE, a.liftM));
-        let { x, y } = p;
+        if (a.kind === 'label') {
+          labels.push({ a, x: p.x, y: p.y, visible: p.visible });
+          return;
+        }
+        a.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`;
+        a.el.style.visibility = p.visible ? 'visible' : 'hidden';
+        if (!p.visible) return;
+        if (a.kind === 'pin') circles.push({ x: p.x, y: p.y, r: pinR, el: a.el });
+        else main = { x: p.x, y: p.y, r: mainR, el: a.el };
+      });
+      // El rótulo de cada lupa fijada va debajo del círculo; si ahí pisa la barra inferior, el borde
+      // del mapa u otra lupa fijada, prueba encima, a la derecha y a la izquierda.
+      type Box = { x0: number; x1: number; y0: number; y1: number };
+      const boxes: Box[] = [];
+      for (const c of circles) {
+        // Si el círculo se sale del mapa o se mete bajo la barra, sus cifras se cortarían: se callan
+        // (la lectura completa está en «Lupas fijadas»).
+        c.el?.toggleAttribute('data-clipped', c.x - c.r < side || c.x + c.r > width - side || c.y - c.r < 0 || c.y + c.r > floor + 4);
+        const tag = c.el?.querySelector<HTMLElement>('[data-lens-card]');
+        const hw = (tag?.offsetWidth ?? 80) / 2;
+        const hh = (tag?.offsetHeight ?? 32) / 2;
+        const spots = [
+          [0, c.r + 4 + hh],
+          [0, -(c.r + 4 + hh)],
+          [c.r + 4 + hw, 0],
+          [-(c.r + 4 + hw), 0],
+        ].map(([dx, dy]) => {
+          const box: Box = { x0: c.x + dx - hw, x1: c.x + dx + hw, y0: c.y + dy - hh, y1: c.y + dy + hh };
+          const outside = box.x0 < side + 4 || box.x1 > width - side - 4 || box.y0 < 4 || box.y1 > floor;
+          const onLens = circles.some(
+            (o) => o !== c && Math.hypot(o.x - Math.max(box.x0, Math.min(box.x1, o.x)), o.y - Math.max(box.y0, Math.min(box.y1, o.y))) < o.r
+          );
+          const onTag = boxes.some((o) => box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0);
+          return { dx, dy, box, cost: (outside ? 4 : 0) + (onLens ? 2 : 0) + (onTag ? 2 : 0) };
+        });
+        const best = spots.reduce((a, b) => (b.cost < a.cost ? b : a));
+        boxes.push(best.box);
+        c.el?.style.setProperty('--tag-x', `${best.dx.toFixed(1)}px`);
+        c.el?.style.setProperty('--tag-y', `${best.dy.toFixed(1)}px`);
+      }
+      const lens = main as { x: number; y: number; r: number; el: HTMLElement | null } | null;
+      // Pie de la lupa principal. Mientras está oculto se usa su último tamaño medido, para que
+      // la decisión de ocultarlo no cambie por el hecho de haberlo ocultado.
+      const card = lens?.el?.querySelector<HTMLElement>('[data-lens-card]');
+      if (card) lastCard = { w: card.offsetWidth, h: card.offsetHeight };
+      const cardBox: Box | null = lens
+        ? { x0: lens.x - lastCard.w / 2, x1: lens.x + lastCard.w / 2, y0: lens.y + lens.r, y1: lens.y + lens.r + lastCard.h + 4 }
+        : null;
+      // «Encima de una fijada»: se tocan los círculos o el pie caería sobre el círculo de la fijada.
+      const over =
+        lens !== null &&
+        cardBox !== null &&
+        circles.some(
+          (c) =>
+            Math.hypot(c.x - lens.x, c.y - lens.y) < c.r + lens.r ||
+            Math.hypot(c.x - Math.max(cardBox.x0, Math.min(cardBox.x1, c.x)), c.y - Math.max(cardBox.y0, Math.min(cardBox.y1, c.y))) < c.r
+        );
+      if (over !== overPinRef.current) {
+        overPinRef.current = over;
+        setOverPin(over);
+      }
+      if (cardBox && !over) boxes.push(cardBox);
+      if (lens) circles.push(lens);
+      // Primero las de nodo: si una de tramo o de simulación cae sobre ellas, cede la segunda.
+      labels.sort((p, q) => Number(q.a.clamp ?? false) - Number(p.a.clamp ?? false));
+      const nodeBoxes: Box[] = [];
+      for (const { a, x: px, y: py, visible } of labels) {
+        const w = a.el.offsetWidth;
+        const h = a.el.offsetHeight;
+        let x = px;
+        let y = py;
         if (a.radial) {
           const dx = x - centroid.x;
           const dy = y - centroid.y;
           const len = Math.hypot(dx, dy) || 1;
-          const reach = 18 + (Math.abs(dx / len) * a.el.offsetWidth) / 2 + (Math.abs(dy / len) * a.el.offsetHeight) / 2;
+          const reach = 18 + (Math.abs(dx / len) * w) / 2 + (Math.abs(dy / len) * h) / 2;
           x += (dx / len) * reach;
           y += (dy / len) * reach;
         }
+        if (a.clamp) {
+          x = Math.max(side + w / 2 + 4, Math.min(width - side - w / 2 - 4, x));
+          y = Math.max(h / 2 + 4, Math.min(floor - h / 2, y));
+        }
+        const x0 = x - w / 2;
+        const x1 = x + w / 2;
+        const y0 = y - h / 2;
+        const y1 = y + h / 2;
+        const covered =
+          circles.some((c) => Math.hypot(c.x - Math.max(x0, Math.min(x1, c.x)), c.y - Math.max(y0, Math.min(y1, c.y))) < c.r + 4) ||
+          [...boxes, ...nodeBoxes].some((b) => x0 < b.x1 && x1 > b.x0 && y0 < b.y1 && y1 > b.y0);
+        if (a.clamp && visible && !covered) nodeBoxes.push({ x0, x1, y0, y1 });
         a.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-        a.el.style.visibility = p.visible ? 'visible' : 'hidden';
-      });
+        a.el.style.visibility = visible && !covered ? 'visible' : 'hidden';
+      }
+    };
+    layoutRef.current = layout;
+    scene.onFrame = () => {
+      layout();
       const info = scene.cameraInfo();
       const key = `${info.azimuthDeg.toFixed(0)}|${info.elevationDeg.toFixed(0)}|${info.mPerPx.toFixed(2)}`;
       if (key !== lastCam) {
@@ -210,6 +324,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     };
     setSceneVersion((v) => v + 1);
     return () => {
+      layoutRef.current = () => undefined;
       scene.dispose();
       sceneRef.current = null;
     };
@@ -265,9 +380,9 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     }
   }, [chaos.status, chaos.finishedAt, chaos.run, sceneVersion]);
 
-  const setAnchor = useCallback((id: string, lat: number, lonE: number, liftM: number, radial = false) => {
+  const setAnchor = useCallback((id: string, lat: number, lonE: number, liftM: number, kind: Anchor['kind'] = 'label', node = false) => {
     return (el: HTMLElement | null) => {
-      if (el) anchors.current.set(id, { el, lat, lonE, liftM, radial });
+      if (el) anchors.current.set(id, { el, lat, lonE, liftM, kind, radial: node, clamp: node });
       else anchors.current.delete(id);
       sceneRef.current?.invalidate();
     };
@@ -308,6 +423,8 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       cursor.current = { x, y };
       if (mainEl.current) mainEl.current.style.transform = `translate(${x}px, ${y}px)`;
       setLensVisible(true);
+      lensVisibleRef.current = true;
+      layoutRef.current();
       const hit = scene.raycast(x, y);
       if (!hit || !insideAoi({ aoi: AOI } as TerrainGrid, hit.lat, hit.lonE)) {
         // Fuera del terreno la lupa no conserva la lectura anterior.
@@ -429,7 +546,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     if (hit) addPin(hit.lat, hit.lonE);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKey = (e: KeyboardEvent) => {
     const step = e.shiftKey ? 48 : 12;
     const el = mountRef.current;
     const w = el?.clientWidth ?? 0;
@@ -441,52 +558,56 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       const start = lensVisible ? cursor.current : { x: w / 2, y: h / 2 };
       moveLens(Math.min(w, Math.max(0, start.x + dx)), Math.min(h, Math.max(0, start.y + dy)));
     };
+    const act = (fn: () => void) => {
+      e.preventDefault();
+      fn();
+    };
     switch (e.key) {
       case 'ArrowLeft': return nudge(-step, 0);
       case 'ArrowRight': return nudge(step, 0);
       case 'ArrowUp': return nudge(0, -step);
       case 'ArrowDown': return nudge(0, step);
-      case ' ':
-        e.preventDefault();
-        return toggleMode();
-      case 'Enter':
-        e.preventDefault();
-        if (mainGeo) addPin(mainGeo.lat, mainGeo.lonE);
-        return;
+      case ' ': return act(toggleMode);
+      case 'Enter': return act(() => mainGeo && addPin(mainGeo.lat, mainGeo.lonE));
       case 'f':
-      case 'F':
-        return toggleFreeze();
+      case 'F': return act(toggleFreeze);
       case 'Escape':
-        if (frozen) toggleFreeze();
-        else setPins((prev) => prev.slice(0, -1));
-        return;
+        return act(() => {
+          if (frozen) toggleFreeze();
+          else setPins((prev) => prev.slice(0, -1));
+        });
       case '+':
-      case '=':
-        return setLensSize((s) => Math.min(LENS_MAX_PX, s + 20));
-      case '-':
-        return setLensSize((s) => Math.max(LENS_MIN_PX, s - 20));
-      case 'PageUp':
-        e.preventDefault();
-        return sceneRef.current?.zoom(0.85);
-      case 'PageDown':
-        e.preventDefault();
-        return sceneRef.current?.zoom(1.18);
+      case '=': return act(() => setLensSize((s) => Math.min(LENS_MAX_PX, s + 20)));
+      case '-': return act(() => setLensSize((s) => Math.max(LENS_MIN_PX, s - 20)));
+      case 'PageUp': return act(() => sceneRef.current?.zoom(0.85));
+      case 'PageDown': return act(() => sceneRef.current?.zoom(1.18));
       case 'a':
-      case 'A':
-        return sceneRef.current?.orbit(-10, 0);
+      case 'A': return act(() => sceneRef.current?.orbit(-10, 0));
       case 'd':
-      case 'D':
-        return sceneRef.current?.orbit(10, 0);
+      case 'D': return act(() => sceneRef.current?.orbit(10, 0));
       case 'w':
-      case 'W':
-        return sceneRef.current?.orbit(0, -6);
+      case 'W': return act(() => sceneRef.current?.orbit(0, -6));
       case 's':
-      case 'S':
-        return sceneRef.current?.orbit(0, 6);
+      case 'S': return act(() => sceneRef.current?.orbit(0, 6));
       default:
-        if (['1', '2', '3', '4'].includes(e.key)) toggleNodePin(CANONICAL_WAYPOINTS[Number(e.key) - 1].id);
+        if (['1', '2', '3', '4'].includes(e.key)) act(() => toggleNodePin(CANONICAL_WAYPOINTS[Number(e.key) - 1].id));
     }
   };
+
+  // Los atajos valen con el foco en el mapa o con el puntero encima, sin tener que hacer clic.
+  // Si el foco está en un control (botón, campo, enlace), la tecla es de ese control.
+  const keyHandler = useRef(handleKey);
+  keyHandler.current = handleKey;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const focus = document.activeElement;
+      if (focus !== mountRef.current && (!hovering.current || focus?.closest(KEY_OWNERS))) return;
+      keyHandler.current(e);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // ------------------------------------------------------------------ cifras de los paneles
   const v = sample.values;
@@ -494,6 +615,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
   const isPreEva = sample.guardrail.state === 'PRE_EVA';
   const radioLevel = RADIO_CLASS_LEVEL[v.radio_class] ?? 'none';
   const dusty = sample.active_threats.includes('polvo');
+  const radioText: string | undefined = RADIO_TEXT[v.radio_class];
   const run = chaos.status === 'done' ? chaos.run : null;
   const cert = run ? certify(run) : null;
   const near = mainGeo ? nearestNode(mainGeo.lat, mainGeo.lonE) : null;
@@ -512,7 +634,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
     { key: 'mola', title: 'Relieve (MOLA)', sub: `Pendientes de más de ${limits('slope_deg').red}° y refugios` },
     { key: 'crism', title: 'Sulfatos (CRISM)', sub: `Zonas con ${fmt(ISRU_H2O_MIN_PCT)} % de agua o más` },
     { key: 'themis', title: 'Inercia térmica (THEMIS)', sub: `Trampas de polvo, menos de ${limits('thermal_inertia_tiu').red} TIU` },
-    { key: 'h3o', title: 'Malla hexagonal', sub: hexCells.length ? `${fmt(hexCells.length)} celdas sobre el terreno` : 'Necesita el motor de cálculo' },
+    { key: 'h3o', title: 'Malla hexagonal', sub: hexCells.length ? 'Refugios, trampas de polvo y zonas con agua, celda a celda' : 'No disponible sin el relieve' },
   ];
 
   const handleSync = async () => {
@@ -545,7 +667,11 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
       <h1 className="sr-only">Cartografía de la cuenca suroeste de Melas Chasma</h1>
 
       {/* Mapa 3D */}
-      <div className="relative h-[68vh] min-h-[440px] xl:h-full rounded-lg overflow-hidden border border-line bg-sunken">
+      <div
+        onPointerEnter={() => (hovering.current = true)}
+        onPointerLeave={() => (hovering.current = false)}
+        className="relative h-[68vh] min-h-[440px] xl:h-full rounded-lg overflow-hidden border border-line bg-sunken"
+      >
         <div
           ref={mountRef}
           tabIndex={0}
@@ -555,16 +681,15 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           onPointerMove={handlePointerMove}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
-          onKeyDown={handleKeyDown}
           className="absolute inset-0 cursor-crosshair"
         />
 
         {/* Etiquetas ancladas al terreno */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           {CANONICAL_WAYPOINTS.map((node) => (
-            <div key={node.id} ref={setAnchor(`node-${node.id}`, node.lat, node.lonE, 12, true)} className="absolute top-0 left-0" style={{ willChange: 'transform' }}>
+            <div key={node.id} ref={setAnchor(`node-${node.id}`, node.lat, node.lonE, 12, 'label', true)} className="absolute top-0 left-0" style={{ willChange: 'transform' }}>
               <div className={`-translate-x-1/2 -translate-y-1/2 ${mapLabel} text-ink font-medium`}>
-                {nodeName(node.shortLabel)} · {fmt(node.elevMolaM)} m
+                {node.id === 'BASE' ? nodeLabel(node.id) : nodeName(node.shortLabel)} · {fmt(node.elevMolaM)} m
               </div>
             </div>
           ))}
@@ -605,19 +730,20 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
 
           {/* Lupas comparativas fijadas al terreno (hasta 3) */}
           {pins.map((pin) => (
-            <div key={pin.id} ref={setAnchor(`pin-${pin.id}`, pin.lat, pin.lonE, 0)} className="absolute top-0 left-0">
+            <div key={pin.id} ref={setAnchor(`pin-${pin.id}`, pin.lat, pin.lonE, 0, 'pin')} className="group absolute top-0 left-0">
               <div className="-translate-x-1/2" style={{ marginTop: -lensSize * 0.3 }}>
                 <SpyglassLens
                   size={Math.round(lensSize * 0.6)}
                   opacity={lensOpacity}
                   mode={mode}
                   data={pin.data}
-                  nearest={shownId(pin.label)}
-                  label={shownId(pin.label)}
+                  nearest={nodeLabel(pin.label)}
+                  label={nodeLabel(pin.label)}
                   lat={pin.lat}
                   lonE={pin.lonE}
                   radiusM={null}
                   frozen
+                  compact
                   onClose={() => setPins((prev) => prev.filter((p) => p.id !== pin.id))}
                 />
               </div>
@@ -626,9 +752,9 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
 
           {/* Lupa principal: sigue al cursor o queda congelada sobre el terreno */}
           {frozen && mainGeo ? (
-            <div ref={setAnchor('main-lens', mainGeo.lat, mainGeo.lonE, 0)} className="absolute top-0 left-0">
+            <div ref={setAnchor('main-lens', mainGeo.lat, mainGeo.lonE, 0, 'main')} className="absolute top-0 left-0">
               <div className="-translate-x-1/2" style={{ marginTop: -lensSize / 2 }}>
-                <SpyglassLens size={lensSize} opacity={lensOpacity} mode={mode} data={mainData} nearest={near ? shownId(near.label) : '—'} lat={mainGeo.lat} lonE={mainGeo.lonE} radiusM={mainRadiusM} frozen />
+                <SpyglassLens size={lensSize} opacity={lensOpacity} mode={mode} data={mainData} nearest={near ? nodeLabel(near.label) : '—'} lat={mainGeo.lat} lonE={mainGeo.lonE} radiusM={mainRadiusM} frozen hideLabels={overPin} />
               </div>
             </div>
           ) : (
@@ -642,7 +768,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               }}
             >
               <div className="-translate-x-1/2" style={{ marginTop: -lensSize / 2 }}>
-                <SpyglassLens size={lensSize} opacity={lensOpacity} mode={mode} data={mainData} nearest={near ? shownId(near.label) : ''} lat={mainGeo?.lat ?? null} lonE={mainGeo?.lonE ?? null} radiusM={mainRadiusM} />
+                <SpyglassLens size={lensSize} opacity={lensOpacity} mode={mode} data={mainData} nearest={near ? nodeLabel(near.label) : ''} lat={mainGeo?.lat ?? null} lonE={mainGeo?.lonE ?? null} radiusM={mainRadiusM} hideLabels={overPin} />
               </div>
             </div>
           )}
@@ -660,14 +786,12 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
 
         {(loading || !terrain) && (
           <Notice level={loading ? 'none' : 'amber'} role="status" className="absolute top-16 left-1/2 -translate-x-1/2 w-[min(26rem,calc(100%-1.5rem))]">
-            {loading
-              ? 'Cargando el terreno…'
-              : 'Sin conexión con el motor de cálculo. Se dibuja un plano con los puntos de la ruta, y la lupa solo tiene datos sobre ellos. El relieve y la malla vuelven al recuperar la conexión.'}
+            {loading ? 'Cargando el terreno…' : 'Mapa sin relieve: solo se ven los puntos de la ruta, y la lupa solo lee sobre ellos.'}
           </Notice>
         )}
 
         {/* Barra inferior: escala, cámara, zoom y perfil de ruta */}
-        <div className="absolute bottom-3 left-3 right-3 flex flex-col items-center gap-2 pointer-events-none">
+        <div ref={bottomBar} className="absolute bottom-3 left-3 right-3 flex flex-col items-center gap-2 pointer-events-none">
           {profileOpen && (
             <div className="pointer-events-auto self-stretch xl:mx-[21rem] rounded-lg border border-line bg-panel p-3">
               <RouteProfileChart plan={plan} compact />
@@ -676,7 +800,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           {detailOpen && (
             <div id="mapa-detalle" className="pointer-events-auto max-w-full rounded-md border border-line bg-panel px-3 py-2 t-label text-ink-2 tabular-nums space-y-0.5">
               <div>
-                {mainGeo ? `Cursor en ${fmt(Math.abs(mainGeo.lat), 4)}°S ${fmt(mainGeo.lonE, 4)}°E` : 'Cursor fuera del terreno'}
+                {mainGeo ? `Cursor en ${fmtCoords(mainGeo.lat, mainGeo.lonE)}` : 'Cursor fuera del terreno'}
               </div>
               <div className="sm:hidden">
                 Azimut {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevación {fmt(cam.elevationDeg)}°
@@ -684,7 +808,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               <div>Sistema de referencia IAU_2015:49900</div>
               <div>
                 {terrain
-                  ? `Terreno a 20 m (${fmt(terrain.grid_cells)} celdas), con el relieve exagerado ×${fmt(VERTICAL_EXAGGERATION, 1)}`
+                  ? `Terreno a 20 m, con el relieve exagerado ×${fmt(VERTICAL_EXAGGERATION, 1)}`
                   : 'Sin terreno: plano con los puntos de los datos de la misión'}
               </div>
             </div>
@@ -695,7 +819,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           >
             <span className="flex items-end gap-1.5">
               <span className="inline-block h-1.5 border-x border-b border-ink-2" style={{ width: scaleBarM / cam.mPerPx }} aria-hidden />
-              {scaleBarM >= 1000 ? `${fmt(scaleBarM / 1000)} km` : `${scaleBarM} m`}
+              {scaleBarM >= 1000 ? `${fmt(scaleBarM / 1000)} km` : `${fmt(scaleBarM)} m`}
             </span>
             <span className="hidden sm:inline">
               Azimut {fmt(cam.azimuthDeg)}° {compassPoint(cam.azimuthDeg)} · elevación {fmt(cam.elevationDeg)}°
@@ -717,7 +841,24 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
 
       <div className="grid md:grid-cols-2 gap-3 items-start xl:contents">
         {/* Columna izquierda: capas, lupa y triángulo */}
-        <div className={`${column} xl:left-2`}>
+        <div ref={sideCol} className={`${column} xl:left-2`}>
+          {pins.length > 0 && (
+            <Panel title="Lupas fijadas" defaultOpen aside={<span className="whitespace-nowrap">{pins.length} de {MAX_PINS}</span>}>
+              <ul>
+                {pins.map((pin) => (
+                  <LensReadout
+                    key={pin.id}
+                    name={nodeLabel(pin.label)}
+                    mode={mode}
+                    data={pin.data}
+                    lat={pin.lat}
+                    lonE={pin.lonE}
+                    onClose={() => setPins((prev) => prev.filter((p) => p.id !== pin.id))}
+                  />
+                ))}
+              </ul>
+            </Panel>
+          )}
           <Panel
             title="Capas"
             defaultOpen
@@ -790,9 +931,9 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
                   {frozen ? 'Lupa congelada: soltarla' : 'Lupa libre: congelarla'}
                 </Button>
                 <p className="t-label text-ink-3">
-                  Un clic o la tecla F congelan y sueltan la lupa. Con doble clic o Intro se fija una lupa para comparar
-                  ({pins.length} de {MAX_PINS}) y Escape la quita. La rueda cambia el tamaño y Espacio, el modo. Arrastra
-                  para girar el mapa; Ctrl y la rueda hacen zoom.
+                  Con el cursor sobre el mapa: un clic o la tecla F congelan y sueltan la lupa. Con doble clic o Intro se
+                  fija una lupa para comparar ({pins.length} de {MAX_PINS}) y Escape la quita. La rueda cambia el tamaño y
+                  Espacio, el modo. Arrastra para girar el mapa; Ctrl y la rueda hacen zoom.
                 </p>
               </div>
             </Disclosure>
@@ -801,7 +942,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           <Panel title="Triángulo de supervivencia" defaultOpen={false} aside={<span className="whitespace-nowrap">{fmt(PERIMETER_M / 1000, 2)} km</span>}>
             <Row label="Perímetro" value={`${fmt(PERIMETER_M / 1000, 2)} km`} />
             {PLANNED_LEGS.map((leg) => (
-              <Row key={leg.id} label={`${leg.id}, de ${shownId(leg.from)} a ${shownId(leg.to)}`} value={`${fmt(leg.distanceM / 1000, 2)} km`} />
+              <Row key={leg.id} label={`${leg.id}, de ${nodeLabel(leg.from)} a ${nodeLabel(leg.to)}`} value={`${fmt(leg.distanceM / 1000, 2)} km`} />
             ))}
             <Row
               label="Pendiente máxima"
@@ -821,7 +962,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
                     onClick={() => toggleNodePin(wp.id)}
                     className={`min-h-8 rounded-md border text-sm cursor-pointer ${on ? 'border-accent bg-raised text-ink font-medium' : 'border-line-strong text-ink-2 hover:text-ink hover:bg-raised'}`}
                   >
-                    {shownId(wp.id)}
+                    {nodeLabel(wp.id)}
                   </button>
                 );
               })}
@@ -851,7 +992,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
             aside={
               <span className={`flex items-center gap-1.5 whitespace-nowrap ${tint(stateLevel) ?? ''}`}>
                 {stateLevel !== 'none' && <StatusDot level={stateLevel} pulse={state.pulse} />}
-                {isPreEva ? 'En la base' : state.short}
+                {isPreEva ? 'En la Base' : state.short}
               </span>
             }
           >
@@ -901,25 +1042,22 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               <Row label="Presión del traje (valor supuesto)" value={`${fmt(SUIT_SCENARIO.pressureKpa, 1)} kPa`} />
               <Row label="Potencia metabólica" value={`${fmt(v.metabolic_power_w)} W`} level={classify('metabolic_rate_w', v.metabolic_power_w)} />
               <Row label="Dosis por tormenta solar (SPE)" value={`${fmt(v.dose_spe_msv, 2)} mSv`} level={classify('eva_spe_dose_budget_msv', v.dose_spe_msv)} />
-              <Row label="Cielo visible en el refugio (SVF)" value={fmt(wp3?.svfScenario, 2)} />
+              {wp3?.svfScenario != null && <Row label="Cielo visible en el refugio (SVF)" value={fmt(wp3.svfScenario, 2)} />}
             </Disclosure>
           </Panel>
 
           <Panel
             title="Meteorología y enlace"
             defaultOpen={false}
-            aside={<span className={`whitespace-nowrap ${tint(radioLevel) ?? ''}`}>Enlace {RADIO_TEXT[v.radio_class] ?? 'sin dato'}</span>}
+            aside={radioText ? <span className={`whitespace-nowrap ${tint(radioLevel) ?? ''}`}>Enlace {radioText}</span> : undefined}
           >
             <Row label="Polvo en el aire (τ)" value={fmt(v.dust_tau, 1)} level={classify('dust_tau_880nm', v.dust_tau)} />
-            <Row
-              label="Viento"
-              value={dusty ? `${fmt(WB.wind_m_s)} m/s, frente de polvo` : 'Sin dato'}
-              level={dusty ? classify('wind_speed_m_s', WB.wind_m_s) : undefined}
-            />
+            {/* Solo hay dato de viento mientras pasa el frente de polvo. */}
+            {dusty && <Row label="Viento" value={`${fmt(WB.wind_m_s)} m/s, frente de polvo`} level={classify('wind_speed_m_s', WB.wind_m_s)} />}
             <Row label="Presión en la Base" value={`${fmt(P1_CONSTANTS.surface_pressure_pa_site)} Pa`} />
             <Row
               label="Enlace con el traje"
-              value={`${RADIO_TEXT[v.radio_class] ?? 'sin dato'} · ${fmt(v.radio_rssi_dbm, 0)} dBm`}
+              value={`${radioText ? `${radioText} · ` : ''}${fmt(v.radio_rssi_dbm, 0)} dBm`}
               level={radioLevel}
             />
             <Row label="Sombra de radio prevista" value={`de ${formatT(NLOS_WINDOW[0])} a ${formatT(NLOS_WINDOW[1])}`} />
@@ -928,7 +1066,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
           <Panel
             title="Margen de retorno"
             defaultOpen={false}
-            aside={<span className={`whitespace-nowrap ${tint(destLevel) ?? ''}`}>{isPreEva ? 'Antes de la salida' : `Destino: ${v.viable_destination}`}</span>}
+            aside={<span className={`whitespace-nowrap ${tint(destLevel) ?? ''}`}>{isPreEva ? 'Antes de la salida' : `Destino: ${nodeLabel(v.viable_destination)}`}</span>}
           >
             <p className="t-label text-ink-3 tabular-nums pb-1">Situación en {formatT(sample.t_min)}.</p>
             <Row
@@ -937,7 +1075,7 @@ export const Console3DView: React.FC<Console3DViewProps> = ({
               level={v.base_viable ? undefined : 'red'}
             />
             <Row label="Ir al refugio WP3" value={`${fmt(v.wp3_time_min, 1)} min · ${fmt(v.wp3_route_m)} m`} />
-            <Row label="Destino viable" value={isPreEva ? '—' : v.viable_destination} level={destLevel} />
+            {!isPreEva && <Row label="Destino viable" value={nodeLabel(v.viable_destination)} level={destLevel} />}
             <p className="t-label text-ink-3 tabular-nums pt-2">
               En {formatT(WB.decision_t_min)}, volver a la Base cuesta {fmt(WB.base.time_min, 1)} min y {fmt(WB.base.dose_spe_msv, 2)} mSv;
               ir al refugio WP3, {fmt(WB.wp3.time_min, 1)} min y {fmt(WB.wp3.dose_spe_msv, 2)} mSv.

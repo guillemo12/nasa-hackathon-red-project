@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CANONICAL_WAYPOINTS, PLANNED_LEGS, SUIT_SCENARIO, EVA07_EVENTS, waypoint } from '@/data/missionData';
 import { P1_CONSTANTS, classify, limits, terrainEta } from '@/engine/thresholds';
 import type { Level } from '@/engine/thresholds';
-import { fmt } from '@/engine/geo';
+import { fmt, nodeLabel } from '@/engine/geo';
 import { LEVEL_COLOR, PALETTE } from '@/theme';
 import { Disclosure } from '@/components/ui';
 import type { NodeId, RoutePlan, RouteSample } from '@/types/mission';
@@ -26,8 +26,6 @@ const PAD_R = 16;
 const TEXT = 12;
 
 const SUIT_O2_G = EVA07_EVENTS[0].values.o2_remaining_g;
-
-const nodeName = (id: string) => (id === 'BASE' ? 'Base' : id);
 
 /** Tinte de una celda según su nivel: solo ámbar y rojo llevan color. */
 const levelTint = (level: Level) =>
@@ -215,7 +213,7 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
         {nodeXs.map((n, i) => {
           const key = `${n.id}-${i}`;
           const selected = selectedId === n.id && !n.end;
-          const name = `${nodeName(n.id)}${n.end ? ' (regreso)' : ''}`;
+          const name = `${nodeLabel(n.id)}${n.end ? ' (regreso)' : ''}`;
           const label = `${name}, ${fmt(n.x / 1000, 2)} km, ${fmt(n.elev)} m`;
           const cxn = X(n.x);
           const cyn = yE(n.elev);
@@ -251,7 +249,7 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
                 fontSize={TEXT}
                 fontWeight={selected ? 600 : 500}
               >
-                {nodeName(n.id)}
+                {nodeLabel(n.id)}
               </text>
             </g>
           );
@@ -425,8 +423,8 @@ export const RouteProfileChart: React.FC<Props> = ({ plan, selectedId, onSelect,
                 {cursor(POWER.y, RADIO_Y + 16)}
               </svg>
               <p className="t-label text-ink-3">
-                Enlace con el traje en cada punto: verde si es bueno (por encima de {radio.amber} dBm), ámbar si es débil
-                (hasta {radio.red} dBm) y rojo si se corta (sombra de radio).
+                Enlace con el traje en cada punto: verde si es bueno (por encima de {fmt(radio.amber)} dBm), ámbar si es débil
+                (hasta {fmt(radio.red)} dBm) y rojo si se corta (sombra de radio).
               </p>
             </div>
           ) : (

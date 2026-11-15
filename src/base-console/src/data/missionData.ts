@@ -131,8 +131,6 @@ export const T_START_MIN: number = EVA07_EVENTS[0].t_min;
 export const T_END_MIN: number = EVA07_EVENTS[EVA07_EVENTS.length - 1].t_min;
 export const T_DECISION_MIN: number = PLANNER_WALKBACK.decision_t_min;
 
-/** Rampa local de escenario del WP2: sale de la descripción de la fase de pico de P1. */
-export const WP2_RAMP_PHASE = EVA07_PHASES.find((p) => p.phase_id === 'A3_rampa_pico');
 
 // ---------------------------------------------------------------------------
 // Cifras que hoy solo viven en `DATOS_CANONICOS_P1.md` (no están en ningún JSON de `data/`).
@@ -162,10 +160,3 @@ export const UX_LABELS = {
   astronaut: 'Dra. Elena Rostova',
   suit: 'xEMU-04',
 } as const;
-
-export const THREAT_LABELS: Record<string, string> = {
-  sombra_radio: 'Sombra de radio (NLOS)',
-  trampa_regolito: 'Regolito suelto en rampa',
-  spe: 'Tormenta solar (SPE)',
-  polvo: 'Frente de polvo',
-};

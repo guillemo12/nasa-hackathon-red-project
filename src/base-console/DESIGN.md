@@ -23,15 +23,16 @@ decidir sin leer dos veces. La pantalla enseña primero lo que decide algo y dej
 | Texto principal, secundario, terciario | `text-ink`, `text-ink-2`, `text-ink-3` |
 | Acento único: acción principal y selección | `bg-accent text-accent-ink`, `border-accent` |
 | Ruta trazada en el mapa y en el perfil | `route` (cian de los documentos de UX) |
-| Estado: bien / precaución / peligro | `ok`, `warn`, `danger` (+ `danger-ink` para texto, `*-bg` para tintes) |
+| Estado: bien / precaución / peligro | `ok`, `warn`, `danger` (+ `danger-ink` para texto, `danger-strong` para el fondo del botón de peligro, `*-bg` para tintes) |
 
 - En JS, SVG y Three.js los colores salen de `src/theme.ts` (`PALETTE`, `AR_PATH`, `LEVEL_COLOR`).
 - El cian es de la ruta, no de la interfaz. El acento arena es de la interfaz, no de los datos.
-- Nada de degradados, brillos (`shadow-[0_0_…]`), vidrio ni bordes de color de más de 1 px.
+- Nada de degradados, brillos (`shadow-[0_0_…]`), vidrio ni bordes de color de más de 1 px. La única sombra es `shadow-pop`, para lo que flota (desplegables y avisos).
+- El sendero del visor: cian en marcha (nominal y precaución), borde punteado ámbar en taludes de más de 18°, chevrones rojos en evacuación y verde en el refugio (`helmet-vision.md`).
 
 ## Tipografía
 
-- Una familia: IBM Plex Sans. Cifras con `tabular-nums`. Monoespaciada (`.num`) solo para la
+- Una familia: IBM Plex Sans, incluida en la aplicación (`@fontsource`), sin depender de la red. Cifras con `tabular-nums`. Monoespaciada (`.num`) solo para la
   telemetría numérica del visor del traje y para códigos.
 - Tamaños: 12 px (`t-label`), 14 px (`text-sm`, texto y controles), 16 px (`t-value`, datos),
   20 px (título de pantalla), 28 px (la cifra clave de una pantalla). Ninguno más.

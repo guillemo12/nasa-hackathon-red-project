@@ -117,7 +117,7 @@ const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   primary: 'bg-accent text-accent-ink font-semibold hover:brightness-110 disabled:bg-raised disabled:text-ink-3',
   secondary: 'border border-line-strong text-ink hover:bg-raised disabled:text-ink-3 disabled:border-line',
   quiet: 'text-ink-2 hover:text-ink hover:bg-raised disabled:text-ink-3',
-  danger: 'bg-danger text-white font-semibold hover:brightness-110 disabled:bg-raised disabled:text-ink-3',
+  danger: 'bg-danger-strong text-ink font-semibold hover:brightness-110 disabled:bg-raised disabled:text-ink-3',
 };
 
 export const Button: React.FC<ButtonProps> = ({ variant = 'secondary', size = 'md', className, type, children, ...rest }) => (

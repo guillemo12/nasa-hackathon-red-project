@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Crosshair, FlaskConical, Layers, MapPin, Minus, Pause, Play, Plus, Trash2, Undo2, Volume2 } from 'lucide-react';
+import { ChevronDown, Crosshair, FlaskConical, Layers, MapPin, Minus, Plus, Trash2, Undo2, Volume2 } from 'lucide-react';
 import { Button, Disclosure, Notice, Panel, Row, Segmented, Stat, StatusDot, levelTextClass } from '@/components/ui';
 import {
   CANONICAL_WAYPOINTS,
@@ -18,7 +18,7 @@ import {
 } from '@/data/missionData';
 import { fetchHexGrid, fetchRoutePlan, fetchTerrain } from '@/engine/apiClient';
 import { causeLabel, formatT, openSkyWindowMin } from '@/engine/evaModel';
-import { bearingWords, compassPoint, fmt, haversineM, hillshadeDataUrl, numberWord } from '@/engine/geo';
+import { bearingWords, compassPoint, fmt, fmtCoords, haversineM, hillshadeDataUrl, minutesWords, nodeLabel } from '@/engine/geo';
 import {
   MARS_TREK_LAYERS,
   TILE_SIZE,
@@ -28,7 +28,7 @@ import {
   type MarsTrekLayerId,
 } from '@/engine/marsTrekTiles';
 import { P1_CONSTANTS, classify, limits, terrainEta, type Level } from '@/engine/thresholds';
-import { LEVEL_COLOR, NODE_COLOR, PALETTE, RADIO_CLASS_LEVEL, STATE_STYLE } from '@/theme';
+import { AR_PATH, LEVEL_COLOR, NODE_COLOR, PALETTE, RADIO_CLASS_LEVEL, STATE_STYLE } from '@/theme';
 import type { Eva07Sample, HexCell, Notify, RoutePlan, TerrainGrid } from '@/types/mission';
 
 interface EvaHudViewProps {
@@ -67,13 +67,15 @@ const MAP_CENTER = {
   lonE: CANONICAL_WAYPOINTS.reduce((a, w) => a + w.lonE, 0) / CANONICAL_WAYPOINTS.length,
 };
 
-const PRESET_IDS = ['llegada_wp1', 'nlos', 'regolito', 'spe_polvo', 'llegada_wp3', 'telemetria_final'];
+// El refugio se enseña en T+115 (`refugio_activo`): la llegada es en T+114,45 y el deslizador va
+// por minutos enteros, así que T+114 todavía es evacuación.
+const PRESET_IDS = ['llegada_wp1', 'nlos', 'regolito', 'spe_polvo', 'refugio_activo', 'telemetria_final'];
 const PRESET_LABEL: Record<string, string> = {
   llegada_wp1: 'Muestreo en WP1',
   nlos: 'Corte de radio',
   regolito: 'Rampa de 22°',
   spe_polvo: 'Multiemergencia',
-  llegada_wp3: 'Refugio WP3',
+  refugio_activo: 'Refugio WP3',
   telemetria_final: 'Final',
 };
 const TIMELINE_PRESETS = PRESET_IDS.map((id) => EVA07_EVENTS.find((e) => e.id === id))
@@ -112,10 +114,15 @@ const POWER_SOURCE_TEXT: Record<string, string> = {
 const plain = (text: string) =>
   text
     .replace(/\s*\(NLOS\)/g, '')
+    .replace(/Inspección Spyglass de 3 sectores/g, 'Inspección del terreno en tres capas')
+    .replace(/Spyglass, Chaos Mode y sincronización/g, 'inspección del terreno, simulación de imprevistos y envío de la ruta')
+    .replace(/Chaos Mode/g, 'Simulación de imprevistos')
+    .replace(/sub-malla h3o al traje por Zenoh/g, 'ruta con el traje')
     .replace(/Enlace Zenoh/g, 'Enlace')
     .replace(/Dynamic Goal Switching/g, 'cambio de destino')
     .replace(/huida D\* Lite/g, 'huida calculada por el planificador')
-    .replace(/API Rust/g, 'motor de cálculo');
+    .replace(/API Rust/g, 'motor de cálculo')
+    .replace(/\bBASE\b/g, 'Base');
 const LAYER_RESOLUTION: Record<MarsTrekLayerId, string> = { viking: '232 m por píxel', mola: '463 m por píxel' };
 const RADIO_TEXT: Record<string, string> = { VERDE: 'bueno', AMBAR: 'débil', ROJO: 'cortado' };
 const ICON_BUTTON =
@@ -124,6 +131,27 @@ const ICON_BUTTON =
 const listText = (parts: string[]) =>
   parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+/** Duración en palabras: sin decimales por encima de una hora y sin cifras huecas por encima de tres. */
+const durationText = (min: number): string =>
+  min >= 180 ? `más de ${fmt(Math.floor(min / 60))} horas` : min > 60 ? `${fmt(min)} min` : `${fmt(min, 1)} min`;
+/** Filtro común de las teselas de fondo: grises con un tinte ocre suave, sea cual sea la capa. */
+const TILE_FILTER: Record<MarsTrekLayerId, string> = {
+  viking: 'grayscale(1) sepia(0.3) brightness(0.8) contrast(0.95)',
+  // El relieve coloreado de MOLA, en grises, queda muy duro: se le baja el contraste.
+  mola: 'grayscale(1) sepia(0.3) contrast(0.5) brightness(0.95)',
+};
+/** El relieve de 20 m se funde con la tesela de fondo por sus cuatro lados: no se ve dónde acaba. */
+const RELIEF_MASK =
+  'linear-gradient(to right, transparent 0%, black 16%, black 84%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 16%, black 84%, transparent 100%)';
+const pointInPolygon = (lat: number, lonE: number, poly: Array<[number, number]>): boolean => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i];
+    const [yj, xj] = poly[j];
+    if (yi > lat !== yj > lat && lonE < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
 const ESCAPE_LEG = legBetween('WP2', 'WP3');
 const WP3 = waypoint('WP3');
 const BASE = waypoint('BASE');
@@ -131,9 +159,7 @@ const BASE = waypoint('BASE');
 export const EvaHudView: React.FC<EvaHudViewProps> = ({
   sample,
   tMin,
-  isLive,
   apiOnline,
-  onToggleLive,
   onSelectTimeMin,
   onNotify,
 }) => {
@@ -243,8 +269,9 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   // Voz del copiloto (orden única ≤ 8 s al entrar en 0x04)
   // ---------------------------------------------------------------------------
   const escapeBearing = ESCAPE_LEG?.bearingDeg ?? bearing ?? 0;
-  const escapeMinutes = Math.max(1, Math.round(isEvac ? v.wp3_time_min : PLANNER_WALKBACK.wp3.time_min));
-  const voiceLine = `Alerta combinada. Base inviable por radiación. Siga chevrones al refugio, rumbo ${bearingWords(escapeBearing)}. ${capitalize(numberWord(escapeMinutes))} minutos.`;
+  // La orden es única: lleva el tiempo de la decisión (el del planificador en T+105), no el que
+  // queda en cada minuto. El vector de la tarjeta sí se actualiza.
+  const voiceLine = `Alerta combinada. Base inviable por radiación. Siga chevrones al refugio, rumbo ${bearingWords(escapeBearing)}. ${capitalize(minutesWords(PLANNER_WALKBACK.wp3.time_min))}.`;
 
   const speak = () => {
     if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
@@ -365,16 +392,58 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       ? toScreen(sample.position.lat, sample.position.lon_e)
       : null;
 
+  // Puntos de cada tramo planificado que pisan talud de más de 18° (por la pendiente del propio
+  // camino o por la de la celda de terreno que cruzan).
+  const steepByLeg = useMemo(() => {
+    const out = new Map<string, boolean[]>();
+    if (!plan) return out;
+    const steepCells = hexCells.filter((c) => c.boundary && (c.slope_deg ?? 0) > AR_SLOPE_WARN_DEG);
+    for (const leg of plan.legs) {
+      if (leg.error) continue;
+      out.set(
+        leg.leg_id,
+        leg.profile.map(
+          (p) =>
+            Math.abs(p.grade_deg ?? 0) > AR_SLOPE_WARN_DEG ||
+            steepCells.some((c) => pointInPolygon(p.lat, p.lon_e, c.boundary as Array<[number, number]>)),
+        ),
+      );
+    }
+    return out;
+  }, [plan, hexCells]);
+
   // Sendero AR: lo que queda del tramo en curso, desde la astronauta hasta el objetivo.
-  const arPath: Array<{ x: number; y: number }> = useMemo(() => {
-    if (!astro || !goal || sample.position.at_goal || isPreEva) return [];
+  const arTrack = useMemo(() => {
+    const empty = { path: [] as Array<{ x: number; y: number }>, steepRuns: [] as Array<Array<{ x: number; y: number }>> };
+    if (!astro || !goal || sample.position.at_goal || isPreEva) return empty;
     const leg = legBetween(sample.position.from, sample.phase.goal);
     const full = leg ? legPath(leg.id) : [];
+    const flags = (leg && steepByLeg.get(leg.id)) || [];
     const start = Math.floor(sample.position.frac * Math.max(0, full.length - 1));
     const rest = full.slice(start + 1).map((p) => toScreen(p.lat, p.lonE));
-    return [astro, ...rest, toScreen(goal.lat, goal.lonE)];
+    const path = [astro, ...rest, toScreen(goal.lat, goal.lonE)];
+    const steep = [Boolean(flags[start]), ...full.slice(start + 1).map((_, i) => Boolean(flags[start + 1 + i])), Boolean(flags[full.length - 1])];
+    const steepRuns: Array<Array<{ x: number; y: number }>> = [];
+    let run: Array<{ x: number; y: number }> = [];
+    path.forEach((p, i) => {
+      if (steep[i]) {
+        if (run.length === 0 && i > 0) run.push(path[i - 1]);
+        run.push(p);
+      } else if (run.length > 0) {
+        run.push(p);
+        steepRuns.push(run);
+        run = [];
+      }
+    });
+    if (run.length > 1) steepRuns.push(run);
+    return { path, steepRuns };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sample.position.frac, sample.position.from, sample.phase.goal, sample.position.at_goal, plan, zoom, mapCenter, visorSize, isPreEva]);
+  }, [sample.position.frac, sample.position.from, sample.phase.goal, sample.position.at_goal, plan, steepByLeg, zoom, mapCenter, visorSize, isPreEva]);
+  const arPath = arTrack.path;
+  // `helmet-vision.md` §2.3: cian en nominal, precaución y varias amenazas; rojo con chevrones en
+  // evacuación; verde en refugio. El ámbar solo bordea los tramos con talud de más de 18°.
+  const pathColor = isEvac ? AR_PATH.evac : isHold ? AR_PATH.shelter : AR_PATH.nominal;
+  const pathState = isEvac ? 'evacuacion' : isHold ? 'refugio' : 'nominal';
 
   // Chevrones repartidos a lo largo del sendero de evacuación.
   const chevrons = useMemo(() => {
@@ -426,9 +495,9 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     const rect = visorRef.current?.getBoundingClientRect();
     if (!rect) return;
     const { lat, lonE } = screenToLatLon(e.clientX - rect.left, e.clientY - rect.top);
-    const next: CustomMapPoint = { id: Date.now(), lat, lonE, label: `P${customPoints.length + 1}`, kind: pointKind };
+    const next: CustomMapPoint = { id: Date.now(), lat, lonE, label: `Punto ${customPoints.length + 1}`, kind: pointKind };
     setCustomPoints((prev) => [...prev, next]);
-    onNotify(`Punto ${next.label} (${POINT_KIND_TEXT[next.kind]}) añadido`, `${fmt(lat, 4)}°, ${fmt(lonE, 4)}°E`, 'cyan');
+    onNotify(`${next.label} (${POINT_KIND_TEXT[next.kind]}) añadido`, fmtCoords(lat, lonE), 'cyan');
   };
   const handleMapKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const step = 60;
@@ -456,7 +525,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const objectiveText = (() => {
     if (isPreEva) {
       const l1 = PLANNED_LEGS[0];
-      return `En la Base, antes de salir. Primer objetivo, ${l1.to}: rumbo ${fmt(l1.bearingDeg)}° ${compassPoint(l1.bearingDeg)} · ${fmt(l1.distanceM)} m`;
+      return `En la Base, antes de salir. Primer objetivo, ${nodeLabel(l1.to)}: rumbo ${fmt(l1.bearingDeg)}° ${compassPoint(l1.bearingDeg)} · ${fmt(l1.distanceM)} m`;
     }
     if (isHold) return 'En el refugio WP3, a cubierto bajo la cornisa';
     if (sample.position.at_goal) return `En ${goalName}`;
@@ -481,7 +550,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const dialHint = DIAL_OPTIONS.find((o) => o.value === String(dialPos))?.hint;
   const speBudgetLeft = Math.max(0, PLANNER_WALKBACK.dose_budget_msv - v.dose_spe_msv);
   const marginText = (m: number | null) =>
-    m === null ? '' : m >= 0 ? `, con ${fmt(m, 1)} min de margen` : `; faltan ${fmt(Math.abs(m), 1)} min`;
+    m === null ? '' : m >= 180 ? ', con margen de sobra' : m >= 0 ? `, con ${durationText(m)} de margen` : `; faltan ${durationText(Math.abs(m))}`;
 
   const confirmEvac = () => {
     setEvacConfirmed(true);
@@ -542,9 +611,9 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
       </div>
       <Disclosure summary="Más detalle">
         <Row
-          label="Vuelta a la Base"
+          label={`Vuelta a la Base en ${formatT(T_DECISION_MIN)}`}
           level="red"
-          value={`${fmt(v.base_time_min, 1)} min, ${fmt(v.base_dose_proj_msv, 2)} mSv (límite ${fmt(PLANNER_WALKBACK.dose_budget_msv)})`}
+          value={`${fmt(PLANNER_WALKBACK.base.time_min, 1)} min, ${fmt(PLANNER_WALKBACK.base.dose_spe_msv, 2)} mSv (límite ${fmt(PLANNER_WALKBACK.dose_budget_msv)})`}
         />
         <Row label="El refugio atenúa" value={`${SUIT_SCENARIO.shelterAttenuationPct} % de la radiación`} />
         <Row label="Cielo visible en el refugio" value={fmt(WP3?.svfScenario, 2)} />
@@ -559,30 +628,45 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
     <div className="space-y-4">
       {evacCard}
 
-      {/* Cronología */}
-      <Panel bodyClassName="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h1 className="text-xl font-semibold text-ink">Telemetría EVA</h1>
-          <span className="t-label text-ink-3">
-            EVA-07 · {UX_LABELS.astronaut}, traje {UX_LABELS.suit}
+      {/* Cronología, estado y margen de retorno: un solo bloque bajo, para que mande el mapa */}
+      <Panel bodyClassName="space-y-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-sm font-semibold text-ink">Telemetría EVA</h1>
+          <span
+            className="hidden sm:inline t-value tabular-nums text-ink"
+            title={`Sol ${UX_LABELS.sol}, ${sample.lmst} hora local (${sample.met})`}
+          >
+            {formatT(tMin)}
           </span>
+          <div
+            role="group"
+            aria-label={`Ir a un momento de la salida (${EVA07_EVENTS.length} hitos en total)`}
+            className="flex flex-wrap items-center gap-1 sm:ml-auto"
+          >
+            {TIMELINE_PRESETS.map((p) => {
+              const pressed = Math.abs(tMin - p.t) < 0.5;
+              return (
+                <Button
+                  key={p.t}
+                  size="sm"
+                  variant={pressed ? 'secondary' : 'quiet'}
+                  aria-pressed={pressed}
+                  onClick={() => onSelectTimeMin(p.t)}
+                  className={pressed ? 'bg-raised font-medium tabular-nums' : 'tabular-nums'}
+                >
+                  {p.label}
+                </Button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onToggleLive}
-            aria-pressed={isLive}
-            aria-label={isLive ? 'Pausar la cronología' : 'Reproducir la cronología'}
-            title="Un minuto de misión por segundo"
-            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-md border border-line-strong text-ink hover:bg-raised cursor-pointer"
-          >
-            {isLive ? <Pause className="w-4 h-4" aria-hidden /> : <Play className="w-4 h-4" aria-hidden />}
-          </button>
-          <div className="flex-1 min-w-0">
+        {/* En móvil el deslizador ocupa todo el ancho y los botones de afinar van debajo. */}
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1">
+          <div className="col-span-3 sm:col-span-1 sm:col-start-2 sm:row-start-1 min-w-0">
             <input
               type="range"
-              className="timeline w-full"
+              className="timeline block w-full"
               min={T_START_MIN}
               max={T_END_MIN}
               step={1}
@@ -603,48 +687,38 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               ))}
             </div>
           </div>
-          <span className="shrink-0 w-14 text-right t-value tabular-nums text-ink">{formatT(tMin)}</span>
+          <Button
+            size="sm"
+            aria-label="Retroceder un minuto"
+            disabled={Math.round(tMin) <= T_START_MIN}
+            onClick={() => onSelectTimeMin(Math.max(T_START_MIN, Math.round(tMin) - 1))}
+            className="justify-self-start tabular-nums sm:col-start-1 sm:row-start-1"
+          >
+            −1 min
+          </Button>
+          <span className="sm:hidden self-center text-center t-value tabular-nums text-ink">{formatT(tMin)}</span>
+          <Button
+            size="sm"
+            aria-label="Avanzar un minuto"
+            disabled={Math.round(tMin) >= T_END_MIN}
+            onClick={() => onSelectTimeMin(Math.min(T_END_MIN, Math.round(tMin) + 1))}
+            className="justify-self-end tabular-nums sm:col-start-3 sm:row-start-1"
+          >
+            +1 min
+          </Button>
         </div>
 
-        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-0.5">
-          <p className="text-sm font-medium text-ink" title={phaseDetail}>
-            {plain(sample.title)}.
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm tabular-nums">
+          <p className="text-ink-2" title={phaseDetail}>
+            {capitalize(plain(sample.title))}.
           </p>
-          <p className="t-label tabular-nums text-ink-3">
-            Sol {UX_LABELS.sol}, {sample.lmst} hora local ({sample.met}). {isLive ? 'En marcha.' : 'En pausa.'}
-          </p>
-        </div>
-
-        <div
-          role="group"
-          aria-label={`Ir a un momento de la salida (${EVA07_EVENTS.length} hitos en total)`}
-          className="flex flex-wrap items-center gap-1"
-        >
-          {TIMELINE_PRESETS.map((p) => {
-            const pressed = Math.abs(tMin - p.t) < 0.5;
-            return (
-              <Button
-                key={p.t}
-                size="sm"
-                variant={pressed ? 'secondary' : 'quiet'}
-                aria-pressed={pressed}
-                onClick={() => onSelectTimeMin(p.t)}
-                className={pressed ? 'bg-raised font-medium tabular-nums' : 'tabular-nums'}
-              >
-                {p.label}
-              </Button>
-            );
-          })}
-        </div>
-      </Panel>
-
-      {/* Estado y margen de retorno */}
-      <Panel bodyClassName="space-y-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm tabular-nums">
-          <span role="status" className="flex items-center gap-2 font-medium text-ink">
-            <StatusDot level={stateLevel} pulse={style.pulse} />
-            {stateText}
-          </span>
+          {/* En evacuación el estado ya lo dicen la cabecera y la tarjeta de alerta: aquí no se repite. */}
+          {!isEvac && (
+            <span role="status" className="flex items-center gap-2 font-medium text-ink">
+              <StatusDot level={stateLevel} pulse={style.pulse} />
+              {stateText}
+            </span>
+          )}
           <span>
             <span className="text-ink-3">O₂ </span>
             <span className={`font-medium ${levelTextClass(o2Level)}`}>
@@ -665,32 +739,24 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
           </span>
         </div>
 
-        <div className="border-t border-line pt-3" role="group" aria-labelledby="margen-h">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h2 id="margen-h" className="text-sm font-semibold text-ink">Margen de retorno</h2>
+        <div
+          className="border-t border-line pt-2 grid gap-x-8 gap-y-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
+          role="group"
+          aria-labelledby="margen-h"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h2 id="margen-h" className="text-sm font-semibold text-ink">Margen de retorno</h2>
+              {!isPreEva && !isHold && tVital !== null && (
+                <span className="t-label tabular-nums text-ink-2">
+                  Autonomía de {durationText(tVital)}. Limita {limiting === 'O₂' ? 'el O₂' : 'la radiación'}.
+                </span>
+              )}
+            </div>
             {!isPreEva && !isHold && tVital !== null && (
-              <span className="t-label tabular-nums text-ink-2">
-                Autonomía de {fmt(Math.min(tVital, 999), 1)} min. Limita {limiting === 'O₂' ? 'el O₂' : 'la radiación'}.
-              </span>
-            )}
-          </div>
-
-          {isPreEva && <p className="mt-1.5 text-sm text-ink-2">La salida aún no ha empezado.</p>}
-
-          {isHold && (
-            <p className="mt-1.5 text-sm tabular-nums text-ink-2">
-              En el refugio, sin desplazamiento pendiente. Quedan {fmt(speBudgetLeft, 2)} mSv de dosis
-              {tRad !== null && <>, que dan para {fmt(tRad, 0)} min más bajo la cornisa con una tormenta de {fmt(PLANNER_WALKBACK.spe_rate_envelope_msv_h)} mSv/h</>}
-              . Hay O₂ para {fmt(Math.min(tO2, 999), 0)} min. La vuelta a la Base ({fmt(v.base_time_min, 1)} min){' '}
-              {v.base_viable ? 'es viable' : 'todavía no es viable'}.
-            </p>
-          )}
-
-          {!isPreEva && !isHold && tVital !== null && (
-            <>
-              <div className="relative py-5 mt-1" aria-hidden>
+              <div className="relative py-5" aria-hidden>
                 <div className="relative h-2 rounded bg-raised">
-                  <div className={`absolute inset-y-0 left-0 rounded bg-ink-3`} style={{ width: barPct(tVital) }} />
+                  <div className="absolute inset-y-0 left-0 rounded bg-ink-3" style={{ width: barPct(tVital) }} />
                   <div className="absolute -top-1 -bottom-1 w-0.5 bg-ink" style={{ left: barPct(v.wp3_time_min) }} />
                   <div
                     className={`absolute -top-1 -bottom-1 w-0.5 ${v.base_viable ? 'bg-ink' : 'bg-danger'}`}
@@ -710,7 +776,23 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   Base
                 </span>
               </div>
-              <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2 text-sm tabular-nums">
+            )}
+          </div>
+
+          <div className="min-w-0 space-y-1 text-sm tabular-nums lg:self-center">
+            {isPreEva && <p className="text-ink-2">La salida aún no ha empezado.</p>}
+
+            {isHold && (
+              <p className="text-ink-2">
+                A cubierto en el refugio, sin desplazamiento pendiente. Quedan {fmt(speBudgetLeft, 2)} mSv de dosis
+                {tRad !== null && <>, que dan para {durationText(tRad)} más bajo la cornisa con una tormenta de {fmt(PLANNER_WALKBACK.spe_rate_envelope_msv_h)} mSv/h</>}
+                . Hay O₂ de sobra. La vuelta a la Base ({fmt(v.base_time_min, 1)} min){' '}
+                {v.base_viable ? 'es viable' : 'todavía no es viable'}.
+              </p>
+            )}
+
+            {!isPreEva && !isHold && tVital !== null && (
+              <>
                 <p className="text-ink">
                   <span className="font-medium">Refugio WP3:</span> a {fmt(v.wp3_time_min, 1)} min
                   <span className={openSky !== null && wp3Margin !== null ? levelTextClass(classify('walkback_margin_min', wp3Margin)) : undefined}>
@@ -724,14 +806,14 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   </span>
                   {!v.base_viable && <span className="text-danger-ink font-medium"> No viable.</span>}
                 </p>
-              </div>
-              <p className="mt-2 t-label tabular-nums text-ink-3">
-                Hay O₂ para {fmt(Math.min(tO2, 999), 0)} min
-                {tRad === null ? ' y no hay tormenta solar' : ` y la radiación deja ${fmt(tRad, 1)} min`}
-                {openSky !== null && ` (${fmt(openSky, 1)} min a cielo abierto)`}. El agua y la batería no entran en este cálculo.
-              </p>
-            </>
-          )}
+                <p className="t-label text-ink-3">
+                  Hay O₂ para {durationText(tO2)}
+                  {tRad === null ? ' y no hay tormenta solar' : ` y la radiación deja ${durationText(tRad)}`}
+                  {openSky !== null && ` (${durationText(openSky)} a cielo abierto)`}. El agua y la batería no entran en este cálculo.
+                </p>
+              </>
+            )}
+          </div>
         </div>
       </Panel>
 
@@ -825,8 +907,9 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   src={tile.url}
                   alt=""
                   draggable={false}
-                  style={{ position: 'absolute', left: tile.left, top: tile.top, width: tilePx, height: tilePx, imageRendering: scale > 1 ? 'auto' : undefined }}
-                  className="max-w-none opacity-80"
+                  // Posición entera y un píxel de solape: sin costuras entre teselas ampliadas.
+                  style={{ position: 'absolute', left: Math.floor(tile.left), top: Math.floor(tile.top), width: tilePx + 1, height: tilePx + 1, filter: TILE_FILTER[baseLayer] }}
+                  className="max-w-none"
                 />
               ))}
               {hillshade && aoiBox && (
@@ -834,7 +917,21 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   src={hillshade}
                   alt=""
                   draggable={false}
-                  style={{ position: 'absolute', left: aoiBox.tl.x, top: aoiBox.tl.y, width: aoiBox.br.x - aoiBox.tl.x, height: aoiBox.br.y - aoiBox.tl.y }}
+                  data-relief
+                  style={{
+                    position: 'absolute',
+                    left: aoiBox.tl.x,
+                    top: aoiBox.tl.y,
+                    width: aoiBox.br.x - aoiBox.tl.x,
+                    height: aoiBox.br.y - aoiBox.tl.y,
+                    // En grises y mezclado con la tesela: aporta el detalle sin cambiar el tono del fondo.
+                    filter: 'grayscale(1) contrast(1.4)',
+                    mixBlendMode: 'overlay',
+                    maskImage: RELIEF_MASK,
+                    WebkitMaskImage: RELIEF_MASK,
+                    maskComposite: 'intersect',
+                    WebkitMaskComposite: 'source-in',
+                  }}
                   className="max-w-none"
                 />
               )}
@@ -843,20 +940,19 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
 
             <svg width={visorSize.width} height={visorSize.height} viewBox={`0 0 ${visorSize.width} ${visorSize.height}`} className="absolute inset-0 pointer-events-none" aria-hidden>
               {/* Malla de pendientes (celdas de 170 m) */}
-              {(showHexGrid || isCaution || isMulti) &&
+              {showHexGrid &&
                 hexCells.map((c) => {
                   if (!c.boundary) return null;
                   const slope = c.slope_deg ?? 0;
                   const steep = slope > AR_SLOPE_WARN_DEG;
-                  if (!showHexGrid && !steep) return null;
                   const level = classify('slope_deg', c.slope_deg);
                   const fill = c.flags.shelter ? PALETTE.green : c.flags.regolith_trap ? PALETTE.accent : LEVEL_COLOR[level];
                   return (
                     <polygon
                       key={c.h3_hex}
                       points={c.boundary.map(([la, lo]) => toScreen(la, lo)).map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
-                      fill={showHexGrid ? fill : 'none'}
-                      fillOpacity={showHexGrid ? (c.flags.shelter ? 0.4 : level === 'green' ? 0.05 : 0.18) : 0}
+                      fill={fill}
+                      fillOpacity={c.flags.shelter ? 0.4 : level === 'green' ? 0.05 : 0.18}
                       stroke={steep && (isCaution || isMulti) ? PALETTE.amber : PALETTE.cyan}
                       strokeOpacity={steep && (isCaution || isMulti) ? 0.9 : 0.35}
                       strokeWidth={steep && (isCaution || isMulti) ? 1.4 : 0.7}
@@ -895,11 +991,29 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 );
               })()}
 
-              {/* Sendero: línea continua con el color del estado */}
+              {/* Sendero: cian salvo en evacuación (rojo, con chevrones) y refugio (verde). En precaución
+                  y con varias amenazas, borde punteado ámbar solo donde el talud pasa de 18°. */}
               {arPath.length >= 2 && (
                 <g>
-                  <polyline points={arPath.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={style.color} strokeOpacity="0.28" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
-                  <polyline points={arPath.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={style.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={isMulti ? 'hud-pulse' : undefined} />
+                  <polyline points={arPath.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={pathColor} strokeOpacity="0.28" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+                  {(isCaution || isMulti) &&
+                    arTrack.steepRuns.map((run, i) => (
+                      <polyline
+                        key={i}
+                        data-ar-steep
+                        points={run.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
+                        fill="none"
+                        stroke={AR_PATH.caution}
+                        strokeWidth="11"
+                        strokeDasharray="2 5"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                  {(isCaution || isMulti) &&
+                    arTrack.steepRuns.map((run, i) => (
+                      <polyline key={i} points={run.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={PALETTE.ground} strokeWidth="7" strokeLinejoin="round" />
+                    ))}
+                  <polyline data-ar-path={pathState} points={arPath.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={pathColor} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={isMulti ? 'hud-pulse' : undefined} />
                 </g>
               )}
               {chevrons.map((c, i) => (
@@ -923,7 +1037,8 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                 const col = NODE_COLOR[wp.id];
                 const isGoal = wp.id === sample.phase.goal && !isPreEva;
                 const showLabel = dialPos >= 2 || isGoal || isEvac || isHold;
-                const label = dialPos >= 2 && astro && !isEvac ? `${wp.id} · ${fmt(haversineM(sample.position.lat ?? wp.lat, sample.position.lon_e ?? wp.lonE, wp.lat, wp.lonE))} m` : wp.id;
+                const name = nodeLabel(wp.id);
+                const label = dialPos >= 2 && astro && !isEvac ? `${name} · ${fmt(haversineM(sample.position.lat ?? wp.lat, sample.position.lon_e ?? wp.lonE, wp.lat, wp.lonE))} m` : name;
                 const w = label.length * 7.3 + 12;
                 return (
                   <g key={wp.id}>
@@ -980,7 +1095,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               </p>
               <div className="shrink-0 flex flex-col items-end rounded-md bg-ground/85 px-2 py-1 num t-label text-ink" aria-hidden>
                 <div className="h-1.5 border-x border-b border-ink" style={{ width: scaleBarM / metersPerPx }} />
-                <div>{scaleBarM >= 1000 ? `${fmt(scaleBarM / 1000)} km` : `${scaleBarM} m`}</div>
+                <div>{scaleBarM >= 1000 ? `${fmt(scaleBarM / 1000)} km` : `${fmt(scaleBarM)} m`}</div>
               </div>
             </div>
           </div>
@@ -1085,13 +1200,13 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               <Stat label="Presión del traje" value={fmt(SUIT_SCENARIO.pressureKpa, 1)} unit="kPa" hint="Valor supuesto" />
               {inputs ? (
                 <>
-                  <Stat label="Pendiente" value={`${fmt(inputs.cell_slope_deg, 1)}°`} level={slopeLevel} hint={sample.phase.location} />
+                  <Stat label="Pendiente" value={`${fmt(inputs.cell_slope_deg, 1)}°`} level={slopeLevel} hint={plain(sample.phase.location)} />
                   <Stat label="Inercia térmica" value={fmt(inputs.cell_tiu)} unit="TIU" level={tiuLevel} hint={`Coeficiente de terreno ${fmt(terrainEta(inputs.cell_tiu), 1)}`} />
                   <Stat label="Cielo visible" value={fmt(inputs.cell_svf, 2)} />
                 </>
               ) : (
                 <p className="col-span-2 sm:col-span-3 t-label text-ink-3 self-center">
-                  Sin lectura del terreno: la astronauta está en el hábitat ({sample.phase.location}).
+                  Sin lectura del terreno: la astronauta está en el hábitat ({plain(sample.phase.location)}).
                 </p>
               )}
             </div>
@@ -1100,7 +1215,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
               <div id="traje-detalle" className="border-t border-line pt-2">
                 <div className="grid sm:grid-cols-2 gap-x-10">
                   <Row label="O₂ primario" level={o2Level} value={`${fmt(v.o2_remaining_pct, 1)} % (${fmt(v.o2_remaining_g)} g)`} />
-                  <Row label="Autonomía de O₂ al ritmo actual" value={`${fmt(Math.min(tO2, 999))} min`} />
+                  <Row label="Autonomía de O₂ al ritmo actual" value={isPreEva ? 'Sin consumo todavía' : isHold ? 'De sobra, a cubierto' : capitalize(durationText(tO2))} />
                   <Row label="Agua de refrigeración" value={`${fmt(SUIT_SCENARIO.coolingWaterKg, 1)} kg (valor supuesto)`} />
                   <Row label="Batería" value={`${fmt(SUIT_SCENARIO.batteryWh)} Wh (valor supuesto)`} />
                   <Row label="Dosis de la tormenta solar" level={doseLevel} value={`${fmt(v.dose_spe_msv, 2)} de ${fmt(PLANNER_WALKBACK.dose_budget_msv, 2)} mSv`} />
@@ -1111,7 +1226,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
                   <Row label="Baliza de radio UHF" value={`${fmt(REFERENCE_FIGURES.radio_beacon_freq_mhz)} MHz`} />
                   <Row
                     label="Reglas de seguridad"
-                    value={<span title={sample.guardrail.engine}>{isPreEva ? 'en espera' : sample.source === 'api' ? 'calculadas por el motor' : 'copia local'}</span>}
+                    value={isPreEva ? 'en espera' : sample.source === 'api' ? 'calculadas por el motor' : 'copia local'}
                   />
                 </div>
                 <p className="t-label text-ink-3 mt-2">

@@ -1,10 +1,7 @@
 // Único sitio donde viven los colores de estado de la interfaz.
 //
-// DECISIÓN PENDIENTE DE CONFIRMAR (H-27): `src/shared/README.md` §4 y los documentos de UX
-// dan dos paletas distintas para el sendero AR. Se aplica la regla de precedencia de la
-// validación (estructura, elementos y textos: mandan los documentos de UX), así que se usa la
-// paleta de `Reconnaissance…md` §2.1 / `helmet-vision.md`. Para cambiar a la de
-// `src/shared/README.md` basta con sustituir `AR_PATH` por `AR_PATH_SHARED_README`.
+// Los cuatro tonos de estado son los de los documentos de UX (`Reconnaissance…md` §2.1 y
+// `helmet-vision.md`): se usan tal cual en el sendero del visor y en los estados de la consola.
 import type { GuardrailState, Tone } from '@/types/mission';
 import type { Level } from '@/engine/thresholds';
 
@@ -16,14 +13,6 @@ export const AR_PATH = {
   shelter: '#00FFA3',
 } as const;
 
-/** Paleta alternativa de `src/shared/README.md` §4 (la que emite el motor Rust). No se usa. */
-export const AR_PATH_SHARED_README = {
-  nominal: '#00F0FF',
-  caution: '#FFB000',
-  evac: '#FF2A2A',
-  shelter: '#00E676',
-} as const;
-
 export const PALETTE = {
   cyan: AR_PATH.nominal,
   green: AR_PATH.shelter,
@@ -31,8 +20,6 @@ export const PALETTE = {
   red: AR_PATH.evac,
   /** Acento único de la consola (arena de Marte): acción principal y selección. No es un estado. */
   accent: '#E2B488',
-  /** @deprecated usar `accent`. */
-  orange: '#E2B488',
   deepBlue: '#0077B6',
   ground: '#0B0E14',
   ink: '#0B0E14',
@@ -42,6 +29,16 @@ export const PALETTE = {
   text: '#E9EBEE',
   text2: '#B4BBC6',
   muted: '#8A93A1',
+  /** Rojo de los botones de peligro: 5,3:1 con texto blanco. */
+  dangerStrong: '#D4103A',
+} as const;
+
+/** Tonos del terreno y de las luces del gemelo 3D (ocres de Marte, sin estado). */
+export const TERRAIN = {
+  low: '#4A3A33',
+  high: '#B89678',
+  ambientLight: '#B8C4D8',
+  sunLight: '#FFE2C4',
 } as const;
 
 export interface StateStyle {

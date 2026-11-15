@@ -24,9 +24,14 @@
   --color-warn: var(--ar-caution, #FFE600);
   --color-danger: var(--ar-evac, #FF1744);
   --color-danger-ink: #FF8094;
+  /* Fondo de los botones de peligro: 5,3:1 con texto blanco. */
+  --color-danger-strong: #D4103A;
   --color-ok-bg: #0A1F19;
   --color-warn-bg: #221E0A;
   --color-danger-bg: #260C12;
+
+  /* Única sombra: la de lo que flota (desplegables y avisos). */
+  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6);
 
   --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -67,11 +72,6 @@
   }
 }
 
-/* Etiquetas y datos: la misma familia que el resto, con cifras de ancho fijo para que no bailen. */
-.font-mono-tech {
-  font-family: var(--font-sans);
-  font-variant-numeric: tabular-nums;
-}
 /* Monoespaciada solo para la telemetría del visor del traje (documentos de UX) y los códigos. */
 .num {
   font-family: var(--font-mono);
@@ -93,7 +93,7 @@
 input[type="range"].timeline {
   -webkit-appearance: none;
   appearance: none;
-  height: 28px;
+  height: 32px;
   background: transparent;
   cursor: pointer;
 }
@@ -142,19 +142,15 @@ input[type="range"].timeline::-moz-range-thumb {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
   50% { box-shadow: 0 0 0 3px var(--pulse-color, #FFE600); }
 }
-@keyframes reticle-spin {
-  to { transform: rotate(360deg); }
-}
 .hud-pulse { animation: hud-pulse 1.1s ease-in-out infinite; }
 .chevron-march { animation: chevron-march 1.2s linear infinite, chevron-color 1.2s linear infinite; }
 .border-pulse { animation: border-pulse 1.4s ease-in-out infinite; }
-.reticle-spin { animation: reticle-spin 6s linear infinite; transform-box: fill-box; transform-origin: center; }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-pulse,
   .chevron-march,
   .border-pulse,
-  .reticle-spin {
+  .animate-spin {
     animation: none;
   }
 }

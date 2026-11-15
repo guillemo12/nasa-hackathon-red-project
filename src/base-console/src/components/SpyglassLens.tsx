@@ -1,7 +1,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { ISRU_H2O_MIN_PCT, SHELTER_SVF_MAX, classify, limits, type Level } from '@/engine/thresholds';
-import { fmt } from '@/engine/geo';
+import { fmt, fmtCoords } from '@/engine/geo';
 import { LEVEL_COLOR, PALETTE } from '@/theme';
 import { levelTextClass } from '@/components/ui';
 import type { SpyglassMode, SpyglassResult, WaypointNode } from '@/types/mission';
@@ -26,6 +26,10 @@ interface Props {
   frozen?: boolean;
   label?: string;
   onClose?: () => void;
+  /** Lupa fijada: en el mapa va solo el círculo y su nombre; la lectura se lista aparte. */
+  compact?: boolean;
+  /** Oculta las cifras y el pie (la lupa libre está encima de una fijada). */
+  hideLabels?: boolean;
 }
 
 /** Por debajo de este diámetro las cifras no caben dentro del círculo y pasan al pie. */
@@ -40,11 +44,138 @@ const lerpColor = (a: string, b: string, t: number): string => {
   return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * k)).join(',')})`;
 };
 
+interface Finding {
+  text: string;
+  level: Level;
+}
+
+/**
+ * Lo que lee una lupa, separando dos cosas que no son lo mismo: el punto central (las cifras)
+ * y el resto del círculo (lo que hay «dentro de la lupa», aunque el centro no lo tenga).
+ */
+function readLens(data: LensData, mode: SpyglassMode) {
+  const res = data.status === 'ok' ? data.result : null;
+  const node = data.status === 'noapi' ? data.node : null;
+
+  // Valores del centro: celda del terreno (motor de cálculo) o punto de la ruta (sin motor).
+  const h2o = res ? res.center.isru_h2o_pct : node?.h2oWtPct ?? null;
+  const tiu = res ? res.center.thermal_inertia_tiu : node?.tiu ?? null;
+  const slope = res ? res.center.slope_deg : node?.slopeLocalDeg ?? null;
+  const svf = res ? res.center.sky_view_factor : node?.svfScenario ?? null;
+  const elev = res ? res.center.elev_m : node?.elevMolaM ?? null;
+
+  const tiuLevel = classify('thermal_inertia_tiu', tiu);
+  const tiuLimits = limits('thermal_inertia_tiu');
+  const slopeRed = limits('slope_deg').red;
+
+  // En el punto central.
+  const isruCenter = h2o !== null && h2o >= ISRU_H2O_MIN_PCT;
+  const trapCenter = tiu !== null && tiuLevel === 'red';
+  const steepCenter = slope !== null && classify('slope_deg', slope) === 'red';
+  const shelterCenter = svf !== null && svf <= SHELTER_SVF_MAX;
+  // En cualquier celda de la lupa (también tiñe el sector).
+  const isruHere = res ? res.sectors.north_h2o.cells_ge_isru_min > 0 : isruCenter;
+  const trapHere = res ? res.sectors.right_tiu.cells_trap > 0 : trapCenter;
+  const steepHere = res ? res.sectors.left_mola.cells_slope_critical > 0 : steepCenter;
+  const shelterHere = res ? res.sectors.left_mola.cells_shelter > 0 : shelterCenter;
+
+  const water: Finding | null = isruCenter
+    ? { text: `Sulfatos hidratados en el centro, apto para ISRU (${fmt(ISRU_H2O_MIN_PCT)} % o más)`, level: 'none' }
+    : isruHere
+      ? { text: 'Hay sulfatos hidratados dentro de la lupa', level: 'none' }
+      : null;
+  const trap: Finding | null = trapCenter
+    ? { text: `Trampa de polvo en el centro (menos de ${tiuLimits.red} TIU)`, level: 'red' }
+    : trapHere
+      ? { text: 'Hay trampas de polvo dentro de la lupa', level: 'amber' }
+      : null;
+  const shelter: Finding | null = shelterCenter
+    ? { text: `Refugio en el centro (cielo visible de ${fmt(SHELTER_SVF_MAX, 2)} o menos)`, level: 'none' }
+    : shelterHere
+      ? { text: 'Hay refugio dentro de la lupa', level: 'none' }
+      : null;
+  const steep: Finding | null = steepCenter
+    ? { text: `Pendiente crítica en el centro (más de ${slopeRed}°)`, level: 'red' }
+    : steepHere
+      ? { text: `Hay taludes de más de ${slopeRed}° dentro de la lupa`, level: 'amber' }
+      : null;
+
+  // Cifras del centro; la que no existe en los datos no se enseña.
+  const values = {
+    north: h2o === null ? null : `${fmt(h2o, 1)} % H₂O`,
+    right: tiu === null ? null : `${fmt(tiu)} TIU`,
+    left: slope === null ? null : `${fmt(slope, 1)}°`,
+  };
+
+  const message =
+    data.status === 'outside'
+      ? 'Fuera del terreno'
+      : data.status === 'loading'
+        ? 'Leyendo el terreno…'
+        : data.status === 'noapi' && !node
+          ? 'Sin datos aquí: solo los hay en los puntos de la ruta'
+          : null;
+
+  // Una capa: nombre de la capa, su valor en el centro y lo que significa.
+  let single: { title: string; value: string | null; findings: Finding[] };
+  if (mode === 'xray-crism') {
+    single = {
+      title: 'Agua (CRISM)',
+      value: values.north,
+      findings: [
+        h2o === null
+          ? { text: 'Sin dato de agua en el centro', level: 'none' }
+          : isruCenter
+            ? water!
+            : { text: `Centro no apto para ISRU (menos del ${fmt(ISRU_H2O_MIN_PCT)} %)`, level: 'none' },
+        ...(!isruCenter && water ? [water] : []),
+      ],
+    };
+  } else if (mode === 'xray-themis') {
+    single = {
+      title: 'Inercia térmica (THEMIS)',
+      value: values.right,
+      findings: [
+        tiu === null
+          ? { text: 'Sin dato de inercia en el centro', level: 'none' }
+          : trapCenter
+            ? trap!
+            : tiuLevel === 'amber'
+              ? { text: `Regolito blando en el centro (de ${tiuLimits.red} a ${tiuLimits.amber} TIU)`, level: 'amber' }
+              : { text: 'Roca firme en el centro', level: 'none' },
+        ...(!trapCenter && trap ? [trap] : []),
+      ],
+    };
+  } else {
+    const found = [shelter, steep].filter((f): f is Finding => f !== null);
+    single = {
+      title: 'Relieve (MOLA)',
+      value: values.left === null ? null : svf === null ? values.left : `${values.left} · SVF ${fmt(svf, 2)}`,
+      findings: found.length
+        ? found
+        : [{ text: slope === null ? 'Sin dato de pendiente en el centro' : 'Sin taludes ni refugio dentro de la lupa', level: 'none' }],
+    };
+  }
+
+  // Lo que hay bajo la lupa, dicho en llano. Solo se colorea lo que avisa.
+  const xray = mode !== 'tri-sector';
+  const findings: Finding[] = message
+    ? []
+    : xray
+      ? single.findings
+      : [water, trap, shelter, steep].filter((f): f is Finding => f !== null);
+
+  return { res, node, svf, elev, isruHere, trapHere, steepHere, shelterHere, values, single, message, findings, xray };
+}
+
+const closeBtn =
+  'w-8 h-8 shrink-0 flex items-center justify-center rounded-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer';
+
 /**
  * Lupa de tres sectores de 120° (`strategic-3d-console.md` §1.2): arriba el agua (CRISM), a la
  * derecha la inercia térmica (THEMIS) y a la izquierda la pendiente y el refugio (MOLA). Cada
  * sector dibuja las celdas reales que devuelve el motor de cálculo. Dentro del círculo va solo
- * la cifra de cada capa; lo que significa se dice en el pie.
+ * la cifra de cada capa en el punto central; lo que significa se dice en el pie.
  */
 export const SpyglassLens: React.FC<Props> = ({
   size,
@@ -58,6 +189,8 @@ export const SpyglassLens: React.FC<Props> = ({
   frozen = false,
   label,
   onClose,
+  compact = false,
+  hideLabels = false,
 }) => {
   const c = size / 2;
   const r = c - 2;
@@ -71,107 +204,21 @@ export const SpyglassLens: React.FC<Props> = ({
     return `M${c},${c} L${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 0,1 ${x1.toFixed(1)},${y1.toFixed(1)} Z`;
   };
   const uid = React.useId().replace(/:/g, '');
-  const res = data.status === 'ok' ? data.result : null;
-  const node = data.status === 'noapi' ? data.node : null;
+  const { res, node, svf, elev, isruHere, trapHere, steepHere, shelterHere, values, single, message, findings, xray } = readLens(data, mode);
   const q = res?.query.radius_m ?? 1;
   const dot = Math.max(1.6, (5.2 / q) * r);
   const px = (e: number, n: number) => [c + (e / q) * r, c - (n / q) * r] as const;
 
-  // Valores del centro: celda del terreno (motor de cálculo) o punto de la ruta (sin motor).
-  const h2o = res ? res.center.isru_h2o_pct : node?.h2oWtPct ?? null;
-  const tiu = res ? res.center.thermal_inertia_tiu : node?.tiu ?? null;
-  const slope = res ? res.center.slope_deg : node?.slopeLocalDeg ?? null;
-  const svf = res ? res.center.sky_view_factor : node?.svfScenario ?? null;
-  const elev = res ? res.center.elev_m : node?.elevMolaM ?? null;
-
-  const isruHere = res ? res.sectors.north_h2o.cells_ge_isru_min > 0 : (h2o ?? 0) >= ISRU_H2O_MIN_PCT;
-  const trapHere = res ? res.sectors.right_tiu.cells_trap > 0 : classify('thermal_inertia_tiu', tiu) === 'red';
-  const steepHere = res ? res.sectors.left_mola.cells_slope_critical > 0 : classify('slope_deg', slope) === 'red';
-  const shelterHere = res ? res.sectors.left_mola.cells_shelter > 0 : svf !== null && svf <= SHELTER_SVF_MAX;
-
   const showNorth = mode === 'tri-sector' || mode === 'xray-crism';
   const showRight = mode === 'tri-sector' || mode === 'xray-themis';
   const showLeft = mode === 'tri-sector' || mode === 'xray-mola';
-  const xray = mode !== 'tri-sector';
 
-  const tiuLevel = classify('thermal_inertia_tiu', tiu);
-  const tiuLimits = limits('thermal_inertia_tiu');
-  const slopeRed = limits('slope_deg').red;
-
-  // Una capa: nombre de la capa, su valor en el centro y lo que significa.
-  const single: { title: string; value: string; verdict: string; level: Level } = (() => {
-    if (mode === 'xray-crism')
-      return {
-        title: 'Agua (CRISM)',
-        value: h2o === null ? 'Sin dato' : `${fmt(h2o, 1)} % H₂O`,
-        verdict:
-          h2o === null
-            ? 'Sin dato de agua en este punto'
-            : h2o >= ISRU_H2O_MIN_PCT
-              ? `Sulfatos hidratados, apto para ISRU (${fmt(ISRU_H2O_MIN_PCT)} % o más)`
-              : `No apto para ISRU (menos del ${fmt(ISRU_H2O_MIN_PCT)} %)`,
-        level: 'none',
-      };
-    if (mode === 'xray-themis')
-      return {
-        title: 'Inercia térmica (THEMIS)',
-        value: tiu === null ? 'Sin dato' : `${fmt(tiu)} TIU`,
-        verdict:
-          tiu === null
-            ? 'Sin dato de inercia en este punto'
-            : tiuLevel === 'red'
-              ? `Trampa de polvo (menos de ${tiuLimits.red} TIU)`
-              : tiuLevel === 'amber'
-                ? `Regolito blando (de ${tiuLimits.red} a ${tiuLimits.amber} TIU)`
-                : 'Roca firme',
-        level: tiu === null ? 'none' : tiuLevel,
-      };
-    const slopeLevel = classify('slope_deg', slope);
-    return {
-      title: 'Relieve (MOLA)',
-      value: slope === null ? 'Sin dato' : `${fmt(slope, 1)}° · SVF ${fmt(svf, 2)}`,
-      verdict: shelterHere
-        ? `Refugio (cielo visible de ${fmt(SHELTER_SVF_MAX, 2)} o menos)`
-        : slopeLevel === 'red'
-          ? `Pendiente crítica (más de ${slopeRed}°)`
-          : steepHere
-            ? `Talud de más de ${slopeRed}° cerca`
-            : `Cota ${fmt(elev)} m`,
-      level: shelterHere ? 'none' : slopeLevel === 'red' ? 'red' : steepHere ? 'amber' : 'none',
-    };
-  })();
-
-  const message =
-    data.status === 'outside'
-      ? 'Fuera del terreno'
-      : data.status === 'loading'
-        ? 'Leyendo el terreno…'
-        : data.status === 'noapi' && !node
-          ? 'Sin datos aquí: falta el motor de cálculo'
-          : null;
-
-  // Tres capas: lo que hay bajo la lupa, dicho en llano. Solo se colorea lo que avisa.
-  const findings: Array<{ text: string; level: Level }> = [];
-  if (!message) {
-    if (xray) findings.push({ text: single.verdict, level: single.level });
-    else {
-      if (isruHere) findings.push({ text: 'Sulfatos hidratados, apto para ISRU', level: 'none' });
-      if (trapHere) findings.push({ text: `Trampa de polvo (menos de ${tiuLimits.red} TIU)`, level: 'red' });
-      if (shelterHere) findings.push({ text: 'Refugio', level: 'none' });
-      else if (steepHere) findings.push({ text: `Talud de más de ${slopeRed}°`, level: 'amber' });
-    }
-  }
-
-  const sectorValues = {
-    north: h2o === null ? 'Sin dato' : `${fmt(h2o, 1)} % H₂O`,
-    right: tiu === null ? 'Sin dato' : `${fmt(tiu)} TIU`,
-    left: slope === null ? 'Sin dato' : `${fmt(slope, 1)}°`,
-  };
   const textInside = size >= INSIDE_TEXT_MIN_PX;
   const name = label ?? nearest;
   const detail = res
     ? `Celda H3 …${res.center.h3_hex.slice(-7, -3)}${radiusM !== null ? `, radio de ${fmt(q)} m` : ''}`
     : undefined;
+  const centerValues = xray ? single.value : [values.north, values.right, values.left].filter(Boolean).join(', ');
 
   const txt = (x: number, y: number, fill: string, text: string, key: string, big = false) => (
     <text
@@ -193,7 +240,7 @@ export const SpyglassLens: React.FC<Props> = ({
     level === 'red' || level === 'amber' ? LEVEL_COLOR[level] : level === 'green' ? PALETTE.text2 : PALETTE.muted;
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="relative flex flex-col items-center">
       <div className={`relative rounded-full border overflow-hidden ${frozen ? 'border-accent' : 'border-ink-3'}`} style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
           <defs>
@@ -253,47 +300,92 @@ export const SpyglassLens: React.FC<Props> = ({
 
           <circle cx={c} cy={c} r="3" fill={PALETTE.text} stroke={PALETTE.ground} strokeWidth="1.5" />
 
-          {!message && textInside && (xray ? (
+          {/* Quien coloca la lupa marca `data-clipped` en su contenedor (`group`) si el círculo no cabe entero. */}
+          <g className="group-data-[clipped]:hidden">
+          {!message && !hideLabels && textInside && (xray ? (
             <>
               {size >= 180 && txt(c, c - r * 0.36, PALETTE.text2, single.title, 'xt')}
-              {txt(c, c + r * 0.36, PALETTE.text, single.value, 'xv', size >= 180)}
+              {single.value && txt(c, c + r * 0.36, PALETTE.text, single.value, 'xv', size >= 180)}
             </>
           ) : (
             <>
-              {txt(at(0, 0.62)[0], at(0, 0.62)[1], PALETTE.text, sectorValues.north, 'n1')}
-              {txt(at(120, 0.56)[0], at(120, 0.56)[1], PALETTE.text, sectorValues.right, 'r1')}
-              {txt(at(240, 0.56)[0], at(240, 0.56)[1], PALETTE.text, sectorValues.left, 'l1')}
+              {values.north && txt(at(0, 0.62)[0], at(0, 0.62)[1], PALETTE.text, values.north, 'n1')}
+              {values.right && txt(at(120, 0.56)[0], at(120, 0.56)[1], PALETTE.text, values.right, 'r1')}
+              {values.left && txt(at(240, 0.56)[0], at(240, 0.56)[1], PALETTE.text, values.left, 'l1')}
             </>
           ))}
+          </g>
         </svg>
       </div>
 
-      <div className="mt-1 max-w-64 px-2 py-1 rounded-md bg-ground/90 t-label text-ink-2 tabular-nums text-center pointer-events-auto" title={detail}>
-        <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
-          {name && <span className="text-ink font-medium">{name}</span>}
-          {frozen && <span>(fija)</span>}
-          {elev !== null && <span>· {fmt(elev)} m</span>}
-          {onClose && (
-            <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className="-my-1 -mr-1.5 w-8 h-8 flex items-center justify-center rounded-md text-ink-2 hover:text-ink hover:bg-raised cursor-pointer">
+      {compact ? (
+        // El rótulo nace bajo el círculo; quien coloca la lupa lo mueve con `--tag-x` y `--tag-y`
+        // (desde el centro del círculo) si ahí estorba.
+        <div
+          data-lens-card
+          className="absolute left-1/2 top-1/2 flex items-center rounded-md bg-ground/90 pl-2 t-label text-ink font-medium whitespace-nowrap pointer-events-auto"
+          style={{ translate: `calc(-50% + var(--tag-x, 0px)) calc(-50% + var(--tag-y, ${size / 2 + 20}px))` }}
+        >
+          {name}
+          {onClose ? (
+            <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className={closeBtn}>
               <X className="w-4 h-4" aria-hidden />
             </button>
+          ) : (
+            <span className="w-2 h-6" />
           )}
         </div>
-        {message && <div>{message}</div>}
-        {!message && !textInside && (
-          <div className="text-ink">{xray ? single.value : `${sectorValues.north}, ${sectorValues.right}, ${sectorValues.left}`}</div>
-        )}
-        {findings.map((f) => (
-          <div key={f.text} className={levelTextClass(f.level)}>{f.text}</div>
-        ))}
-        {!message && !xray && svf !== null && <div>Cielo visible (SVF) {fmt(svf, 2)}</div>}
-        {lat !== null && lonE !== null && (
-          <div className="text-ink-3 whitespace-nowrap">
-            {fmt(Math.abs(lat), 4)}°S {fmt(lonE, 4)}°E
+      ) : hideLabels ? null : (
+        <div data-lens-card className="mt-1 max-w-64 px-2 py-1 rounded-md bg-ground/90 t-label text-ink-2 tabular-nums text-center pointer-events-auto" title={detail}>
+          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+            {name && <span className="text-ink font-medium">{name}</span>}
+            {frozen && <span>(fija)</span>}
+            {elev !== null && <span>· {fmt(elev)} m</span>}
+            {onClose && (
+              <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className={`-my-1 -mr-1.5 ${closeBtn}`}>
+                <X className="w-4 h-4" aria-hidden />
+              </button>
+            )}
           </div>
-        )}
-        {node && <div className="text-ink-3">Dato del punto de la ruta</div>}
-      </div>
+          {message && <div>{message}</div>}
+          {!message && !textInside && centerValues && <div className="text-ink">{centerValues}</div>}
+          {findings.map((f, i) => (
+            <div key={i} className={levelTextClass(f.level)}>{f.text}</div>
+          ))}
+          {!message && !xray && svf !== null && <div>Cielo visible en el centro (SVF) {fmt(svf, 2)}</div>}
+          {lat !== null && lonE !== null && <div className="text-ink-3 whitespace-nowrap">{fmtCoords(lat, lonE)}</div>}
+          {node && <div className="text-ink-3">Dato del punto de la ruta</div>}
+        </div>
+      )}
     </div>
+  );
+};
+
+/** Lectura de una lupa fijada, en una fila de lista: así las de varias lupas no se pisan en el mapa. */
+export const LensReadout: React.FC<{
+  name: string;
+  mode: SpyglassMode;
+  data: LensData;
+  lat: number;
+  lonE: number;
+  onClose: () => void;
+}> = ({ name, mode, data, lat, lonE, onClose }) => {
+  const { node, svf, elev, values, message, findings } = readLens(data, mode);
+  const figures = [values.north, values.right, values.left, svf !== null ? `cielo visible ${fmt(svf, 2)}` : null].filter(Boolean).join(' · ');
+  return (
+    <li className="py-2 border-t border-line first:border-t-0 first:pt-0 last:pb-0 t-label text-ink-2 tabular-nums">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-ink">{name}</span>
+        {elev !== null && <span>{fmt(elev)} m</span>}
+        <button type="button" onClick={onClose} aria-label={`Quitar la lupa de ${name}`} className={`ml-auto -my-1 -mr-1.5 ${closeBtn}`}>
+          <X className="w-4 h-4" aria-hidden />
+        </button>
+      </div>
+      {message ? <div>{message}</div> : figures && <div className="text-ink">En el centro: {figures}</div>}
+      {findings.map((f, i) => (
+        <div key={i} className={levelTextClass(f.level)}>{f.text}</div>
+      ))}
+      <div className="text-ink-3">{fmtCoords(lat, lonE)}{node ? ' · dato del punto de la ruta' : ''}</div>
+    </li>
   );
 };

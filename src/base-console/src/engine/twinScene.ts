@@ -8,7 +8,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { M_PER_DEG_LAT, mPerDegLon, terrainElevation } from '@/engine/geo';
 import { classify } from '@/engine/thresholds';
-import { PALETTE } from '@/theme';
+import { PALETTE, TERRAIN } from '@/theme';
 import type { HexCell, TerrainGrid } from '@/types/mission';
 
 export interface TwinLayers {
@@ -91,8 +91,8 @@ export class TwinScene {
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.display = 'block';
 
-    this.scene.add(new THREE.AmbientLight('#b8c4d8', 0.85));
-    const sun = new THREE.DirectionalLight('#ffe2c4', 2.1);
+    this.scene.add(new THREE.AmbientLight(TERRAIN.ambientLight, 0.85));
+    const sun = new THREE.DirectionalLight(TERRAIN.sunLight, 2.1);
     sun.position.set(-6, 9, -5); // sol al noroeste
     this.scene.add(sun);
 
@@ -201,8 +201,8 @@ export class TwinScene {
   private paintTerrain(): void {
     const t = this.terrain;
     const col = this.terrainGeo.getAttribute('color') as THREE.BufferAttribute;
-    const low = new THREE.Color('#4a3a33');
-    const high = new THREE.Color('#b89678');
+    const low = new THREE.Color(TERRAIN.low);
+    const high = new THREE.Color(TERRAIN.high);
     const cRed = new THREE.Color(PALETTE.red);
     const cAmber = new THREE.Color(PALETTE.amber);
     const cGreen = new THREE.Color(PALETTE.green);

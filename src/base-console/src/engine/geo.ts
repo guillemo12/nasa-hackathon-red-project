@@ -1,5 +1,4 @@
 // Utilidades geográficas compartidas por el gemelo 3D, el planificador y el HUD.
-import { REFERENCE_FIGURES } from '@/data/missionData';
 import type { TerrainGrid } from '@/types/mission';
 
 /** Radio de Marte del CRS IAU_2015:49900 (esfera), m. */
@@ -111,8 +110,6 @@ export function hillshadeDataUrl(t: TerrainGrid): string {
   return canvas.toDataURL('image/png');
 }
 
-export const RADIO_PRIMARY_LABEL = `BANDA S ${(REFERENCE_FIGURES.radio_primary_freq_mhz / 1000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} GHz`;
-
 const NUM_WORDS = [
   'cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez',
   'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte',
@@ -121,17 +118,33 @@ const NUM_WORDS = [
 export function numberWord(n: number): string {
   return NUM_WORDS[n] ?? String(n);
 }
+/** Minutos dichos en voz alta, con su concordancia: «un minuto», «nueve minutos». */
+export function minutesWords(n: number): string {
+  const m = Math.max(1, Math.round(n));
+  return m === 1 ? 'un minuto' : `${numberWord(m)} minutos`;
+}
 /** Rumbo dicho dígito a dígito, como en fraseología aeronáutica: 344 → «tres cuatro cuatro». */
 export function bearingWords(deg: number): string {
   return String(Math.round(deg)).padStart(3, '0').split('').map((d) => NUM_WORDS[Number(d)]).join(' ');
 }
 
-const ES = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 });
+/** Número con formato español y signo menos tipográfico (−), igual que en «T−45». */
 export function fmt(value: number | null | undefined, decimals = 0): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   return new Intl.NumberFormat('es-ES', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(value);
+  })
+    .format(value)
+    .replace('-', '−');
 }
-export const fmtAuto = (value: number): string => ES.format(value);
+
+/** Coordenadas siempre igual en toda la consola: «9,8965° S, 283,3892° E». */
+export function fmtCoords(lat: number, lonE: number, decimals = 4): string {
+  return `${fmt(Math.abs(lat), decimals)}° ${lat < 0 ? 'S' : 'N'}, ${fmt(lonE, decimals)}° E`;
+}
+
+/** Nombre de un nodo tal como se escribe en pantalla: «Base», «WP1», «WP2», «WP3». */
+export function nodeLabel(id: string): string {
+  return id.toUpperCase() === 'BASE' ? 'Base' : id;
+}

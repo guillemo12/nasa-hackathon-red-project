@@ -5,7 +5,6 @@
 // desde el último hito, y la máquina de estados compartida (`src/shared/README.md` §4,
 // `GuardrailFsm::evaluate` de `neuro_symbolic.rs`). Es la única réplica en TypeScript.
 import {
-  CANONICAL_WAYPOINTS,
   EVA07_DOC,
   EVA07_EVENTS,
   EVA07_PHASES,
@@ -387,7 +386,7 @@ export function causeLabel(sample: Eva07Sample): string {
       return 'Polvo o viento elevados';
     case 'NLOS_RADIO_LOSS':
     case 'NLOS_OFFLINE':
-      return 'Sombra de radio (NLOS): modo autónomo';
+      return 'Sombra de radio: modo autónomo';
     case 'DYNAMIC_GOAL_SWITCH_EVAC':
       return 'Cambio de destino al refugio';
     case 'CAUTION_MARGIN_AMBER':
@@ -407,5 +406,3 @@ export function openSkyWindowMin(sample: Eva07Sample): number | null {
   const left = Math.max(0, PLANNER_WALKBACK.dose_budget_msv - sample.values.dose_spe_msv);
   return (left / PLANNER_WALKBACK.spe_rate_envelope_msv_h) * 60;
 }
-
-export const NODE_ORDER = CANONICAL_WAYPOINTS.map((w) => w.id);

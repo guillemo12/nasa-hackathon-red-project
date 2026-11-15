@@ -1,18 +1,22 @@
-# 🖥️ `src/base-console/` — Consola Estratégica 3D y Simulador EVA (P2 + P1 + P3)
+# `src/base-console/` — Consola de R.E.D. Atlas
 
-Aplicación web **React + TypeScript + Vite + TailwindCSS + Three.js** para **R.E.D. ATLAS** (`ATLAS // Melas Chasma SO Ops`), construida sobre los 4 wireframes de `docs/wireframes/` e integrada con los datos canónicos de **P1** (`data/`) y el motor Rust de **P3** (`src/core-engine/`, `src/shared/`).
+Aplicación web **React + TypeScript + Vite + Tailwind CSS + Three.js** para preparar y seguir la salida EVA-07 en la cuenca suroeste de Melas Chasma. Usa los datos de la misión (`data/`) y el motor de cálculo en Rust (`src/core-engine/`, `src/shared/`).
 
-Las cifras que se ven en pantalla **no están escritas en los componentes**: salen de `data/mission-scenarios/*.json`, de `triangulo_supervivencia.geojson` y de la API Rust. La fuente de cifras es `docs/01-planetary-science-mission/DATOS_CANONICOS_P1.md`.
+Las cifras que se ven en pantalla **no están escritas en los componentes**: salen de `data/mission-scenarios/*.json`, de `triangulo_supervivencia.geojson` y de la API. La referencia es `docs/01-planetary-science-mission/DATOS_CANONICOS_P1.md`.
+
+El aspecto y el tono siguen [`DESIGN.md`](DESIGN.md): una sola tipografía (IBM Plex Sans), un acento, color solo para estado, lo secundario plegado y lenguaje llano. Las piezas comunes están en `src/components/ui.tsx` y los colores en `src/index.css` y `src/theme.ts`. Parte de los wireframes de `docs/wireframes/`, pero se aparta de ellos a propósito en lo visual (sin barra lateral ni pie, sin rótulos en mayúsculas).
 
 ## Pantallas
 
-1. **Cartografía & Gemelo 3D (`Console3DView.tsx`, `engine/twinScene.ts`):** relieve real de la cuenca suroeste de Melas Chasma (DTM CTX de 20 m agregado a la malla H3 res 12 de P1), malla hexagonal `h3o` res 9 con sus hexágonos reales, ruta del planificador pegada al terreno, cámara orbitable y **Lupa Spyglass** de tres sectores de 120° (norte CRISM, derecha THEMIS, izquierda MOLA + SVF) que dibuja las celdas H3 de cada sector. Rueda: tamaño de la lupa (100–400 px); `Espacio`: rayos X de una capa; doble clic o `Intro`: hasta 3 lupas comparativas; flechas: mover la lupa. Paneles de traje, meteorología, Walkback Dual, Chaos Engine y perfil de ruta.
-2. **Planificador & Contingencia (`RoutePlannerView.tsx`, `RouteProfileChart.tsx`):** perfil del camino D\* Lite celda a celda (cota, pendiente, potencia metabólica, O₂ y cobertura de radio), tabla de tiempo, coste y dosis por tramo, exportación del GeoJSON con esos campos y **Chaos Mode**: pasada en vivo del motor Rust frente a la referencia de P1 (`chaos_mode_results.json`: 10.000 pasadas, semilla 42, 96,0 % de misión segura con cambio al refugio frente a 23,8 % solo con la Base), histograma por amenazas simultáneas y certificación que desbloquea la sincronización del traje.
-3. **Telemetría EVA (`EvaHudView.tsx`):** cronología de `eva07_events.json` (T−45 a T+165), máquina de estados compartida (`0x01` nominal, `0x02` precaución, `0x03` multiamenaza, `0x04` evacuación a WP3, `0x05` refugio), barra **Walkback Limit Dual**, sendero AR continuo con el color del estado, chevrones pulsantes en la evacuación (rumbo 344°, 595 m, 9,4 min), orden de voz única de menos de 8 s y unidad de muñeca con 4 zonas y dial de 3 posiciones. `/multiemergencia` abre esta misma pantalla en T+105.
+1. **Cartografía (`Console3DView.tsx`, `SpyglassLens.tsx`, `engine/twinScene.ts`):** el mapa 3D manda. Relieve real (DTM CTX de 20 m), malla hexagonal, ruta del planificador pegada al terreno y cámara orbitable. La **lupa** lee el terreno bajo el cursor en tres capas (agua, inercia térmica y relieve) o en una sola; la rueda cambia su tamaño, `Espacio` el modo, doble clic o `Intro` fija hasta tres lupas para comparar y las flechas la mueven. Paneles plegables: capas, triángulo de supervivencia, astronauta, meteorología y enlace, margen de retorno y simulación de imprevistos.
+2. **Planificador (`RoutePlannerView.tsx`, `RouteProfileChart.tsx`):** responde a «¿puedo autorizar esta salida?». Veredicto y acciones arriba; después el perfil del camino (cota, pendiente y terreno; potencia, O₂, batería y radio en «Más detalle»), los tramos con tiempo, coste y dosis, los consumibles y la **simulación de imprevistos**: el motor repite la salida con imprevistos al azar en T+105 y se compara con la referencia de la misión (10.000 salidas, semilla 42: 96,0 % a salvo con el refugio WP3 frente a 23,8 % solo con la Base). Simular autoriza el envío de la ruta al traje; también exporta el GeoJSON.
+3. **Telemetría EVA (`EvaHudView.tsx`):** cronología de T−45 a T+165, estado, **margen de retorno** a la Base y al refugio WP3, y el mapa con el sendero del visor: cian en marcha, con borde punteado ámbar en taludes de más de 18°, chevrones rojos en la evacuación y verde en el refugio. En la evacuación hay una sola tarjeta con la orden (344° NNO · 595 m · 9,4 min), su voz de menos de 8 s y un botón de confirmación. `/multiemergencia` abre esta pantalla en T+105.
+
+La barra superior lleva la navegación, el estado de la salida, el reloj de misión, «Sistema» (diagnóstico, con los códigos de estado `0x01`…`0x05`) y «Simular emergencia».
 
 ## Cómo ejecutarlo
 
-Hacen falta **dos procesos**. La API Rust sirve la malla de P1, el plan de ruta, el Chaos Mode y el estado del guardrail; sin ella la consola sigue funcionando con los datos de P1 en local y lo avisa en una franja ámbar (no hay gemelo 3D con relieve, ni lupa, ni Chaos Mode en vivo, ni sincronización).
+Hacen falta **dos procesos**. La API sirve el terreno, el plan de ruta, la simulación y las reglas de seguridad; sin ella la consola sigue funcionando con los datos guardados de la misión y lo avisa en una franja (no hay mapa 3D con relieve, ni lupa, ni simulación en vivo, ni envío al traje) y se recupera sola cuando vuelve.
 
 ```bash
 # 1) API Rust en http://127.0.0.1:3001
@@ -53,6 +57,7 @@ npm run build
 
 ## Limitaciones conocidas
 
-- La tipografía (Inter y JetBrains Mono) se carga de Google Fonts; sin red se usa la del sistema. Las teselas del mapa del HUD vienen de NASA Mars Trek (`trek.nasa.gov`); sin red queda solo el relieve de P1.
-- TIU y agua solo existen en las zonas de escenario [E] de P1 (discos alrededor de los nodos); fuera de ellas la lupa dice «s/d».
-- Los colores de estado siguen los documentos de UX y viven en `src/theme.ts`; `src/shared/README.md` §4 da otra paleta (decisión pendiente).
+- Las tipografías (IBM Plex Sans y JetBrains Mono) van incluidas en la aplicación. Las teselas del mapa de Telemetría EVA vienen de NASA Mars Trek (`trek.nasa.gov`); sin red queda solo el relieve del terreno.
+- La inercia térmica y el agua solo existen en discos alrededor de los nodos (valores supuestos del escenario); fuera de ellos la lupa lo dice.
+- El envío al traje está simulado: la API prepara el paquete y calcula su SHA-256, pero no hay enlace real.
+- Los colores de estado siguen los documentos de UX y viven en `src/theme.ts`.

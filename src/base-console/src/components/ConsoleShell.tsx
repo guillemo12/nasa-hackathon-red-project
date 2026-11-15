@@ -3,7 +3,7 @@ import { ChevronDown, Pause, Play, RotateCcw, WifiOff, X } from 'lucide-react';
 import type { ApiHealth } from '@/engine/apiClient';
 import { P1_CONSTANTS, classify } from '@/engine/thresholds';
 import { causeLabel, formatT } from '@/engine/evaModel';
-import { fmt } from '@/engine/geo';
+import { fmt, fmtCoords, nodeLabel } from '@/engine/geo';
 import { T_DECISION_MIN, T_START_MIN, UX_LABELS, waypoint } from '@/data/missionData';
 import { LEVEL_COLOR, PALETTE, RADIO_CLASS_LEVEL, STATE_STYLE, TONE_COLOR } from '@/theme';
 import type { Level } from '@/engine/thresholds';
@@ -47,10 +47,10 @@ const SYNC_LABEL: Record<SyncState['status'], { text: string; level: Level }> = 
 const RADIO_TEXT: Record<string, string> = { VERDE: 'bueno', AMBAR: 'débil', ROJO: 'cortado' };
 
 /** Punto de color con su texto: el color nunca va solo. */
-const Dot: React.FC<{ level: Level; pulse?: boolean }> = ({ level, pulse }) => (
+const Dot: React.FC<{ level: Level; pulse?: boolean; className?: string }> = ({ level, pulse, className = '' }) => (
   <span
     aria-hidden
-    className={`inline-block w-2 h-2 rounded-full shrink-0 ${pulse ? 'hud-pulse' : ''}`}
+    className={`inline-block w-2 h-2 rounded-full shrink-0 ${pulse ? 'hud-pulse' : ''} ${className}`}
     style={{ background: level === 'none' ? PALETTE.muted : LEVEL_COLOR[level] }}
   />
 );
@@ -76,11 +76,13 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
     if (!toast && !diagOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Escape cierra primero lo que flota; no llega a los atajos del mapa.
+      e.stopImmediatePropagation();
       if (diagOpen) setDiagOpen(false);
       else onDismissToast();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [toast, diagOpen, onDismissToast]);
 
   useEffect(() => {
@@ -107,8 +109,8 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
     from && to ? from.elevMolaM + (to.elevMolaM - from.elevMolaM) * sample.position.frac : null;
   const where =
     sample.position.from === sample.position.to
-      ? sample.position.from
-      : `Entre ${sample.position.from} y ${sample.position.to}`;
+      ? nodeLabel(sample.position.from)
+      : `Entre ${nodeLabel(sample.position.from)} y ${nodeLabel(sample.position.to)}`;
 
   const stateText =
     sample.guardrail.state === 'CAUTION' || sample.guardrail.state === 'MULTI_HAZARD'
@@ -127,15 +129,17 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
       : radioLevel === 'amber'
         ? 'amber'
         : 'green';
-  const systemText = !apiChecked
-    ? 'Comprobando'
+  const systemStatus = !apiChecked
+    ? 'comprobando'
     : apiDown
-      ? 'Sin motor'
-      : radioLevel === 'red'
-        ? 'Sin enlace'
-        : radioLevel === 'amber'
-          ? 'Enlace débil'
-          : 'Sistema';
+      ? 'sin motor de cálculo'
+      : sync.status === 'error'
+        ? 'envío al traje fallido'
+        : radioLevel === 'red'
+          ? 'sin enlace con el traje'
+          : radioLevel === 'amber'
+            ? 'enlace débil con el traje'
+            : 'todo en orden';
 
   const rows: Array<{ k: string; v: string; level?: Level }> = [
     {
@@ -147,20 +151,20 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
       k: 'Posición',
       v:
         sample.position.lat !== null && sample.position.lon_e !== null
-          ? `${where} · ${fmt(Math.abs(sample.position.lat), 4)}°S ${fmt(sample.position.lon_e, 4)}°E${
-              elevApprox !== null ? ` · ${fmt(elevApprox)} m` : ''
-            }`
+          ? `${where} (${fmtCoords(sample.position.lat, sample.position.lon_e)}${
+              elevApprox !== null ? `; cota ${fmt(elevApprox)} m` : ''
+            })`
           : where,
     },
-    { k: 'Destino viable', v: preEva ? '—' : sample.values.viable_destination },
+    { k: 'Destino viable', v: preEva ? '—' : nodeLabel(sample.values.viable_destination) },
     {
       k: 'Motor de cálculo',
       v: !apiChecked ? 'Comprobando…' : apiHealth ? 'En línea' : 'Sin conexión',
       level: !apiChecked ? 'none' : apiHealth ? 'green' : 'red',
     },
     {
-      k: 'Terreno cargado',
-      v: apiHealth ? `${fmt(apiHealth.h3_res12_cells)} celdas (20 m)` : 'No disponible',
+      k: 'Terreno',
+      v: apiHealth ? 'Cargado, a 20 m' : 'No disponible',
     },
     {
       k: 'Reglas de seguridad',
@@ -187,21 +191,28 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
       </a>
 
       <header className="relative z-40 shrink-0 bg-sunken border-b border-line">
-        <div className="px-3 sm:px-5 flex flex-wrap items-center gap-x-6 gap-y-1 min-h-14">
-          <div className="flex items-center gap-2 shrink-0 py-2">
+        {/* Dos filas fijas por debajo de `lg` y una sola a partir de ahí: el alto no depende del texto. */}
+        <div className="px-3 sm:px-5 grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-4 lg:gap-x-6 lg:h-14">
+          <div className="row-start-1 col-start-1 flex items-center gap-2 shrink-0 h-12 lg:h-auto">
             <span className="w-2 h-2 rounded-full bg-accent" aria-hidden />
-            <span className="text-[15px] font-semibold tracking-tight text-ink">R.E.D. Atlas</span>
-            <span className="hidden xl:inline t-label text-ink-3">Melas Chasma · sol {UX_LABELS.sol}</span>
+            <span className="text-base font-semibold text-ink whitespace-nowrap">
+              <span className="sm:hidden">Atlas</span>
+              <span className="hidden sm:inline">R.E.D. Atlas</span>
+            </span>
+            <span className="hidden 2xl:inline t-label text-ink-3">Melas Chasma, sol {UX_LABELS.sol}</span>
           </div>
 
-          <nav aria-label="Pantallas" className="order-last md:order-none w-full md:w-auto flex gap-1 overflow-x-auto self-stretch">
+          <nav
+            aria-label="Pantallas"
+            className="row-start-2 col-start-1 col-span-2 lg:row-start-1 lg:col-start-2 lg:col-span-1 flex gap-1 overflow-x-auto h-10 lg:h-14 -mx-1 px-1"
+          >
             {NAV.map(({ view, label }) => (
               <button
                 key={view}
                 type="button"
                 onClick={() => onSelectView(view)}
                 aria-current={navActive(view) ? 'page' : undefined}
-                className={`min-h-10 shrink-0 px-3 text-sm border-b-2 transition-colors cursor-pointer ${
+                className={`h-full shrink-0 px-3 text-sm border-b-2 transition-colors cursor-pointer ${
                   navActive(view)
                     ? 'border-accent text-ink font-medium'
                     : 'border-transparent text-ink-3 hover:text-ink'
@@ -212,23 +223,28 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3 flex-wrap py-2">
+          <span
+            role="status"
+            aria-label={`Estado: ${pillText}`}
+            title={pillText}
+            className={`row-start-3 col-start-1 col-span-2 lg:row-start-1 lg:col-start-3 lg:col-span-1 lg:justify-self-end min-w-0 max-w-full flex items-center gap-2 h-8 mb-2 lg:mb-0 px-2.5 rounded-md t-label ${
+              alarming ? 'text-ink' : 'text-ink-2'
+            }`}
+            style={
+              alarming
+                ? { background: sample.guardrail.state === 'MULTI_HAZARD' ? 'var(--color-warn-bg)' : 'var(--color-danger-bg)' }
+                : undefined
+            }
+          >
             <span
-              role="status"
-              aria-label={`Estado: ${pillText}`}
-              className={`hidden sm:flex items-center gap-2 min-h-8 px-2.5 rounded-md t-label ${
-                alarming ? 'bg-danger-bg text-ink' : 'text-ink-2'
-              }`}
-              style={alarming ? { background: sample.guardrail.state === 'MULTI_HAZARD' ? 'var(--color-warn-bg)' : undefined } : undefined}
-            >
-              <span
-                aria-hidden
-                className={`w-2 h-2 rounded-full shrink-0 ${state.pulse ? 'hud-pulse' : ''}`}
-                style={{ background: sample.guardrail.state === 'NOMINAL' ? PALETTE.green : state.color }}
-              />
-              <span className="font-medium">{pillText}</span>
-            </span>
+              aria-hidden
+              className={`w-2 h-2 rounded-full shrink-0 ${state.pulse ? 'hud-pulse' : ''}`}
+              style={{ background: sample.guardrail.state === 'NOMINAL' ? PALETTE.green : state.color }}
+            />
+            <span className="font-medium truncate">{pillText}</span>
+          </span>
 
+          <div className="row-start-1 col-start-2 lg:col-start-4 justify-self-end flex items-center gap-2 sm:gap-3">
             <div className="flex items-center rounded-md border border-line bg-panel" aria-label="Reloj de misión">
               <button
                 type="button"
@@ -240,10 +256,10 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
               >
                 {isLive ? <Pause className="w-4 h-4" aria-hidden /> : <Play className="w-4 h-4" aria-hidden />}
               </button>
-              <div className="px-2 leading-tight tabular-nums border-x border-line">
+              <div className="px-2 leading-tight tabular-nums border-x border-line whitespace-nowrap">
                 <div className="text-sm font-semibold text-ink">{formatT(sample.t_min)}</div>
                 <div className="text-xs text-ink-3">
-                  {sample.lmst} local · {isLive ? 'en marcha' : 'en pausa'}
+                  {sample.lmst} local<span className="hidden sm:inline">, {isLive ? 'en marcha' : 'en pausa'}</span>
                 </div>
               </div>
               <button
@@ -263,24 +279,27 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
                 onClick={() => setDiagOpen((o) => !o)}
                 aria-expanded={diagOpen}
                 aria-controls="panel-sistema"
+                aria-label={`Sistema: ${systemStatus}`}
+                title={`Sistema: ${systemStatus}`}
                 className="min-h-9 flex items-center gap-2 px-2.5 rounded-md border border-line bg-panel text-sm text-ink-2 hover:text-ink hover:bg-raised cursor-pointer"
               >
                 <Dot level={systemLevel} />
-                <span>{systemText}</span>
+                <span className="hidden sm:inline">Sistema</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${diagOpen ? 'rotate-180' : ''}`} aria-hidden />
               </button>
               {diagOpen && (
                 <div
                   id="panel-sistema"
-                  className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-lg border border-line bg-panel shadow-[0_12px_32px_-8px_rgba(0,0,0,0.6)] p-4"
+                  className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-1.5rem))] rounded-lg border border-line bg-panel shadow-pop p-4"
                 >
-                  <h2 className="text-sm font-semibold text-ink mb-3">Estado del sistema</h2>
+                  <h2 className="text-sm font-semibold text-ink">Estado del sistema</h2>
+                  <p className="t-label text-ink-3 mt-0.5 mb-3 first-letter:uppercase">{systemStatus}.</p>
                   <dl className="space-y-2.5">
                     {rows.map((row) => (
                       <div key={row.k} className="flex items-start justify-between gap-4 t-label">
                         <dt className="text-ink-3 shrink-0">{row.k}</dt>
-                        <dd className="text-right text-ink tabular-nums flex items-center gap-1.5">
-                          {row.level && <Dot level={row.level} />}
+                        <dd className="text-right text-ink tabular-nums flex items-start gap-1.5">
+                          {row.level && <Dot level={row.level} className="mt-1" />}
                           <span>{row.v}</span>
                         </dd>
                       </div>
@@ -293,10 +312,12 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
             <button
               type="button"
               onClick={() => onSelectView('eva-emergency')}
+              aria-label="Simular emergencia"
               title={`Abre la Telemetría EVA en ${formatT(T_DECISION_MIN)}, cuando coinciden las cuatro amenazas`}
-              className="min-h-9 px-3 rounded-md border border-danger/50 text-sm font-medium text-danger-ink hover:bg-danger-bg cursor-pointer"
+              className="min-h-9 px-3 rounded-md border border-danger/50 text-sm font-medium text-danger-ink hover:bg-danger-bg cursor-pointer whitespace-nowrap"
             >
-              Simular emergencia
+              <span className="sm:hidden">Emergencia</span>
+              <span className="hidden sm:inline">Simular emergencia</span>
             </button>
           </div>
         </div>
@@ -322,7 +343,7 @@ export const ConsoleShell: React.FC<ConsoleShellProps> = ({
           key={toast.id}
           role={toast.tone === 'red' ? 'alert' : 'status'}
           aria-live={toast.tone === 'red' ? 'assertive' : 'polite'}
-          className="fixed top-16 right-3 sm:right-5 z-50 max-w-sm w-[calc(100%-1.5rem)] sm:w-auto rounded-lg border border-line bg-panel shadow-[0_12px_32px_-8px_rgba(0,0,0,0.6)] px-4 py-3 flex items-start gap-3"
+          className="fixed bottom-4 left-3 sm:left-5 z-50 max-w-sm w-[calc(100%-1.5rem)] sm:w-auto rounded-lg border border-line-strong bg-raised shadow-pop px-4 py-3 flex items-start gap-3"
         >
           <span
             aria-hidden

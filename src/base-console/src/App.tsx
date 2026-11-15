@@ -173,7 +173,7 @@ export function App() {
       });
       notify(
         res.simulated ? 'Ruta preparada para el traje (enlace simulado)' : 'Ruta enviada al traje',
-        `${res.cells_synced.toLocaleString('es-ES')} celdas de terreno, ${(res.bundle_bytes / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MB. Huella ${res.checksum.slice(0, 12)}…`,
+        `Terreno y ruta: ${(res.bundle_bytes / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 2 })} MB. Huella ${res.checksum.slice(0, 12)}…`,
         'green'
       );
     } catch {
@@ -181,7 +181,7 @@ export function App() {
       setApiHealth(null);
       notify(
         'No se ha podido enviar: el traje no ha recibido nada',
-        'El motor de cálculo no responde. Arráncalo (cargo run --bin api_server) y vuelve a intentarlo.',
+        'El motor de cálculo no responde. Cuando vuelva la conexión, envíala otra vez.',
         'red'
       );
     }

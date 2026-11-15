@@ -19,10 +19,10 @@ import { fetchEnrichedGeoJson, fetchRoutePlan } from '@/engine/apiClient';
 import { CHAOS_VISIBLE_TRIALS, certify, sigmaPct } from '@/engine/chaos';
 import { ISRU_H2O_MIN_PCT, classify, limits } from '@/engine/thresholds';
 import type { Level } from '@/engine/thresholds';
-import { fmt } from '@/engine/geo';
+import { fmt, fmtCoords, nodeLabel } from '@/engine/geo';
 import { formatT } from '@/engine/evaModel';
 import { RouteProfileChart } from '@/components/RouteProfileChart';
-import { Button, Disclosure, Notice, Panel, Row, Segmented, Stat, levelTextClass } from '@/components/ui';
+import { Button, Disclosure, Notice, Panel, Row, Stat, StatusDot, levelTextClass } from '@/components/ui';
 import type { ChaosState, NodeId, Notify, RoutePlan, SyncState } from '@/types/mission';
 
 interface RoutePlannerViewProps {
@@ -42,6 +42,8 @@ const NLOS_WINDOW = EVA07_DOC.threat_windows_t_min.sombra_radio;
 const HAZARD_LABELS = ['0', '1', '2', '3', '4'];
 
 const pct = (v: number, d = 1) => `${fmt(v, d)} %`;
+/** Recuento exacto con separador de miles también en cuatro cifras: «9.602 de 10.000». */
+const count = (v: number) => String(Math.round(v)).replace(/\B(?=(\d{3})+$)/g, '.');
 
 /** Nombres de los hitos tal como se dicen en el equipo (los datos los traen en mayúsculas). */
 const NODE_NAME: Record<string, string> = {
@@ -50,7 +52,16 @@ const NODE_NAME: Record<string, string> = {
   WP2: 'WP2, talud',
   WP3: 'WP3, refugio',
 };
-const shortNode = (id: string) => (id === 'BASE' ? 'Base' : id);
+
+/** Los datos de la misión traen la geología sin tildes: se corrigen al pintar. */
+const SPELLING: Array<[RegExp, string]> = [
+  [/\bDeposito\b/g, 'Depósito'],
+  [/\bdeposito\b/g, 'depósito'],
+  [/\blobulo\b/g, 'lóbulo'],
+  [/\bbasalticas\b/g, 'basálticas'],
+  [/\bSW\b/g, 'suroeste'],
+];
+const spell = (text: string) => SPELLING.reduce((t, [from, to]) => t.replace(from, to), text);
 
 /** Relleno atenuado de una barra según su nivel; el dato va siempre escrito al lado. */
 const LEVEL_BAR: Record<Level, string> = {
@@ -74,7 +85,6 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
   onRunChaos,
   onNotify,
 }) => {
-  const [chaosActive, setChaosActive] = useState(true);
   const [trials, setTrials] = useState<number>(CHAOS_VISIBLE_TRIALS);
   const [seed, setSeed] = useState<number>(REF.seed);
   const [selectedWpId, setSelectedWpId] = useState<NodeId>('WP2');
@@ -148,25 +158,13 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
     if (!certified) {
       onNotify(
         'Simula la ruta antes de enviarla al traje',
-        'Abre la simulación de imprevistos, ejecútala y espera al resultado «Ruta autorizada».',
+        `Pulsa «${simulateLabel}» y espera al resultado «Ruta autorizada».`,
         'amber'
       );
       return;
     }
     if (sync.status !== 'ok') void onSyncZenoh();
   };
-
-  // Motivo visible junto a las acciones: por qué no se puede enviar, o en qué quedó el envío.
-  const sendNote =
-    sync.status === 'ok'
-      ? { text: 'El traje ya tiene esta ruta.', level: 'none' as Level }
-      : sync.status === 'syncing'
-        ? { text: 'Enviando la ruta al traje…', level: 'none' as Level }
-        : sync.status === 'error'
-          ? { text: 'El envío ha fallado. Vuelve a intentarlo.', level: 'red' as Level }
-          : !certified
-            ? { text: 'Simula la ruta antes de enviarla al traje.', level: 'none' as Level }
-            : { text: 'Ruta autorizada: ya se puede enviar al traje.', level: 'none' as Level };
 
   const certReason = cert
     ? cert.authorized
@@ -178,6 +176,38 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
           : 'El resultado se aparta demasiado de la referencia de la misión: revisa el trazado o repite la simulación.'
     : null;
 
+  // Veredicto de la cabecera: responde «¿puedo autorizar esta salida?» y dice por qué se puede
+  // enviar o no. El estado del envío, cuando lo hay, sustituye a la coletilla.
+  const syncText =
+    sync.status === 'ok'
+      ? 'El traje ya tiene esta ruta.'
+      : sync.status === 'syncing'
+        ? 'Enviando la ruta al traje…'
+        : sync.status === 'error'
+          ? 'El envío ha fallado. Vuelve a intentarlo.'
+          : null;
+  const offlineText = apiOnline ? '' : ' Sin el motor de cálculo, el GeoJSON se exporta sin datos por tramo.';
+  const verdictBase: { level: Level; title: string; text: string } = running
+    ? { level: 'none', title: `Simulando ${fmt(trials)} salidas…`, text: 'Espera al resultado para poder enviar la ruta al traje.' }
+    : cert
+      ? cert.authorized
+        ? { level: 'green', title: 'Ruta autorizada', text: `${certReason} Ya se puede enviar al traje.` }
+        : { level: 'red', title: 'Ruta no autorizada', text: `${certReason} No se puede enviar al traje.` }
+      : chaos.status === 'error'
+        ? { level: 'amber', title: 'Sin simular', text: 'La última simulación no se pudo ejecutar porque el motor de cálculo no responde.' }
+        : {
+            level: 'none',
+            title: 'Sin simular',
+            text: apiOnline
+              ? 'Simula la ruta para autorizarla y poder enviarla al traje.'
+              : 'El motor de cálculo no responde: no se puede simular ni autorizar la ruta hasta que vuelva.',
+          };
+  // El estado del envío, cuando lo hay, manda sobre la coletilla del veredicto.
+  const verdict = {
+    ...verdictBase,
+    text: `${syncText ? (cert?.authorized && !running ? `${certReason} ${syncText}` : syncText) : verdictBase.text}${offlineText}`,
+  };
+
   const wp1Power = EVA07_DOC.phases.find((p) => p.phase_id === 'A2_isru_wp1')?.power_w;
   const wp2O2 = EVA07_DOC.phases.find((p) => p.phase_id === 'A3_rampa_pico')?.o2_l_min;
   const o2Level = classify('o2_primary_pct', EVA07_DOC.final.o2_remaining_pct);
@@ -185,61 +215,83 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 pb-4">
-      {/* Título y conmutador */}
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <div className="min-w-0">
+      {/* Cabecera: título, resumen, veredicto y acciones. Todo lo que decide la salida, sin desplazarse. */}
+      <header className="space-y-3">
+        <div>
           <h1 className="text-xl font-semibold text-ink">Plan de la salida EVA-07</h1>
           <p className="text-sm text-ink-2 mt-1">
-            {apiOnline
-              ? `Ruta calculada por el planificador sobre el terreno a 20 m. Sol ${UX_LABELS.sol}, salida a las ${DEPARTURE.lmst} (hora local).`
-              : `Sin el planificador: ves los datos guardados de la misión. Sol ${UX_LABELS.sol}, salida a las ${DEPARTURE.lmst} (hora local).`}
+            <span className="tabular-nums">
+              {fmt(PERIMETER_M / 1000, 2)} km en {fmt(T_END_MIN)} min, con un desnivel máximo de +{fmt(MAX_ELEV_GAIN_M)} m de la Base a
+              WP2.
+            </span>{' '}
+            Sol {UX_LABELS.sol}, salida a las {DEPARTURE.lmst} (hora local).
+            {!apiOnline && ' Sin el planificador: ves los datos guardados de la misión.'}
           </p>
         </div>
-        <Segmented
-          label="Qué se revisa"
-          value={chaosActive ? 'simulacion' : 'ruta'}
-          onChange={(v) => setChaosActive(v === 'simulacion')}
-          options={[
-            { value: 'ruta', label: 'Ruta' },
-            { value: 'simulacion', label: 'Simulación' },
-          ]}
-        />
-      </div>
 
-      {/* Resumen */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-5">
-        <Stat
-          label="Distancia total"
-          value={fmt(PERIMETER_M / 1000, 2)}
-          unit="km"
-          hint={`Desnivel máximo de +${fmt(MAX_ELEV_GAIN_M)} m, de la Base a WP2`}
-        />
-        <Stat label="Duración" value={fmt(T_END_MIN)} unit="min" hint={`De ${formatT(0)} a ${formatT(T_END_MIN)}`} />
-        <Stat
-          label="O₂ al final"
-          value={pct(EVA07_DOC.final.o2_remaining_pct)}
-          level={o2Level}
-          hint={`De ${fmt(EVA07_EVENTS[0].values.o2_remaining_g)} g útiles al salir`}
-        />
-        <Stat
-          label="Retorno a la Base desde WP2"
-          value={fmt(WB.base.time_min, 1)}
-          unit="min"
-          level={WB.base_feasible ? undefined : 'red'}
-          hint={`Con tormenta solar (SPE) solo hay ${fmt(WB.open_sky_window_min)} min a cielo abierto, por el límite de ${fmt(WB.dose_budget_msv)} mSv por salida`}
-        />
-      </div>
+        <section aria-label="Autorización de la salida" className="rounded-lg border border-line bg-panel p-4">
+          <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-3">
+            <div role="status" className="min-w-0 flex-1 basis-72">
+              <div className={`flex items-center gap-2 t-value font-semibold ${levelTextClass(verdict.level)}`}>
+                <StatusDot level={verdict.level} />
+                {verdict.title}
+              </div>
+              <p id="motivo-envio" className={`text-sm mt-1 max-w-2xl ${syncText && sync.status === 'error' ? 'text-danger-ink' : 'text-ink-2'}`}>
+                {verdict.text}
+              </p>
+            </div>
+            {run && !running && (
+              <div>
+                <div className="flex gap-x-8">
+                  <Stat size="lg" label="Seguras con el refugio WP3" value={pct(run.report.survival_rate_with_shelter_pct)} />
+                  <Stat
+                    size="lg"
+                    label="Seguras solo con la Base"
+                    value={pct(run.report.survival_rate_base_only_pct)}
+                    level={WB.base_feasible ? undefined : 'red'}
+                  />
+                </div>
+                <p className="t-label text-ink-3 tabular-nums mt-0.5">
+                  {fmt(run.report.trials)} de {fmt(run.trials)} salidas simuladas, con la semilla {run.seed}.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
+            <Button disabled={running || !apiOnline} onClick={() => void onRunChaos(trials, seed)}>
+              {running && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+              {running ? 'Simulando…' : simulateLabel}
+            </Button>
+            <Button onClick={() => void handleExport()} disabled={exporting}>
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Download className="w-4 h-4" aria-hidden />}
+              Exportar GeoJSON
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSend}
+              aria-disabled={!certified || sync.status === 'syncing' || sync.status === 'ok'}
+              aria-describedby="motivo-envio"
+              className="sm:ml-auto aria-disabled:bg-raised aria-disabled:text-ink-3 aria-disabled:font-medium aria-disabled:cursor-not-allowed aria-disabled:hover:brightness-100"
+            >
+              {sync.status === 'syncing' && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+              {sync.status === 'syncing' ? 'Enviando…' : sync.status === 'ok' ? 'Ruta enviada al traje' : 'Enviar ruta al traje'}
+            </Button>
+          </div>
+        </section>
+      </header>
 
       {/* Perfil de la ruta y hitos */}
       <Panel
         title="Perfil de la ruta"
-        aside={plan ? null : planLoading ? 'Calculando el plan de ruta…' : 'Solo los cuatro puntos guardados'}
+        aside={
+          plan
+            ? `Ritmo sostenido: ${fmt(plan.pace.speed_cap_mps, 1)} m/s y ${fmt(plan.pace.power_cap_w)} W`
+            : planLoading
+              ? 'Calculando el plan de ruta…'
+              : 'Solo los cuatro puntos guardados'
+        }
       >
-        <p className="t-label text-ink-3 mb-3">
-          {plan
-            ? `Camino del planificador a ritmo sostenido (${fmt(plan.pace.speed_cap_mps, 1)} m/s y ${fmt(plan.pace.power_cap_w)} W), en condiciones normales. Suroeste de Melas Chasma.`
-            : 'Cotas de la Base y de los tres puntos de paso. Suroeste de Melas Chasma.'}
-        </p>
         <RouteProfileChart plan={plan} selectedId={selectedWpId} onSelect={setSelectedWpId} />
 
         <div className="mt-4 pt-4 border-t border-line">
@@ -266,7 +318,7 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
                     }`}
                   >
                     <span className={`block text-sm ${selected ? 'font-semibold text-ink' : 'font-medium text-ink-2'}`}>
-                      {idx + 1}. {NODE_NAME[wp.id] ?? wp.id}
+                      {idx + 1}. {NODE_NAME[wp.id] ?? nodeLabel(wp.id)}
                     </span>
                     <span className="block t-label text-ink-3 tabular-nums">
                       {fmt(wp.distFromBaseM / 1000, 2)} km, cota {fmt(wp.elevMolaM)} m
@@ -280,10 +332,10 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
 
           {selectedWp && (
             <div className="mt-3" aria-live="polite">
-              <div className="text-sm font-semibold text-ink">{NODE_NAME[selectedWp.id] ?? selectedWp.id}</div>
-              <p className="t-label text-ink-2 mt-0.5">{selectedWp.geology}</p>
+              <div className="text-sm font-semibold text-ink">{NODE_NAME[selectedWp.id] ?? nodeLabel(selectedWp.id)}</div>
+              <p className="t-label text-ink-2 mt-0.5">{spell(selectedWp.geology)}</p>
               <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-x-10">
-                <Row label="Coordenadas" value={`${fmt(selectedWp.lat, 4)}°, ${fmt(selectedWp.lonE, 4)}°E`} />
+                <Row label="Coordenadas" value={fmtCoords(selectedWp.lat, selectedWp.lonE)} />
                 <Row label="Cota" value={`${fmt(selectedWp.elevMolaM)} m`} />
                 <Row
                   label="Pendiente local"
@@ -318,8 +370,9 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
         </div>
       </Panel>
 
-      {/* Recorrido por tramos */}
-      <Panel title="Recorrido por tramos">
+      {/* Recorrido por tramos: sin caja, solo título y tabla */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-ink">Recorrido por tramos</h2>
         {plan ? (
           <>
             <div className="overflow-x-auto">
@@ -340,7 +393,7 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
                   {plan.legs.map((l) => (
                     <tr key={l.leg_id} className="border-t border-line">
                       <th scope="row" className="py-2 pr-2 text-left font-medium whitespace-nowrap">
-                        {l.leg_id} <span className="font-normal text-ink-2">{shortNode(l.from)} → {shortNode(l.to)}</span>
+                        {l.leg_id} <span className="font-normal text-ink-2">{nodeLabel(l.from)} → {nodeLabel(l.to)}</span>
                         {l.leg_id === 'R1' && <span className="font-normal text-ink-3"> (contingencia)</span>}
                       </th>
                       <td className={TD}>{fmt(l.length_m)} m</td>
@@ -358,9 +411,8 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
                 </tbody>
               </table>
             </div>
-            <p className="t-label text-ink-3 mt-3 max-w-3xl">
-              En ámbar o en rojo, lo que supera los límites de la misión. La dosis con SPE supone {fmt(WB.spe_rate_envelope_msv_h)} mSv/h
-              a cielo abierto, corregidos por el cielo visible. Todos los tramos van a ritmo sostenido; la huida real al refugio WP3
+            <p className="t-label text-ink-3 max-w-3xl">
+              En ámbar o en rojo, lo que supera los límites de la misión. Los tramos van a ritmo sostenido; la huida real al refugio WP3
               en {formatT(WB.decision_t_min)} se hace a ritmo de escape: {fmt(WB.wp3.time_min, 2)} min y {fmt(WB.wp3.dose_spe_msv, 2)} mSv.
             </p>
           </>
@@ -371,40 +423,38 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
               : 'Los tiempos, el consumo y la dosis de cada tramo los da el planificador, que ahora no responde.'}
           </p>
         )}
-      </Panel>
+      </section>
 
-      {/* Consumibles y enlace de radio */}
-      <Panel title="Consumibles y enlace de radio">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-8 gap-y-4">
+      {/* Consumibles y enlace de radio: sin caja, separados por un divisor fino */}
+      <section className="pt-6 border-t border-line">
+        <h2 className="text-sm font-semibold text-ink">Consumibles y enlace de radio</h2>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-x-8 gap-y-4">
           <div>
             <Stat
               label="Oxígeno primario al final"
               value={pct(EVA07_DOC.final.o2_remaining_pct)}
               level={o2Level}
-              hint={`De ${fmt(EVA07_EVENTS[0].values.o2_remaining_g)} g útiles`}
+              hint={`De ${fmt(EVA07_EVENTS[0].values.o2_remaining_g)} g útiles al salir`}
             />
             <div className="mt-1.5 h-1.5 rounded-sm bg-raised overflow-hidden" aria-hidden>
               <div className={`h-full ${LEVEL_BAR[o2Level]}`} style={{ width: `${EVA07_DOC.final.o2_remaining_pct}%` }} />
             </div>
           </div>
           <Stat
-            label="Agua de refrigeración"
+            label="Agua de refrigeración (valor supuesto)"
             value={fmt(SUIT_SCENARIO.coolingWaterKg, 1)}
             unit="kg"
             hint={`Autonomía en ${formatT(WB.decision_t_min)}: ${fmt(WB.t_vital_lcvg_min)} min`}
           />
           <Stat
-            label="Batería del traje"
+            label="Batería del traje (valor supuesto)"
             value={fmt(SUIT_SCENARIO.batteryWh)}
             unit="Wh"
             hint={`Gasto de unos ${SUIT_SCENARIO.batteryDrawW} W. Autonomía en ${formatT(WB.decision_t_min)}: ${fmt(WB.t_vital_battery_min)} min`}
           />
         </div>
-        <p className="t-label text-ink-3 mt-3">
-          El modelo no calcula el consumo de agua ni el de batería: son valores supuestos, con la autonomía que usa el motor de cálculo.
-        </p>
 
-        <div className="mt-4 pt-4 border-t border-line">
+        <div className="mt-5">
           <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
             <h3 className="text-sm font-medium text-ink">Enlace con el traje durante la salida</h3>
             <span className="t-label text-ink-3">Banda S, {fmt(REFERENCE_FIGURES.radio_primary_freq_mhz / 1000, 1)} GHz</span>
@@ -439,213 +489,188 @@ export const RoutePlannerView: React.FC<RoutePlannerViewProps> = ({
             <span>T+{fmt(T_END_MIN)}</span>
           </div>
           <p className="t-label text-ink-2 mt-2">
-            Sombra de radio de {formatT(NLOS_WINDOW[0])} a {formatT(NLOS_WINDOW[1])}, en rojo: el enlace pasa por el repetidor del rover.
+            Sombra de radio de {formatT(NLOS_WINDOW[0])} a {formatT(NLOS_WINDOW[1])}, en rojo: el enlace pasa por el repetidor del rover
+            y el traje navega solo.
           </p>
         </div>
-      </Panel>
 
-      {!chaosActive ? (
-        <Panel title="La salida sin tormenta solar" aside="Base → WP1 → WP2 → WP3 → Base">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-8 gap-y-4">
-            <Stat
+        <Disclosure summary="La salida sin tormenta solar" className="mt-3">
+          <div className="max-w-xl">
+            <Row
               label="Dosis de fondo en toda la salida"
-              value={fmt(EVA07_DOC.final.dose_gcr_msv, 3)}
-              unit="mSv"
-              hint={`De ${formatT(0)} a T+${fmt(T_END_MIN)}. Si hay SPE, el límite es de ${fmt(WB.dose_budget_msv)} mSv por salida.`}
+              value={`${fmt(EVA07_DOC.final.dose_gcr_msv, 3)} mSv`}
             />
-            <Stat
-              label="Retorno a la Base desde WP2, sin SPE"
-              value={fmt(WB.base.time_min, 1)}
-              unit="min"
-              hint={`${fmt(WB.base.length_m)} m y ${fmt(WB.base.o2_liters, 1)} L de O₂. Viable antes de la alerta; con SPE deja de serlo (mira la simulación).`}
+            <Row
+              label="Retorno a la Base desde WP2"
+              value={`${fmt(WB.base.time_min, 1)} min, ${fmt(WB.base.length_m)} m y ${fmt(WB.base.o2_liters, 1)} L de O₂`}
             />
-            <Stat
-              label="Sombra de radio prevista"
-              value={`${formatT(NLOS_WINDOW[0])} a ${formatT(NLOS_WINDOW[1])}`}
-              level="amber"
-              hint="El traje navega solo y guarda la telemetría."
-            />
+            <p className="t-label text-ink-2 mt-1">
+              Sin tormenta solar, volver a la Base es viable. Con SPE el límite es de {fmt(WB.dose_budget_msv)} mSv por salida y solo
+              hay {fmt(WB.open_sky_window_min)} min a cielo abierto: por eso se simula el cambio al refugio.
+            </p>
           </div>
-        </Panel>
-      ) : (
-        <Panel title="Simulación de imprevistos">
-          <p className="text-sm text-ink-2 max-w-3xl">
-            Se repite la salida muchas veces con imprevistos al azar en el peor momento, {formatT(WB.decision_t_min)}: tormenta solar de{' '}
-            {fmt(WB.spe_rate_envelope_msv_h)} mSv/h, polvo τ {fmt(WB.dust_tau, 1)}, sombra de radio y la rampa de {SUIT_SCENARIO.wp2RampDeg}°.
-            Cada vez se comprueba si la astronauta acaba a salvo cambiando al refugio WP3 y si lo haría volviendo a la Base.
-          </p>
+        </Disclosure>
+      </section>
 
-          <div className="mt-3 flex flex-wrap items-start gap-x-6 gap-y-2">
+      {/* Simulación de imprevistos: el detalle; el veredicto y el botón están en la cabecera */}
+      <Panel title="Simulación de imprevistos">
+        <p className="text-sm text-ink-2 max-w-3xl">
+          Se repite la salida con imprevistos al azar en el peor momento, {formatT(WB.decision_t_min)}: tormenta solar de{' '}
+          {fmt(WB.spe_rate_envelope_msv_h)} mSv/h, polvo τ {fmt(WB.dust_tau, 1)}, sombra de radio y la rampa de {SUIT_SCENARIO.wp2RampDeg}°.
+          Cada vez se comprueba si la astronauta acaba a salvo cambiando al refugio WP3 y si lo haría volviendo a la Base.
+        </p>
+
+        {!apiOnline && (
+          <Notice level="amber" className="mt-3">
+            La simulación la hace el motor de cálculo, que ahora no responde. Solo se muestra la referencia de la misión.
+          </Notice>
+        )}
+
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full max-w-3xl text-sm text-ink tabular-nums">
+            <caption className="sr-only">Salidas seguras en esta simulación y en la referencia de la misión</caption>
+            <thead>
+              <tr className="t-label text-ink-3">
+                <th scope="col" className="py-2 pr-4 font-normal text-left">Salidas seguras</th>
+                <th scope="col" className="py-2 pl-4 font-normal text-right">Con cambio al refugio WP3</th>
+                <th scope="col" className="py-2 pl-4 font-normal text-right">Solo con la Base</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-line">
+                <th scope="row" className="py-2 pr-4 text-left font-medium">
+                  Esta simulación
+                  {run && (
+                    <span className="block t-label font-normal text-ink-3">
+                      {fmt(run.report.trials)} salidas, semilla {run.seed}
+                    </span>
+                  )}
+                </th>
+                <td className="py-2 pl-4 text-right align-top font-semibold">
+                  {run ? pct(run.report.survival_rate_with_shelter_pct) : running ? 'Simulando…' : 'Sin simular'}
+                </td>
+                <td className={`py-2 pl-4 text-right align-top font-semibold ${run && !WB.base_feasible ? 'text-danger-ink' : ''}`}>
+                  {run ? pct(run.report.survival_rate_base_only_pct) : '—'}
+                </td>
+              </tr>
+              <tr className="border-t border-line">
+                <th scope="row" className="py-2 pr-4 text-left font-medium">
+                  Referencia de la misión
+                  <span className="block t-label font-normal text-ink-3">
+                    {fmt(REF.trials)} salidas, semilla {REF.seed}
+                  </span>
+                </th>
+                <td className="py-2 pl-4 text-right align-top">
+                  {pct(REF.report.survival_rate_with_shelter_pct)}
+                  <span className="block t-label text-ink-3">
+                    {count(REF.report.survived_with_wp3_shelter)} de {count(REF.trials)}
+                  </span>
+                </td>
+                <td className="py-2 pl-4 text-right align-top">
+                  {pct(REF.report.survival_rate_base_only_pct)}
+                  <span className="block t-label text-ink-3">
+                    {count(REF.report.survived_base_only)} de {count(REF.trials)}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <Disclosure summary="Opciones de la simulación" className="mt-2">
+          <div className="flex flex-wrap items-end gap-3 pb-1">
+            <label className="t-label text-ink-3">
+              <span className="block mb-1">Número de salidas</span>
+              <select value={trials} onChange={(e) => setTrials(Number(e.target.value))} className={FIELD}>
+                <option value={CHAOS_VISIBLE_TRIALS}>{CHAOS_VISIBLE_TRIALS} (rápida)</option>
+                <option value={REF.trials}>{fmt(REF.trials)} (como la referencia)</option>
+              </select>
+            </label>
+            <label className="t-label text-ink-3">
+              <span className="block mb-1">Semilla del azar</span>
+              <input
+                type="number"
+                min={1}
+                value={seed}
+                onChange={(e) => setSeed(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                className={`${FIELD} w-28 tabular-nums`}
+              />
+            </label>
             <Button disabled={running || !apiOnline} onClick={() => void onRunChaos(trials, seed)}>
               {running && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
               {running ? 'Simulando…' : simulateLabel}
             </Button>
-            <Disclosure summary="Opciones de la simulación" className="min-w-0 pt-1">
-              <div className="flex flex-wrap items-end gap-3 pb-1">
-                <label className="t-label text-ink-3">
-                  <span className="block mb-1">Número de salidas</span>
-                  <select value={trials} onChange={(e) => setTrials(Number(e.target.value))} className={FIELD}>
-                    <option value={CHAOS_VISIBLE_TRIALS}>{CHAOS_VISIBLE_TRIALS} (rápida)</option>
-                    <option value={REF.trials}>{fmt(REF.trials)} (como la referencia)</option>
-                  </select>
-                </label>
-                <label className="t-label text-ink-3">
-                  <span className="block mb-1">Semilla del azar</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={seed}
-                    onChange={(e) => setSeed(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-                    className={`${FIELD} w-28 tabular-nums`}
-                  />
-                </label>
-              </div>
-            </Disclosure>
           </div>
+        </Disclosure>
 
-          {!apiOnline && (
-            <Notice level="amber" role="status" className="mt-3">
-              La simulación la hace el motor de cálculo, que ahora no responde. Solo se muestra la referencia de la misión.
-            </Notice>
-          )}
-
-          <Notice
-            level={running ? 'none' : cert ? (cert.authorized ? 'green' : 'red') : chaos.status === 'error' ? 'amber' : 'none'}
-            role="status"
-            className="mt-3"
-          >
-            {running ? (
-              <>Simulando {fmt(trials)} salidas…</>
-            ) : cert && run ? (
-              <>
-                <strong className="font-semibold">{cert.authorized ? 'Ruta autorizada.' : 'Ruta no autorizada.'}</strong> {certReason}
-                {!cert.authorized && ' No se puede enviar al traje.'}
-                <span className="block t-label text-ink-2 mt-0.5 tabular-nums">
-                  {fmt(run.report.trials)} de {fmt(run.trials)} salidas simuladas, con la semilla {run.seed}.
-                </span>
-              </>
-            ) : (
-              <>
-                <strong className="font-semibold">Sin simular.</strong>{' '}
-                {chaos.status === 'error'
-                  ? 'La última simulación no se pudo ejecutar porque el motor de cálculo no responde.'
-                  : 'Simula la ruta para autorizarla y poder enviarla al traje.'}
-              </>
-            )}
-          </Notice>
-
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-5">
-            <Stat
-              size="lg"
-              label="Salidas seguras con cambio al refugio WP3"
-              value={run ? pct(run.report.survival_rate_with_shelter_pct) : '—'}
-              hint={
-                <>
-                  Referencia de la misión: <span className="text-ink-2">{pct(REF.report.survival_rate_with_shelter_pct, 2)}</span> (
-                  {fmt(REF.report.survived_with_wp3_shelter)} de {fmt(REF.trials)})
-                </>
-              }
-            />
-            <Stat
-              size="lg"
-              label="Salidas seguras solo con la Base"
-              value={run ? pct(run.report.survival_rate_base_only_pct) : '—'}
-              level={run && !WB.base_feasible ? 'red' : undefined}
-              hint={
-                <>
-                  Referencia de la misión: <span className="text-ink-2">{pct(REF.report.survival_rate_base_only_pct, 2)}</span> (
-                  {fmt(REF.report.survived_base_only)} de {fmt(REF.trials)})
-                </>
-              }
-            />
-          </div>
-
-          <Disclosure summary="Histograma y cómo se calcula" className="mt-4">
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5">
-                <div>
-                  <h3 className="text-sm font-medium text-ink">Con cambio automático al refugio WP3</h3>
-                  <p className="t-label text-ink-2 mt-1">
-                    Huida cuesta abajo de {fmt(WB.wp3.time_min, 1)} min y {fmt(WB.wp3.length_m)} m, con una dosis de{' '}
-                    {fmt(WB.wp3.dose_spe_msv, 2)} mSv:{' '}
-                    {WB.wp3_within_open_sky_window ? 'cabe en la ventana a cielo abierto' : 'no cabe en la ventana a cielo abierto'}. El
-                    refugio (cielo visible {fmt(waypoint('WP3')?.svfScenario, 2)}, valor supuesto) atenúa el{' '}
-                    {SUIT_SCENARIO.shelterAttenuationPct} % de la tormenta: quedan {fmt(REFERENCE_FIGURES.wp3_rate_msv_h, 1)} mSv/h.
-                  </p>
-                  {run && (
-                    <div className="mt-2">
-                      <Row label="Seguras" value={fmt(run.report.outcomes_with_shelter.safe)} />
-                      <Row label="Límite de dosis superado" value={fmt(run.report.outcomes_with_shelter.flight_rule_breach)} />
-                      <Row label="Destino no alcanzado" value={fmt(run.report.outcomes_with_shelter.destination_not_reached)} />
-                      <Row label="Cambios al refugio" value={fmt(run.report.switched_to_shelter)} />
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-ink">Solo con el retorno a la Base</h3>
-                  <p className="t-label text-ink-2 mt-1">
-                    Desde WP2 son {fmt(WB.base.time_min, 1)} min y {fmt(WB.base.length_m)} m de camino. La dosis sería de{' '}
-                    <span className={WB.base_feasible ? undefined : 'text-danger-ink'}>{fmt(WB.base.dose_spe_msv, 2)} mSv</span>,{' '}
-                    {fmt(WB.base.dose_spe_msv / WB.dose_budget_msv, 2)} veces el límite de {fmt(WB.dose_budget_msv)} mSv:{' '}
-                    {WB.base_feasible ? 'es viable' : 'no es viable'} en {formatT(WB.decision_t_min)}.
-                  </p>
-                  {run && (
-                    <div className="mt-2">
-                      <Row label="Seguras" value={fmt(run.report.outcomes_base_only.safe)} />
-                      <Row label="Límite de dosis superado" value={fmt(run.report.outcomes_base_only.flight_rule_breach)} />
-                      <Row label="Destino no alcanzado" value={fmt(run.report.outcomes_base_only.destination_not_reached)} />
-                      <Row label="Sin consumibles" value={fmt(run.report.outcomes_base_only.consumables_lost)} />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <ChaosHistogram chaos={chaos} />
-
-              <div className="space-y-2 t-label text-ink-2 max-w-3xl">
-                {cert && run && (
-                  <p>
-                    Para autorizar la ruta hacen falta tres cosas: que la simulación termine, que el refugio no salga peor que la Base
-                    y que el resultado con refugio ({pct(cert.shelterPct)}) quede a menos de 3σ de la referencia (
-                    {pct(cert.referencePct, 2)}; σ = {fmt(cert.sigmaPct, 1)} pp con {fmt(run.trials)} salidas).
-                  </p>
-                )}
-                <p>
-                  La simulación y la referencia salen del mismo modelo del motor de cálculo y del mismo corredor ({REF.corridor}). La
-                  referencia son {fmt(REF.trials)} salidas con la semilla {REF.seed}; la simulación usa las opciones que elijas. Con{' '}
-                  {CHAOS_VISIBLE_TRIALS} salidas el margen de error (1σ) es de ±
-                  {fmt(sigmaPct(REF.report.survival_rate_with_shelter_pct, CHAOS_VISIBLE_TRIALS), 1)} pp con refugio y de ±
-                  {fmt(sigmaPct(REF.report.survival_rate_base_only_pct, CHAOS_VISIBLE_TRIALS), 1)} pp solo con la Base, así que es normal
-                  que no coincidan. Con {fmt(REF.trials)} salidas y la semilla {REF.seed}, la simulación reproduce la referencia.
+        <Disclosure summary="Histograma y cómo se calcula">
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-5">
+              <div>
+                <h3 className="text-sm font-medium text-ink">Con cambio automático al refugio WP3</h3>
+                <p className="t-label text-ink-2 mt-1">
+                  Huida cuesta abajo de {fmt(WB.wp3.time_min, 1)} min y {fmt(WB.wp3.length_m)} m, con una dosis de{' '}
+                  {fmt(WB.wp3.dose_spe_msv, 2)} mSv:{' '}
+                  {WB.wp3_within_open_sky_window ? 'cabe en la ventana a cielo abierto' : 'no cabe en la ventana a cielo abierto'}. El
+                  refugio (cielo visible {fmt(waypoint('WP3')?.svfScenario, 2)}, valor supuesto) atenúa el{' '}
+                  {SUIT_SCENARIO.shelterAttenuationPct} % de la tormenta: quedan {fmt(REFERENCE_FIGURES.wp3_rate_msv_h, 1)} mSv/h.
                 </p>
-                <p>Límites del modelo: {REF.limitations}.</p>
+                {run && (
+                  <div className="mt-2">
+                    <Row label="Seguras" value={count(run.report.outcomes_with_shelter.safe)} />
+                    <Row label="Límite de dosis superado" value={count(run.report.outcomes_with_shelter.flight_rule_breach)} />
+                    <Row label="Destino no alcanzado" value={count(run.report.outcomes_with_shelter.destination_not_reached)} />
+                    <Row label="Cambios al refugio" value={count(run.report.switched_to_shelter)} />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-ink">Solo con el retorno a la Base</h3>
+                <p className="t-label text-ink-2 mt-1">
+                  Desde WP2 son {fmt(WB.base.time_min, 1)} min y {fmt(WB.base.length_m)} m de camino. La dosis sería de{' '}
+                  <span className={WB.base_feasible ? undefined : 'text-danger-ink'}>{fmt(WB.base.dose_spe_msv, 2)} mSv</span>,{' '}
+                  {fmt(WB.base.dose_spe_msv / WB.dose_budget_msv, 2)} veces el límite de {fmt(WB.dose_budget_msv)} mSv:{' '}
+                  {WB.base_feasible ? 'es viable' : 'no es viable'} en {formatT(WB.decision_t_min)}.
+                </p>
+                {run && (
+                  <div className="mt-2">
+                    <Row label="Seguras" value={count(run.report.outcomes_base_only.safe)} />
+                    <Row label="Límite de dosis superado" value={count(run.report.outcomes_base_only.flight_rule_breach)} />
+                    <Row label="Destino no alcanzado" value={count(run.report.outcomes_base_only.destination_not_reached)} />
+                    <Row label="Sin consumibles" value={count(run.report.outcomes_base_only.consumables_lost)} />
+                  </div>
+                )}
               </div>
             </div>
-          </Disclosure>
-        </Panel>
-      )}
 
-      {/* Acciones */}
-      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-3 pt-2">
-        <p id="motivo-envio" role="status" className={`text-sm mr-auto ${sendNote.level === 'red' ? 'text-danger-ink' : 'text-ink-2'}`}>
-          {sendNote.text}
-          {!apiOnline && ' Sin el motor de cálculo, el GeoJSON se exporta sin datos por tramo.'}
-        </p>
-        <Button onClick={() => void handleExport()} disabled={exporting}>
-          {exporting ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : <Download className="w-4 h-4" aria-hidden />}
-          Exportar GeoJSON
-        </Button>
-        <Button
-          variant="primary"
-          onClick={handleSend}
-          aria-disabled={!certified || sync.status === 'syncing' || sync.status === 'ok'}
-          aria-describedby="motivo-envio"
-          className="aria-disabled:bg-raised aria-disabled:text-ink-3 aria-disabled:font-medium aria-disabled:cursor-not-allowed aria-disabled:hover:brightness-100"
-        >
-          {sync.status === 'syncing' && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
-          {sync.status === 'syncing' ? 'Enviando…' : sync.status === 'ok' ? 'Ruta enviada al traje' : 'Enviar ruta al traje'}
-        </Button>
-      </div>
+            <ChaosHistogram chaos={chaos} />
+
+            <div className="space-y-2 t-label text-ink-2 max-w-3xl">
+              {cert && run && (
+                <p>
+                  Para autorizar la ruta hacen falta tres cosas: que la simulación termine, que el refugio no salga peor que la Base y
+                  que el resultado con refugio ({pct(cert.shelterPct)}) quede a menos de 3σ de la referencia ({pct(cert.referencePct)};
+                  σ = {fmt(cert.sigmaPct, 1)} pp con {fmt(run.trials)} salidas).
+                </p>
+              )}
+              <p>
+                La simulación y la referencia salen del mismo modelo del motor de cálculo y del mismo terreno: un corredor de prueba en
+                Melas Chasma, no el camino exacto de la ruta, que se recorre siempre en el mismo orden. La referencia son {fmt(REF.trials)}{' '}
+                salidas con la semilla {REF.seed}; la simulación usa las opciones que elijas. Con {CHAOS_VISIBLE_TRIALS} salidas el
+                margen de error (1σ) es de ±{fmt(sigmaPct(REF.report.survival_rate_with_shelter_pct, CHAOS_VISIBLE_TRIALS), 1)} pp con
+                refugio y de ±{fmt(sigmaPct(REF.report.survival_rate_base_only_pct, CHAOS_VISIBLE_TRIALS), 1)} pp solo con la Base, así
+                que es normal que no coincidan. Con {fmt(REF.trials)} salidas y la semilla {REF.seed}, la simulación reproduce la
+                referencia.
+              </p>
+              <p>
+                Límites del modelo: el terreno de cada tramo se toma por su posición en ese corredor, no a lo largo de la ruta
+                planificada; el único consumible que se modela es el O₂ primario; la huida al refugio cuenta como un solo tramo con{' '}
+                {fmt(0.55, 2)} veces la dosis a cielo abierto, y el retorno a la Base, como 14 tramos normales a partir del tramo 6.
+              </p>
+            </div>
+          </div>
+        </Disclosure>
+      </Panel>
     </div>
   );
 };
@@ -710,7 +735,7 @@ const ChaosHistogram: React.FC<{ chaos: ChaosState }> = ({ chaos }) => {
                   </th>
                   {HAZARD_LABELS.map((label, i) => (
                     <td key={label} className="py-1.5 text-center">
-                      {fmt(s.values[i] ?? 0)}
+                      {count(s.values[i] ?? 0)}
                     </td>
                   ))}
                 </tr>
