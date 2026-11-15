@@ -1,4 +1,4 @@
-"""Textura orbital del gemelo 3D (`red_atlas_p1.terrain.ortho_texture`).
+"""Textura orbital del gemelo 3D (`red_atlas_pipeline.terrain.ortho_texture`).
 
 Sin red: se comprueba la correlación de fase con un desplazamiento sintético y la coherencia de
 la textura versionada en `data/nasa-layers/` (límites, tamaño, co-registro y procedencia).
@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 import rasterio
 
-from red_atlas_p1 import config
-from red_atlas_p1.terrain.ortho_texture import OUT_JSON, OUT_PNG, phase_shift
+from red_atlas_pipeline import config
+from red_atlas_pipeline.terrain.ortho_texture import OUT_JSON, OUT_PNG, phase_shift
 
 
 def test_phase_shift_recovers_a_synthetic_offset():

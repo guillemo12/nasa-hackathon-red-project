@@ -1,6 +1,6 @@
 # Comprobación de realidad del sitio — Melas Chasma, EVA-07 (emplazamiento reubicado)
 
-> Generado por `uv run python -m red_atlas_p1.terrain` el 2026-11-14T21:25:22Z. Las cifras salen de
+> Generado por `uv run python -m red_atlas_pipeline.terrain` el 2026-11-14T21:25:22Z. Las cifras salen de
 > `site_reality_check.json`; no editar a mano. Convención: coma decimal; cotas en metros sobre el
 > areoide MOLA; longitudes Este 0–360.
 
@@ -97,7 +97,7 @@ En el WP2 (−1.464 m) la presión baja a 696 Pa.
 
 Grados de libertad: traslación (paso 40 m), rotación (paso 3°) y simetría especular. Se recorrió el borde sur y este de la cuenca
 (lat −10,06° a −9,74°, lon 283,30° a 283,92°E)
-en cada par CTX de 20 m por separado, sin mosaico. Reproducible con `uv run python -m red_atlas_p1.terrain.site_search`.
+en cada par CTX de 20 m por separado, sin mosaico. Reproducible con `uv run python -m red_atlas_pipeline.terrain.site_search`.
 
 | Filtro acumulado | Colocaciones |
 |---|---|
@@ -143,7 +143,7 @@ Resumen de `site_reality_check_original_site.json` (DTM CTX `P04_002551_1712_XI_
 El sitio original era real y estaba dentro de la cuenca, pero era un piso casi llano: ni el talud del WP2 ni el escarpe
 del WP3 existían. El GeoJSON original se conserva en `data/mission-scenarios/triangulo_supervivencia_original_9.8S_283.6E.geojson`.
 
-## 8. Qué hay que cambiar en el entregable y en los datos compartidos (sin editarlos aquí)
+## 8. Qué hay que cambiar en la documentación y en los datos compartidos (sin editarlos aquí)
 
 1. **Coordenadas y tabla 1.2.** Sustituir nodos, cotas, pendientes, SVF y LOS por los de la sección 2, con etiqueta
    **[M]** para la cota y **[D]** para lo demás. TIU, geología y alcoba siguen **[E]**.
@@ -177,7 +177,7 @@ del WP3 existían. El GeoJSON original se conserva en `data/mission-scenarios/tr
    original (724 y 19,5); no se han tocado aquí.
 14. **Validador (`scenario/`).** Sus tests de geometría y los perfiles de O₂ y potencia de escape dependen de rumbos y
     desniveles: hay que actualizarlos con la tabla de tramos.
-15. **Otros consumidores con cifras del sitio original** (no tocados aquí): `docs/.../DATOS_CANONICOS_P1.md`,
+15. **Otros consumidores con cifras del sitio original** (no tocados aquí): `docs/.../DATOS_CANONICOS.md`,
     `data/mission-scenarios/eva07_events.json`, `eva07_timeline.parquet`, `SCHEMA_EVA07.md` y lo que el motor en Rust
     tenga escrito a mano.
 

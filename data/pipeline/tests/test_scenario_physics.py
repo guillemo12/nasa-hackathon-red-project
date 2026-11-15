@@ -1,19 +1,19 @@
 """Física del escenario EVA-07: geometría, metabolismo, radiación y radio.
 
-Cada test reproduce una cifra del entregable 1 (secciones 1.2, 3 y 4) con una tolerancia
+Cada test reproduce una cifra de CIENCIA_Y_MISION.md (secciones 1.2, 3 y 4) con una tolerancia
 explícita. Las cifras «[R]» usan velocidades reconstruidas porque el canónico no las da.
 """
 import math
 
 import pytest
 
-from red_atlas_p1 import config
-from red_atlas_p1.scenario import atmosphere as atm
-from red_atlas_p1.scenario import constants as K
-from red_atlas_p1.scenario import geometry as geo
-from red_atlas_p1.scenario import metabolic as met
-from red_atlas_p1.scenario import radiation as rad
-from red_atlas_p1.scenario import radio
+from red_atlas_pipeline import config
+from red_atlas_pipeline.scenario import atmosphere as atm
+from red_atlas_pipeline.scenario import constants as K
+from red_atlas_pipeline.scenario import geometry as geo
+from red_atlas_pipeline.scenario import metabolic as met
+from red_atlas_pipeline.scenario import radiation as rad
+from red_atlas_pipeline.scenario import radio
 
 # --- Geometría -----------------------------------------------------------------
 

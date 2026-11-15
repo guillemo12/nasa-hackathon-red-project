@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "owner": "Persona 1",
-  "generator": "uv run python -m red_atlas_p1.terrain",
+  "owner": "Red Project",
+  "generator": "uv run python -m red_atlas_pipeline.terrain",
   "site": {
     "lat_pc_deg": -9.89646,
     "lon_e_deg": 283.3892,

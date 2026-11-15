@@ -12,7 +12,7 @@
 //! - **REFUGIO** (shelter): a shelter candidate at the T+105 decision, next to WP3. Rule, in
 //!   order: (1) among the reachable candidates the grid confirms as topographic shelter (cell
 //!   SVF <= `SHELTER_SVF_MAX`; the same SVF the dose model uses, measured from the 20 m DTM or,
-//!   for WP3's alcove, P1's scenario value), the one with the shortest escape time at emergency pace; WP3
+//!   for WP3's alcove, scenario value), the one with the shortest escape time at emergency pace; WP3
 //!   wins ties; (2) only if none of those is reachable, the fastest reachable unconfirmed one.
 //!   The decision is about an SPE storm: a point the grid gives as open sky does not replace
 //!   a confirmed shelter just for being closer (the astronaut may see an overhang the DTM cannot

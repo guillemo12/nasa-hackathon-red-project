@@ -1,4 +1,4 @@
-// Fuente única de cifras de la interfaz: todo sale de los ficheros de P1 en `data/`.
+// Fuente única de cifras de la interfaz: todo sale de los ficheros de `data/`.
 // Aquí no se escribe a mano ninguna cifra que exista en esos ficheros.
 import trianguloGeoJson from '@data/mission-scenarios/triangulo_supervivencia.geojson';
 import eva07EventsJson from '@data/mission-scenarios/eva07_events.json';
@@ -35,7 +35,7 @@ export const LAYERS_CATALOG = layersCatalogJson;
 export const PLANNER_WALKBACK = plannerWalkbackJson;
 export const REFERENCE_FIGURES = eva07EventsJson.reference_figures;
 
-/** Referencia de P1 del Chaos Mode: exportada por el motor Rust (10.000 pasadas, semilla 42). */
+/** Referencia del Chaos Mode: exportada por el motor Rust (10.000 pasadas, semilla 42). */
 export const CHAOS_REFERENCE = chaosReferenceJson as unknown as {
   generator: string;
   seed: number;
@@ -133,7 +133,7 @@ export const T_DECISION_MIN: number = PLANNER_WALKBACK.decision_t_min;
 
 
 // ---------------------------------------------------------------------------
-// Cifras que hoy solo viven en `DATOS_CANONICOS_P1.md` (no están en ningún JSON de `data/`).
+// Cifras que hoy solo viven en `DATOS_CANONICOS.md` (no están en ningún JSON de `data/`).
 // Único sitio de la interfaz donde se escriben; cada una lleva su apartado de origen.
 // ---------------------------------------------------------------------------
 export const SUIT_SCENARIO = {
@@ -152,7 +152,7 @@ export const SUIT_SCENARIO = {
   replanMs: 17,
 } as const;
 
-/** Etiquetas de la demo que vienen de los documentos de UX (wireframes), no de P1. */
+/** Etiquetas de la demo que vienen de los documentos de UX (wireframes), no de los datos canónicos. */
 export const UX_LABELS = {
   sol: 142,
   operator: 'Aris Thorne',

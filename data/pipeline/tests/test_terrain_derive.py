@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 from affine import Affine
 
-from red_atlas_p1 import config
-from red_atlas_p1.terrain import derive
-from red_atlas_p1.terrain.rasters import Raster, sample
+from red_atlas_pipeline import config
+from red_atlas_pipeline.terrain import derive
+from red_atlas_pipeline.terrain.rasters import Raster, sample
 
 R = config.MARS_RADIUS_M
 LAT0, LON0 = -9.8, 283.6        # latitud del sitio: aquí cos(lat) ≈ 0,985 y el error se nota
@@ -87,7 +87,7 @@ def test_llano_svf_uno_y_pared_medio_cielo():
     _, hz = _horizon_at_centre(llano, max_m=400.0, step_m=10.0)
     assert float(derive.sky_view_factor(hz[:, None])[0]) == pytest.approx(1.0, abs=1e-3)
     # Pared vertical muy alta pegada al norte: tapa medio cielo (SVF ≈ 0,5), como dice el
-    # entregable. Para bajar de ahí hace falta techo, que un DEM 2,5D no puede representar.
+    # documento científico. Para bajar de ahí hace falta techo, que un DEM 2,5D no puede representar.
     pared = make_grid(200, 2.0, lambda x, y: np.where(y > 3.0, 5000.0, 0.0))
     _, hz = _horizon_at_centre(pared, max_m=190.0, step_m=1.0, az_step=5.0)
     assert float(derive.sky_view_factor(hz[:, None])[0]) == pytest.approx(0.5, abs=0.06)

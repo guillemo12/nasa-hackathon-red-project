@@ -2,121 +2,191 @@
 
 # 🔴 R.E.D. ATLAS
 ### *Reconnaissance, EVA & Dynamic-survival Atlas*
-**NASA Space Apps Challenge 2026 — Interplanetary Survival Guide: Martian Map**  
-**Developed by Team Red Project**
+**NASA Space Apps Challenge 2026 — Interplanetary Survival Guide: Martian Map**
+**Equipo Red Project**
 
 [![NASA Space Apps 2026](https://img.shields.io/badge/NASA_Space_Apps-2026-0B3D91?style=for-the-badge&logo=nasa&logoColor=white)](https://www.spaceappschallenge.org/2026/challenges/interplanetary-survival-guide-martian-map/)
-[![Core Engine](https://img.shields.io/badge/Core_Engine-Rust_%F0%9F%A6%80_(Memory--Safe_Flight_SW)-DEA584?style=for-the-badge&logo=rust&logoColor=black)](./docs/03-system-architecture-ai/)
-[![Frontend 3D](https://img.shields.io/badge/3D_UI-React_%2B_CesiumJS_%2B_Three.js-61DAFB?style=for-the-badge&logo=react&logoColor=black)](./docs/02-product-ux-ui/)
-[![Target Region](https://img.shields.io/badge/Mars_Region-Valles_Marineris_(Melas_Chasma)-E25822?style=for-the-badge)](./docs/01-planetary-science-mission/)
+[![Core Engine](https://img.shields.io/badge/Motor-Rust_%F0%9F%A6%80-DEA584?style=for-the-badge&logo=rust&logoColor=black)](./src/core-engine/)
+[![Console](https://img.shields.io/badge/Consola-React_%2B_Three.js-61DAFB?style=for-the-badge&logo=react&logoColor=black)](./src/base-console/)
+[![Target Region](https://img.shields.io/badge/Marte-Melas_Chasma-E25822?style=for-the-badge)](./docs/01-planetary-science-mission/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
 </div>
 
 ---
 
-## 🌌 Descripción General del Proyecto
+## Qué es
 
-**R.E.D. ATLAS** es una plataforma de inteligencia cartográfica multicapa, planificación metabólica de rutas EVA (*Marswalk*) y supervivencia autónoma asistida por IA diseñada para la exploración humana de **Valles Marineris — Melas Chasma** (~9.9°S, 283.4°E).
+**R.E.D. ATLAS** es un mapa de supervivencia para una salida a pie (EVA) en el fondo de **Melas Chasma**, en Valles Marineris (cuenca suroeste, ~9,9°S, 283,4°E). Convierte datos orbitales reales de la NASA en una malla hexagonal de terreno y, sobre ella, planifica la ruta, calcula cuánto tarda el astronauta en volver a la Base o en llegar a un refugio, y decide qué hacer cuando varias amenazas coinciden.
 
-Operar en el fondo de un cañón marciano de **7 a 9 km de profundidad** presenta desafíos extremos: paredes que bloquean la línea de visión de radio (dejando al astronauta incomunicado), taludes de deslizamiento $>20^\circ$, bancos traicioneros de regolito fino, vientos catabáticos y eventos de radiación solar (SPE) con hasta **22 minutos de retardo de comunicación con la Tierra**.
+El escenario de demostración es la **EVA-07**, un «Triángulo de Supervivencia» de 4,9 km (Base → WP1 agua ISRU → WP2 talud peligroso → WP3 refugio). En T+105 coinciden cuatro amenazas: tormenta solar (SPE), frente de polvo, sombra de radio y una rampa de regolito blando. El sistema comprueba que volver a la Base ya no cabe en la regla de radiación y cambia el destino al refugio.
 
-**R.E.D. ATLAS** resuelve este reto mediante un **Ecosistema Híbrido Dual Sincronizado** impulsado por un núcleo de misión crítica escrito en **Rust** que transforma los datos orbitales y de superficie de múltiples misiones de la NASA en decisiones de supervivencia en tiempo real.
+**Cifras clave (calculadas por el motor Rust sobre el terreno real):**
 
----
-
-## 🛠️ Stack Tecnológico Unificado (Acordado por los 3 Miembros)
-
-Para garantizar coherencia absoluta entre **Ciencia (P1)**, **Producto/UX (P2)** y **Arquitectura/IA (P3)**, todo el equipo utiliza el siguiente stack tecnológico aeroespacial:
-
-| Capa del Sistema | Tecnologías Oficiales de **R.E.D. ATLAS** | Justificación para Misión Crítica en Marte |
+| Cifra | Valor | Procedencia |
 | :--- | :--- | :--- |
-| **🦀 Núcleo Algorítmico y Servidor Base (`core-engine`)** | **Rust** (`h3o` para Malla Hexagonal H3, `Tokio` + `Axum`, `nalgebra`) + **DuckDB Spatial** | Ejecución determinista ultra-rápida, *memory-safe* (cero fallos de segmentación ni pausas de *Garbage Collector* durante una emergencia EVA) y compilación dual a nativo y **WebAssembly (WASM)**. |
-| **🥽 Nodo Edge del Traje EVA e IA Offline (`eva-node`)** | **ROS 2 con Rust (`rclrs`)** + **Eclipse Zenoh** (protocolo espacial en Rust para radio intermitente) + **Hugging Face `Candle` / ONNX Runtime (`ort`)** + **`whisper-rs`** | Permite correr en el traje espacial la máquina de estados determinista, el posicionamiento sin GPS (**Canyon-TRN**), un SLM cuantizado a 4 bits y voz manos libres 100% offline con consumo $<5\text{ W}$. |
-| **🖥️ Interfaz 3D de Base y Visor HUD (`frontend`)** | **TypeScript + React + CesiumJS + Three.js (WebGL / WebGPU Shaders) + TailwindCSS + Rust WASM** | Estándar usado por NASA *Mars Trek*; permite renderizar el DEM de Melas Chasma en 3D, programar el shader circular de 3 sectores de la **Lupa Espacial (*Spyglass*)** y proyectar el HUD AR. |
-| **🛰️ Pipeline Científico de Datos NASA (`data-pipeline`)** | **Python** (`GDAL`, `Rasterio`, `PDS4-tools`) $\to$ exportando a **Cloud-Optimized GeoTIFF (COG)**, **Apache Parquet** y **GeoJSON** | Procesa los productos crudos del *Planetary Data System (PDS)* de la NASA (MOLA, HiRISE, THEMIS, CRISM, SHARAD, MCS, RAD) y los entrega indexados al motor en Rust. |
-| **📐 Documentación y Diagramas** | **Markdown + Mermaid.js** | Todos los diagramas de arquitectura, flujos de usuario y mapas conceptuales se escriben en **Mermaid.js** embebido en Markdown para renderizado nativo en GitHub. |
+| Tiempo al refugio WP3 desde el WP2 | **9,4 min** (595 m de camino) | Planificador D\* Lite sobre la malla H3 res 12 del DTM CTX de 20 m |
+| Retorno a la Base desde el WP2 | **48 min** sobre **2,15 km** | Mismo planificador; excede la ventana de 15 min a cielo abierto |
+| Chaos Mode (10.000 simulaciones, semilla 42) | **96,0 %** de misión segura con cambio al refugio frente a **23,8 %** solo con la Base | Motor estocástico Monte Carlo (corredor sintético, ver limitaciones) |
+| Replanificación al cambiar de destino | **17 ms** (mediana, compilación optimizada) | Medida del motor sobre un corredor de la malla real |
+
+Cada cifra de la documentación lleva su procedencia: **[M]** medida o publicada, **[D]** derivada por cálculo, **[E]** supuesto del escenario de diseño. La fuente única es [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md).
 
 ---
 
-## 🏛️ Arquitectura Conceptual del Ecosistema Dual
+## Qué está implementado y qué es diseño
+
+| Componente | Estado | Dónde |
+| :--- | :--- | :--- |
+| Pipeline de datos NASA (STAC/PDS → COG, GeoJSON, Parquet; malla H3; escenario EVA-07) | Implementado (Python, 263 tests) | [`data/pipeline/`](data/pipeline/) |
+| Malla hexagonal H3 de Marte con índices reales (`h3o`) cargada desde Parquet | Implementado (Rust) | [`src/core-engine/src/h3_mars_grid.rs`](src/core-engine/src/h3_mars_grid.rs) |
+| Planificador D\* Lite con coste metabólico y cambio automático de destino | Implementado (Rust) | [`metabolic_dstar.rs`](src/core-engine/src/metabolic_dstar.rs), [`mission.rs`](src/core-engine/src/mission.rs) |
+| Motor de amenazas Markov/Poisson y Chaos Mode | Implementado (Rust) | [`stochastic_hazard.rs`](src/core-engine/src/stochastic_hazard.rs) |
+| Máquina de estados de seguridad (5 estados), triaje de alerta única y frase de voz por plantilla | Implementado (Rust, determinista) | [`neuro_symbolic.rs`](src/core-engine/src/neuro_symbolic.rs) |
+| Filtro de Kalman de posicionamiento sin GPS (Canyon-TRN) | Implementado y probado con datos simulados | [`canyon_trn.rs`](src/core-engine/src/canyon_trn.rs) |
+| Puntos marcados durante la EVA (peligro, refugio, ISRU) con replanificación | Implementado (Rust + consola) | [`reported_points.rs`](src/core-engine/src/reported_points.rs) |
+| API HTTP local del motor (puerto 3001) | Implementado (Rust, biblioteca estándar) | [`src/core-engine/src/bin/api_server.rs`](src/core-engine/src/bin/api_server.rs) |
+| Consola de Base: cartografía 3D, lupa Spyglass, planificador y telemetría EVA | Implementado (React + TypeScript + Three.js + Tailwind) | [`src/base-console/`](src/base-console/) |
+| Modelo de lenguaje local (Candle / ONNX Runtime) y voz con `whisper-rs` | Diseño | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
+| Nodo del traje con ROS 2 (`rclrs`) y enlace Eclipse Zenoh | Diseño (la API simula la sincronización) | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
+| HUD de realidad aumentada en el casco | Diseño (la vista «Telemetría EVA» de la consola reproduce su lógica) | [`docs/02-product-ux-ui/`](docs/02-product-ux-ui/) |
+| Motor compilado a WebAssembly, CesiumJS | Diseño | — |
+
+---
+
+## Arquitectura
 
 ```mermaid
 flowchart LR
-    subgraph NASA["🛰️ Datasets NASA (COG / Parquet / GeoJSON)"]
-        D1["MGS MOLA & HRSC\n(DEM, Pendientes, Horizonte)"]
-        D2["MRO HiRISE & CTX\n(Ortoimagen 25 cm/px)"]
-        D3["Odyssey THEMIS IR\n(Inercia Térmica / Regolito)"]
-        D4["MRO CRISM & SHARAD\n(Agua ISRU / Sulfatos)"]
-        D5["MRO MCS & MEDA\n(Vientos y Polvo Tau)"]
-        D6["MSL RAD\n(Dosimetría y Blindaje)"]
+    subgraph NASA["Datos NASA (USGS Astrogeology / PDS)"]
+        D1["DTM CTX 20 m"]
+        D2["Mosaico CTX 6 m y HiRISE"]
+        D3["MOLA y HRSC+MOLA"]
+        D4["THEMIS IR día y noche"]
     end
 
-    subgraph BASE["🖥️ NODO 1: Servidor del Hábitat (Rust + React/CesiumJS)"]
-        H3["Malla Hexagonal Multicapa\n(Rust h3o + Apache Parquet)"]
-        SPY["Lupa Espacial 'Spyglass'\n(Three.js WebGPU Radar 120°)"]
-        CHAOS["Simulador 'Chaos Mode'\n(Motor Markov/Poisson en Rust)"]
+    subgraph PIPE["Pipeline Python (data/pipeline)"]
+        T["terrain: COG, pendientes,<br/>SVF, línea de vista"]
+        H["hexgrid: malla H3<br/>res 9 y 12 en Parquet"]
+        S["scenario: EVA-07,<br/>umbrales, cronología"]
     end
 
-    subgraph EVA["🥽 NODO 2: Traje EVA Offline (ROS 2 Rust rclrs + Zenoh)"]
-        TRN["Posicionamiento 'Canyon-TRN'\n(Rust nalgebra EKF + Skyline Matching)"]
-        DSTAR["Pathfinding 'D* Lite Metabólico'\n(Rust + Dynamic Goal Switching)"]
-        AI["Copiloto IA Neuro-Simbólico\n(Rust Guardrail + Candle/ORT + whisper-rs)"]
-        HUD["HUD AR Minimalista + Muñeca\n+ Barra Walkback Limit Dual"]
+    subgraph CORE["Motor Rust (src/core-engine)"]
+        G["Malla H3 (h3o)"]
+        P["D* Lite metabólico"]
+        C["Chaos Mode"]
+        F["Máquina de estados<br/>de seguridad"]
+        API["API HTTP :3001"]
     end
 
-    NASA -->|"Python GDAL/PDS4"| H3
-    H3 --> SPY & CHAOS
-    H3 <==>|"Eclipse Zenoh (UHF) /\nModo Offline NLOS"| TRN & DSTAR
-    TRN & DSTAR --> AI --> HUD
+    UI["Consola de Base<br/>React + Three.js"]
+
+    NASA --> T --> H --> G
+    S --> CORE
+    G --> P & C & F --> API --> UI
 ```
 
 ---
 
-## 📂 Estructura Profesional del Repositorio
+## Cómo arrancarlo
+
+Requisitos: **Rust** (stable, con `cargo`), **Node.js** 18 o superior con `npm`, y **uv** para el pipeline de Python (solo si se quieren regenerar los datos o pasar sus tests). Los datos ya procesados están versionados en `data/`, así que no hace falta descargar nada para ver la demo.
+
+1. API del motor en `http://127.0.0.1:3001`:
+
+```bash
+cargo run --release --manifest-path src/core-engine/Cargo.toml --bin api_server
+```
+
+2. Consola en `http://localhost:5173` (en otra terminal):
+
+```bash
+npm --prefix src/base-console install
+```
+
+```bash
+npm --prefix src/base-console run dev -- --port 5173 --strictPort
+```
+
+Rutas de la consola: `/cartografia-3d`, `/planificador`, `/telemetria-eva` y `/multiemergencia` (abre la telemetría en T+105). Sin la API, la consola sigue funcionando con los datos guardados y lo indica.
+
+**Simulación completa de la EVA-07 en terminal** (cronología, decisión de T+105 y Chaos Mode):
+
+```bash
+cargo run --release --manifest-path src/core-engine/Cargo.toml --bin eva07_mission_sim
+```
+
+**Tests:**
+
+```bash
+cargo test --manifest-path src/shared/Cargo.toml
+```
+
+```bash
+cargo test --release --manifest-path src/core-engine/Cargo.toml
+```
+
+```bash
+cd data/pipeline && uv run pytest
+```
+
+```bash
+npm --prefix src/base-console run build
+```
+
+---
+
+## Datos de la NASA usados
+
+Todos los productos se leen por ventana desde el catálogo STAC y los repositorios de USGS Astrogeology. Identificadores, URL, licencias y cobertura medida de cada uno están en [`data/nasa-layers/sources_manifest.json`](data/nasa-layers/sources_manifest.json).
+
+| Misión / instrumento | Producto | Resolución | Uso |
+| :--- | :--- | :--- | :--- |
+| MRO Context Camera (CTX) | DTM estéreo controlados USGS (Ames Stereo Pipeline, alineados a MOLA) | 20 m | Terreno de trabajo: cotas, pendientes, SVF, línea de vista de radio, malla H3 |
+| MRO CTX | Mosaico ecuatorial controlado, cuadrángulo MC-18 Coprates (Robbins et al., 2023) | 6 m | Textura orbital del gemelo 3D |
+| MRO HiRISE | RDR proyectados (sin control, ±100 m) y búsqueda de DTM de 1 m | 0,25 m | Contexto visual; no hay DTM HiRISE sobre la ruta |
+| Mars Global Surveyor MOLA | MEGDR, mosaico global | 463 m | Referencia altimétrica y contexto regional |
+| Mars Express HRSC + MGS MOLA | Mezcla HRSC+MOLA v2 (USGS) | 200 m | Horizonte y relieve regional |
+| 2001 Mars Odyssey THEMIS IR | Mosaicos controlados diurno y nocturno, MC-18 | 100 m | Contexto térmico cualitativo |
+| NASA Mars Trek | Teselas Viking MDIM 2.1 y MOLA hillshade | 232 m / 463 m | Mapa base 2D de la consola |
+| MSL RAD, MRO MCS, Mars 2020 MEDA | Valores publicados (dosis en Gale, polvo, viento) | — | Parámetros del escenario, citados como análogos |
+
+**Lo que no se usa como dato, y se dice:** no hay mapa cuantitativo de inercia térmica accesible, así que las inercias térmicas de los nodos son supuestos de escenario [E]. CRISM y SHARAD no están en el catálogo STAC, así que la hidratación del WP1 también es escenario. El detalle está en la sección `not_available` del manifiesto y en la sección 5 de [`CIENCIA_Y_MISION.md`](docs/01-planetary-science-mission/CIENCIA_Y_MISION.md).
+
+---
+
+## Estructura del repositorio
 
 ```text
-nasa-hackathon-red-project/
-├── 📁 docs/                                   # Documentación Técnica, Científica y Planes de Trabajo con IA
-│   ├── 📁 01-planetary-science-mission/       # 🧑‍🚀 CARRIL PERSONA 1: Ciencia, Datos NASA y Simulación Marswalk
-│   │   ├── PLAN_Y_PROMPTS_P1.md               # Hoja de ruta y Prompts de IA listos para ejecutar (P1)
-│   │   └── ENTREGABLE_1_CIENCIA_Y_MISION.md   # Documento final de especificación científica y caso de uso
-│   ├── 📁 02-product-ux-ui/                   # 🎨 CARRIL PERSONA 2: Producto, UX/UI y Sistema Visual Multicapa
-│   │   ├── PLAN_Y_PROMPTS_P2.md               # Hoja de ruta y Prompts de IA listos para ejecutar (P2)
-│   │   └── ENTREGABLE_2_PRODUCTO_UX_UI.md     # Especificación de pantallas (React/CesiumJS/Three.js), Spyglass y HUD
-│   ├── 📁 03-system-architecture-ai/          # ⚙️ CARRIL PERSONA 3: Arquitectura en Rust, ROS 2, GIS e IA Offline
-│   │   ├── PLAN_Y_PROMPTS_P3.md               # Hoja de ruta y Prompts de IA listos para ejecutar (P3)
-│   │   └── ENTREGABLE_3_ARQUITECTURA_E_IA.md  # Especificación de Malla H3 (h3o), Canyon-TRN, D* Lite e IA (Candle/ORT)
-│   └── 📁 04-pitch-and-submission/            # 🏆 FASE 4 CONJUNTA: Cierre, Pitch y Formulario Space Apps
-│       ├── PLAN_Y_PROMPTS_FASE_4.md           # Prompts para generar el formulario NASA, Pitch Deck y Q&A
-│       ├── SPACE_APPS_SUBMISSION.md           # Textos oficiales en inglés/español para la web de Space Apps
-│       └── PITCH_AND_QA_DEFENSE.md            # Estructura de 10 slides, guion de vídeo (30s/3m) y defensa ante jueces
-│
-├── 📁 src/                                    # Estructura Modular de Componentes del Sistema
-│   ├── 📁 base-console/                       # Nodo 1 (TypeScript/React/CesiumJS/Three.js + Rust WASM)
-│   ├── 📁 eva-tactical-hud/                   # Nodo 2 (HUD AR + Tablet de Muñeca conectada a ROS 2 / Zenoh)
-│   ├── 📁 core-engine/                        # Núcleo en Rust (h3o, Canyon-TRN, D* Lite, Markov/Poisson, Candle/ORT)
-│   └── 📁 shared/                             # Constantes marcianas (0.38g), esquemas GeoJSON/Parquet y tipos comunes
-│
-├── 📁 data/                                   # Catálogos de Datos Espaciales (COG, GeoJSON, Apache Parquet)
-│   ├── 📁 nasa-layers/                        # Referencias PDS / Mars Trek (MOLA, HiRISE, THEMIS, CRISM, MCS, RAD)
-│   └── 📁 mission-scenarios/                  # Coordenadas GeoJSON del "Triángulo de Supervivencia" en Melas Chasma
-│
-├── 📁 assets/                                 # Recursos Visuales, Diagramas, Wireframes y Presentación
-│   ├── 📁 diagrams/                           # Diagramas de arquitectura y mapas exportados
-│   ├── 📁 mockups/                            # Wireframes y vistas conceptuales del HUD y Consola 3D
-│   └── 📁 pitch/                              # Diapositivas, vídeo y recursos gráficos del equipo Red Project
-│
-├── 📄 CONTRIBUTING.md                         # Guía de trabajo en paralelo sin conflictos de Git para los 3 miembros
-├── 📄 LICENSE                                 # Licencia Open Source MIT
-└── 📄 README.md                               # Este documento maestro
+├── data/
+│   ├── pipeline/              # Paquete Python red_atlas_pipeline (terrain, hexgrid, scenario) y sus tests
+│   ├── nasa-layers/           # Manifiesto de fuentes, malla H3 en Parquet, comprobación de realidad del sitio
+│   └── mission-scenarios/     # EVA-07: GeoJSON del triángulo, umbrales, cronología y resultados del motor
+├── src/
+│   ├── shared/                # Crate Rust con las constantes físicas y el contrato de la malla
+│   ├── core-engine/           # Motor Rust: malla H3, D* Lite, Chaos Mode, máquina de estados y API
+│   ├── base-console/          # Consola web (React + TypeScript + Three.js)
+│   └── eva-tactical-hud/      # Diseño del HUD del casco (sin código propio todavía)
+├── docs/
+│   ├── 01-planetary-science-mission/   # Dossier científico y datos canónicos
+│   ├── 02-product-ux-ui/               # Producto, UX y wireframes
+│   ├── 03-system-architecture-ai/      # Arquitectura del motor y de la IA
+│   ├── 04-pitch-and-submission/        # Textos de la entrega y material del pitch
+│   └── wireframes/                     # Wireframes de las pantallas
+├── assets/                    # Material gráfico del pitch
+├── CONTRIBUTING.md
+└── LICENSE                    # MIT
 ```
 
----
+## Documentación
 
-## 🚀 Acceso Rápido por Miembro del Equipo
+| Área | Documento |
+| :--- | :--- |
+| Ciencia planetaria y datos | [`CIENCIA_Y_MISION.md`](docs/01-planetary-science-mission/CIENCIA_Y_MISION.md) · [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md) |
+| Producto y UX | [`PRODUCTO_UX_UI.md`](docs/02-product-ux-ui/PRODUCTO_UX_UI.md) |
+| Arquitectura e IA | [`ARQUITECTURA_E_IA.md`](docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md) |
+| Esquemas de datos | [`SCHEMA_HEXGRID.md`](data/nasa-layers/SCHEMA_HEXGRID.md) · [`SCHEMA_EVA07.md`](data/mission-scenarios/SCHEMA_EVA07.md) · [`SITE_REALITY_CHECK.md`](data/nasa-layers/SITE_REALITY_CHECK.md) |
 
-* 🧑‍🚀 **Persona 1 (Ciencia y Misión):** Ir a [`docs/01-planetary-science-mission/PLAN_Y_PROMPTS_P1.md`](./docs/01-planetary-science-mission/PLAN_Y_PROMPTS_P1.md)
-* 🎨 **Persona 2 (Producto y UX/UI):** Ir a [`docs/02-product-ux-ui/PLAN_Y_PROMPTS_P2.md`](./docs/02-product-ux-ui/PLAN_Y_PROMPTS_P2.md)
-* ⚙️ **Persona 3 (Arquitectura en Rust e IA):** Ir a [`docs/03-system-architecture-ai/PLAN_Y_PROMPTS_P3.md`](./docs/03-system-architecture-ai/PLAN_Y_PROMPTS_P3.md)
-* 🏆 **Fase 4 (Cierre y Pitch Conjunto):** Ir a [`docs/04-pitch-and-submission/PLAN_Y_PROMPTS_FASE_4.md`](./docs/04-pitch-and-submission/PLAN_Y_PROMPTS_FASE_4.md)
+## Licencia
+
+Código y documentación bajo licencia [MIT](LICENSE). Los productos de la NASA y de USGS conservan sus licencias de origen (dominio público o CC0), indicadas en el manifiesto de fuentes.

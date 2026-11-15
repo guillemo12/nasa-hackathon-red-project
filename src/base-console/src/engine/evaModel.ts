@@ -1,6 +1,6 @@
 // Modelo local de la EVA-07 para cuando la API Rust no responde.
 //
-// Reproduce, con los mismos datos de P1, lo que hace `GET /api/eva07?t=` en
+// Reproduce, con los mismos datos canónicos, lo que hace `GET /api/eva07?t=` en
 // `src/core-engine/src/bin/api_server.rs`: valores por fase (escalones), O₂ y dosis integrados
 // desde el último hito, y la máquina de estados compartida (`src/shared/README.md` §4,
 // `GuardrailFsm::evaluate` de `neuro_symbolic.rs`). Es la única réplica en TypeScript.
@@ -42,7 +42,7 @@ function departureLmstMin(): number {
 }
 const DEPARTURE_LMST_MIN = departureLmstMin();
 
-/** Hora local marciana `hh:mm` (truncada al minuto, como la escribe P1). */
+/** Hora local marciana `hh:mm` (truncada al minuto, como la escribe el pipeline). */
 export function formatLmst(tMin: number): string {
   const total = DEPARTURE_LMST_MIN + tMin / MARS_SOL_OVER_EARTH_DAY;
   const wrapped = ((total % 1440) + 1440) % 1440;
@@ -152,7 +152,7 @@ function evaluateGuardrail(inp: GuardrailInputs): GuardrailFrame {
   const localRate = speRate * Math.min(1, Math.max(0.05, inp.svf));
   const budget = PLANNER_WALKBACK.dose_budget_msv;
   const tRad = localRate > 1e-6 ? (Math.max(0, budget - v.dose_spe_msv) / localRate) * 60 : Infinity;
-  // P1 no da un modelo temporal del agua ni de la batería (el motor solo tiene su autonomía
+  // El escenario no da un modelo temporal del agua ni de la batería (el motor solo tiene su autonomía
   // en T+105): T_vital se calcula aquí con el O₂ y la radiación, igual que en la API.
   const tVital = Math.min(tO2, tRad);
 
@@ -240,7 +240,7 @@ const DOSE_PROFILES: Array<[keyof Eva07EventValues, string]> = [
   ['dose_spe_linear_msv', 'rampa_lineal'],
 ];
 
-/** Estado de la EVA-07 en el minuto `tTarget` con los datos de P1 (sin API). */
+/** Estado de la EVA-07 en el minuto `tTarget` con los datos canónicos (sin API). */
 export function sampleEva07Local(tTarget: number): Eva07Sample {
   const events = EVA07_EVENTS;
   const t = Math.min(events[events.length - 1].t_min, Math.max(events[0].t_min, tTarget));
@@ -301,7 +301,7 @@ export function sampleEva07Local(tTarget: number): Eva07Sample {
     else if (leg) distance = leg.distanceM * (1 - loc.frac);
   }
 
-  // Terreno bajo la astronauta, con el mismo criterio de fase que P1: valores del nodo en un
+  // Terreno bajo la astronauta, con el mismo criterio de fase que el pipeline: valores del nodo en un
   // nodo (rampa de 22° en WP2) y pendiente del tramo con la TIU media de sus dos nodos en marcha.
   let slopeDeg = 0;
   let tiu = NaN;

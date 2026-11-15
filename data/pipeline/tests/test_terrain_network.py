@@ -11,10 +11,10 @@ import pytest
 import requests
 from rio_cogeo.cogeo import cog_validate
 
-from red_atlas_p1 import config
-from red_atlas_p1.terrain import settings as S
-from red_atlas_p1.terrain import sources
-from red_atlas_p1.terrain.rasters import read_window, sample_raster
+from red_atlas_pipeline import config
+from red_atlas_pipeline.terrain import settings as S
+from red_atlas_pipeline.terrain import sources
+from red_atlas_pipeline.terrain.rasters import read_window, sample_raster
 
 pytestmark = pytest.mark.network
 
@@ -88,7 +88,7 @@ def test_mosaico_global_en_tiras_se_lee_por_ventana(online):
 # --- salidas compiladas (se saltan si aún no se ha ejecutado el pipeline) ----------
 def _contract():
     if not S.TERRAIN_OUTPUTS_JSON.exists():
-        pytest.skip("terrain_outputs.json no existe: ejecutar `python -m red_atlas_p1.terrain`")
+        pytest.skip("terrain_outputs.json no existe: ejecutar `python -m red_atlas_pipeline.terrain`")
     return json.loads(S.TERRAIN_OUTPUTS_JSON.read_text(encoding="utf-8"))
 
 
@@ -142,7 +142,7 @@ def test_los_rasteres_medidos_no_llevan_valores_de_escenario():
 
 def test_geojson_reubicado_conserva_la_figura_rigida():
     """Distancias canónicas (1.500 / 1.200 / 600 / 1.600 / 2.150 m) tras la reubicación."""
-    from red_atlas_p1.terrain import derive
+    from red_atlas_pipeline.terrain import derive
 
     nodes = config.scenario_nodes()
     for lid, leg in config.scenario_legs().items():

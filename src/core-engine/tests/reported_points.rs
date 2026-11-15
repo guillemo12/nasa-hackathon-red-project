@@ -1,4 +1,4 @@
-//! Points reported during the EVA on P1's real res-12 grid: a HAZARD on the route makes the
+//! Points reported during the EVA on the real res-12 grid: a HAZARD on the route makes the
 //! planner detour around its exclusion zone, a HAZARD on a waypoint makes the leg unreachable
 //! with a reason, a REFUGIO closer than WP3 becomes the shelter of the T+105 decision, and with
 //! no points everything stays exactly as the nominal plan and the canonical decision.
@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use red_atlas_core::h3_mars_grid::{h3_to_lat_lon, haversine_dist_m, H3MarsGrid};
 use red_atlas_core::metabolic_dstar::{CostWeights, PathResult};
-use red_atlas_core::mission::{compute_t105_walkback, P1_GRID_PARQUET_REL};
+use red_atlas_core::mission::{compute_t105_walkback, GRID_PARQUET_REL};
 use red_atlas_core::reported_points::{
     hazards_on_route, min_distance_to_hazards, plan_leg, t105_decision_with_reports, ReportedKind,
     ReportedPoint,
@@ -23,8 +23,8 @@ const CORRIDOR_M: f64 = 200.0;
 fn grid() -> &'static H3MarsGrid {
     static GRID: OnceLock<H3MarsGrid> = OnceLock::new();
     GRID.get_or_init(|| {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(P1_GRID_PARQUET_REL);
-        H3MarsGrid::load_p1_parquet(&path).expect("P1 res-12 grid")
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(GRID_PARQUET_REL);
+        H3MarsGrid::load_grid_parquet(&path).expect("res-12 terrain grid")
     })
 }
 
@@ -113,7 +113,7 @@ fn hazard_on_the_destination_is_reported_as_unreachable() {
 
 #[test]
 fn no_points_reproduce_the_canonical_t105_decision() {
-    let canon = compute_t105_walkback(grid(), P1_GRID_PARQUET_REL, Some(200.0)).expect("canonical");
+    let canon = compute_t105_walkback(grid(), GRID_PARQUET_REL, Some(200.0)).expect("canonical");
     let d = t105_decision_with_reports(grid(), &[]).expect("decision");
     assert_eq!(d.chosen, 0);
     assert_eq!(d.candidates.len(), 1);

@@ -2,7 +2,7 @@
 
 Aplicación web **React + TypeScript + Vite + Tailwind CSS + Three.js** para preparar y seguir la salida EVA-07 en la cuenca suroeste de Melas Chasma. Usa los datos de la misión (`data/`) y el motor de cálculo en Rust (`src/core-engine/`, `src/shared/`).
 
-Las cifras que se ven en pantalla **no están escritas en los componentes**: salen de `data/mission-scenarios/*.json`, de `triangulo_supervivencia.geojson` y de la API. La referencia es `docs/01-planetary-science-mission/DATOS_CANONICOS_P1.md`.
+Las cifras que se ven en pantalla **no están escritas en los componentes**: salen de `data/mission-scenarios/*.json`, de `triangulo_supervivencia.geojson` y de la API. La referencia es `docs/01-planetary-science-mission/DATOS_CANONICOS.md`.
 
 El aspecto y el tono siguen [`DESIGN.md`](DESIGN.md): una sola tipografía (IBM Plex Sans), un acento, color solo para estado, lo secundario plegado y lenguaje llano. Las piezas comunes están en `src/components/ui.tsx` y los colores en `src/index.css` y `src/theme.ts`. Parte de los wireframes de `docs/wireframes/`, pero se aparta de ellos a propósito en lo visual (sin barra lateral ni pie, sin rótulos en mayúsculas).
 
@@ -54,7 +54,7 @@ npm run build
 | `GET /api/route-plan` | Plan D\* Lite de cada tramo con su perfil celda a celda; con puntos marcados, cada tramo lleva `deviation` (desviado, sin cambios o inalcanzable, metros y minutos añadidos, causa) y el plan lleva `summary` y `points_version`. |
 | `GET /api/points`, `POST /api/points?kind=&lat=&lon=&t=`, `DELETE /api/points[?id=]` | Puntos marcados (estado compartido en la API, en memoria: se pierde al reiniciarla). |
 | `GET /api/emergency` | Redecisión de T+105 con WP3 y los refugios marcados como candidatos y los peligros aplicados a las rutas. |
-| `GET /api/geojson` | GeoJSON de P1 con tiempo, coste metabólico y dosis por tramo, y el SHA-256 del paquete. |
+| `GET /api/geojson` | GeoJSON de la ruta con tiempo, coste metabólico y dosis por tramo, y el SHA-256 del paquete. |
 | `GET /api/chaos-mode?seed=&trials=` | Pasada del Chaos Mode (hasta 10.000) sobre el mismo corredor que la referencia. |
 | `POST /api/zenoh-sync` | Prepara y verifica (SHA-256) el paquete pre-EVA. El enlace Zenoh está simulado en la demo. |
 

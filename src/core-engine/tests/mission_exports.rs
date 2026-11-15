@@ -3,7 +3,7 @@
 
 use red_atlas_core::mission::{
     compute_chaos_export, compute_t105_walkback, json_mismatch, load_grid, repo_path,
-    CHAOS_MODE_JSON_REL, DECISION_CORRIDOR_HALF_WIDTH_M, P1_GRID_PARQUET_REL,
+    CHAOS_MODE_JSON_REL, DECISION_CORRIDOR_HALF_WIDTH_M, GRID_PARQUET_REL,
     PLANNER_WALKBACK_JSON_REL,
 };
 
@@ -16,10 +16,10 @@ fn committed(rel: &str) -> serde_json::Value {
 
 #[test]
 fn planner_walkback_json_matches_the_planner() {
-    let grid = load_grid(&repo_path(P1_GRID_PARQUET_REL)).unwrap();
+    let grid = load_grid(&repo_path(GRID_PARQUET_REL)).unwrap();
     let run = compute_t105_walkback(
         &grid,
-        P1_GRID_PARQUET_REL,
+        GRID_PARQUET_REL,
         Some(DECISION_CORRIDOR_HALF_WIDTH_M),
     )
     .unwrap();

@@ -287,7 +287,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   const bearing = sample.position.target_bearing_deg;
   const tVital = sample.guardrail.t_vital_min ?? null;
 
-  // Walkback Limit Dual: T_vital (O₂ y radiación) y márgenes por destino. P1 no modela en el
+  // Walkback Limit Dual: T_vital (O₂ y radiación) y márgenes por destino. El escenario no modela en el
   // tiempo el agua ni la batería: solo se cita su autonomía de entrada en la decisión de T+105.
   const tO2 = inputs?.t_vital_o2_min ?? v.o2_remaining_g / O2_DENSITY / Math.max(v.o2_l_min, 0.05);
   const tRad = inputs?.t_vital_radiation_min ?? null;
@@ -367,7 +367,7 @@ export const EvaHudView: React.FC<EvaHudViewProps> = ({
   }, [state]);
 
   // ---------------------------------------------------------------------------
-  // Mapa (teselas Mars Trek + relieve real de la malla de P1 + capa vectorial)
+  // Mapa (teselas Mars Trek + relieve real de la malla de terreno + capa vectorial)
   // ---------------------------------------------------------------------------
   const tileZoom = Math.min(zoom, TREK_MAX_ZOOM);
   const scale = Math.pow(2, zoom - tileZoom);

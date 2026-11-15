@@ -1,6 +1,6 @@
 # 📍 `data/mission-scenarios/` — Escenario "Triángulo de Supervivencia" (Melas Chasma)
 
-Definición de la misión **EVA-07** en la cuenca suroeste de Melas Chasma (Valles Marineris), al pie de su pared suroeste. Explicación en las secciones 1, 3 y 4 de [`ENTREGABLE_1_CIENCIA_Y_MISION.md`](../../docs/01-planetary-science-mission/ENTREGABLE_1_CIENCIA_Y_MISION.md).
+Definición de la misión **EVA-07** en la cuenca suroeste de Melas Chasma (Valles Marineris), al pie de su pared suroeste. Explicación en las secciones 1, 3 y 4 de [`CIENCIA_Y_MISION.md`](../../docs/01-planetary-science-mission/CIENCIA_Y_MISION.md).
 
 | Nodo | Lat / Lon E | Cota (DTM CTX 20 m) | Papel |
 | :--- | :--- | :--- | :--- |
@@ -20,4 +20,4 @@ Tramos: 1.500 / 1.200 / 600 / 1.600 m (perímetro 4.900 m); retorno WP2→Base 2
 | `eva07_events.json` | Hitos de la cronología, fases, ventanas de amenaza, comparación de perfiles SPE y valores finales |
 | `SCHEMA_EVA07.md` | Esquema de los dos ficheros anteriores y discrepancias detectadas |
 
-`eva07_timeline.parquet`, `eva07_events.json` y `SCHEMA_EVA07.md` se regeneran con `cd data/pipeline && uv run python -m red_atlas_p1.scenario`; el GeoJSON, con `uv run python -m red_atlas_p1.terrain.relocate`.
+`eva07_timeline.parquet`, `eva07_events.json` y `SCHEMA_EVA07.md` se regeneran con `cd data/pipeline && uv run python -m red_atlas_pipeline.scenario`; el GeoJSON, con `uv run python -m red_atlas_pipeline.terrain.relocate`.

@@ -1,6 +1,6 @@
 # Esquema de la malla H3 de la ruta EVA-07 (`hexgrid`)
 
-> Fichero generado por `cd data/pipeline && uv run python -m red_atlas_p1.hexgrid`. No editar a mano: los recuentos, tamaños y tiempos salen de la ejecución.
+> Fichero generado por `cd data/pipeline && uv run python -m red_atlas_pipeline.hexgrid`. No editar a mano: los recuentos, tamaños y tiempos salen de la ejecución.
 
 Agrega los COG de terreno descritos en `terrain_outputs.json` (DTM CTX de 20 m y sus derivados, THEMIS IR y la capa de escenario) a celdas H3 sobre `AOI_ROUTE` (-9,95..-9,88° N, 283,36..283,42° E) y produce dos vistas por resolución: una tabla completa y documentada y otra con exactamente los campos de `HexCellState64B` (`src/shared/src/lib.rs`).
 
@@ -116,7 +116,7 @@ Mismas columnas y tipos en las dos resoluciones; cambia la estadística.
 | `slope_src_res_m` | `float` | no | m | — | — | metadato | Resolución del DTM fuente (la pendiente usa una base de 40 m). |
 | `slope_deg_scenario` | `double` | sí | grados | píxel del centro | máximo de los píxeles en zona | escenario | Pendiente de escenario (no hay zonas de pendiente en la versión actual). |
 | `slope_scenario_cover_frac` | `float` | no | 0-1 | 0 o 1 | fracción de píxeles en zona | metadato | Cobertura de la zona de escenario. |
-| `slope_deg_effective` | `double` | sí | grados | escenario si hay; si no, derivada | escenario si hay; si no, p90 | efectivo | Pendiente que usa el motor (slope_deg de P3). |
+| `slope_deg_effective` | `double` | sí | grados | escenario si hay; si no, derivada | escenario si hay; si no, p90 | efectivo | Pendiente que usa el motor (slope_deg del motor). |
 | `slope_effective_prov` | `uint8` | no | código 0-3 | — | — | metadato | De dónde sale la pendiente efectiva. |
 | `aspect_deg` | `double` | sí | grados desde el norte, horario | píxel del centro | media circular | derivado | Acimut hacia el que baja la ladera. |
 | `aspect_resultant` | `double` | sí | 0-1 | 1 | longitud del vector resultante | derivado | Concentración de la orientación (1 = todas iguales). |
@@ -129,7 +129,7 @@ Mismas columnas y tipos en las dos resoluciones; cambia la estadística.
 | `svf_src_res_m` | `float` | no | m | — | — | metadato | Resolución del campo cercano (el lejano es de 200 m). |
 | `svf_scenario` | `double` | sí | 0-1 | píxel del centro | mínimo de los píxeles en zona | escenario | SVF de diseño: 0,15 en la alcoba del WP3 (un DEM 2,5D no la representa). |
 | `svf_scenario_cover_frac` | `float` | no | 0-1 | 0 o 1 | fracción de píxeles en zona | metadato | Cobertura de la zona de escenario. |
-| `svf_effective` | `double` | sí | 0-1 | escenario si hay; si no, derivado | escenario si hay; si no, media | efectivo | SVF que usa el motor (sky_view_factor de P3). |
+| `svf_effective` | `double` | sí | 0-1 | escenario si hay; si no, derivado | escenario si hay; si no, media | efectivo | SVF que usa el motor (sky_view_factor del motor). |
 | `svf_effective_prov` | `uint8` | no | código 0-3 | — | — | metadato | De dónde sale el SVF efectivo. |
 | `horizon_max_deg` | `double` | sí | grados | máximo de 36 acimuts del píxel | máximo | derivado | Elevación máxima del horizonte. |
 | `horizon_max_az_deg` | `double` | sí | grados | acimut del máximo | acimut del máximo | derivado | Acimut (paso de 10°) del horizonte más alto. |
@@ -148,13 +148,13 @@ Mismas columnas y tipos en las dos resoluciones; cambia la estadística.
 | `tiu_measured` | `double` | sí | J m⁻² K⁻¹ s⁻½ | — | — | medido | Siempre nulo: no hay producto THEMIS de inercia térmica cuantitativa (terrain_outputs.json, not_available). |
 | `tiu_scenario` | `double` | sí | J m⁻² K⁻¹ s⁻½ | píxel del centro | mínimo de los píxeles en zona | escenario | Inercia térmica de diseño en discos alrededor de los nodos (110 en WP2, 320 Base, 410 WP1, 620 WP3). |
 | `tiu_scenario_cover_frac` | `float` | no | 0-1 | 0 o 1 | fracción de píxeles en zona | metadato | Cobertura de la zona de escenario. |
-| `tiu_effective` | `double` | sí | J m⁻² K⁻¹ s⁻½ | escenario si hay; si no, nulo | ídem | efectivo | TIU que usa el motor (thermal_inertia_tiu de P3); nula fuera de las zonas. |
+| `tiu_effective` | `double` | sí | J m⁻² K⁻¹ s⁻½ | escenario si hay; si no, nulo | ídem | efectivo | TIU que usa el motor (thermal_inertia_tiu del motor); nula fuera de las zonas. |
 | `tiu_effective_prov` | `uint8` | no | código 0-3 | — | — | metadato | De dónde sale la TIU efectiva. |
 | `tiu_src_res_m` | `float` | no | m | — | — | metadato | Resolución de la rasterización de las zonas. |
 | `h2o_measured` | `double` | sí | % en peso | — | — | medido | Siempre nulo: no hay producto CRISM cuantitativo de H₂O en el pipeline. |
 | `h2o_scenario` | `double` | sí | % en peso | píxel del centro | máximo de los píxeles en zona | escenario | 12 % de H₂O del WP1, extendido a la zona de 100 m del WP1 (supuesto de esta capa). |
 | `h2o_scenario_cover_frac` | `float` | no | 0-1 | 0 o 1 | fracción de píxeles en zona | metadato | Cobertura de la zona de escenario. |
-| `h2o_effective` | `double` | sí | % en peso | escenario si hay; si no, nulo | ídem | efectivo | H₂O que usa el motor (isru_h2o_pct de P3). |
+| `h2o_effective` | `double` | sí | % en peso | escenario si hay; si no, nulo | ídem | efectivo | H₂O que usa el motor (isru_h2o_pct del motor). |
 | `h2o_effective_prov` | `uint8` | no | código 0-3 | — | — | metadato | De dónde sale la H₂O efectiva. |
 | `h2o_src_res_m` | `float` | no | m | — | — | metadato | Resolución de la rasterización de la zona. |
 | `themis_day_dn` | `double` | sí | DN uint8 | píxel del centro | media de los valores en cada píxel CTX | medido | THEMIS IR diurno: DN cualitativo, NO es temperatura ni inercia térmica. |
@@ -176,11 +176,11 @@ Mismas columnas y tipos en las dos resoluciones; cambia la estadística.
 | `diffraction_uhf_db` | `double` | sí | dB | píxel del centro | máximo | derivado | Pérdida por difracción de la baliza UHF. |
 | `rssi_prov` | `uint8` | no | código 0-3 | — | — | metadato | Procedencia del nivel recibido. |
 | `rssi_src_res_m` | `float` | no | m | — | — | metadato | Resolución del DTM del perfil. |
-| `hazard_bitmask` | `uint16` | no | bits | desde las efectivas | desde las efectivas | efectivo | Banderas HAZARD_FLAG_* de P3. |
+| `hazard_bitmask` | `uint16` | no | bits | desde las efectivas | desde las efectivas | efectivo | Banderas HAZARD_FLAG_* del motor. |
 
 ## 6. Tabla de contrato `HexCellState64B`
 
-Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, align(64))`). Los flotantes sin dato son `NULL` de Parquet; el cargador del motor (`H3MarsGrid::load_p1_parquet`) los convierte en `CELL_NO_DATA` (NaN), no en 0.
+Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, align(64))`). Los flotantes sin dato son `NULL` de Parquet; el cargador del motor (`H3MarsGrid::load_grid_parquet`) los convierte en `CELL_NO_DATA` (NaN), no en 0.
 
 | Offset | Campo | Rust | Arrow | Nulos | Origen en la tabla completa | Nota |
 |---|---|---|---|---|---|---|
@@ -195,7 +195,7 @@ Campos, tipos y orden idénticos a `src/shared/src/lib.rs` (64 bytes, `repr(C, a
 | 36 | `los_base_rssi_dbm` | `f32` | `float` | sí | `rssi_dbm` | Enlace primario en banda S (2,4 GHz, 1 W): espacio libre + difracción en filo de cuchillo; derivado. Incertidumbre en rssi_dbm_low/high y baliza UHF en rssi_uhf_dbm de la tabla completa. |
 | 40 | `base_metabolic_cost` | `f32` | `float` | sí | `nulo` | Lo calcula el motor por arista: depende de velocidad, sentido de la marcha y deslizamiento, no solo de la celda. |
 | 44 | `horizon_hash_id` | `u32` | `uint32` | no | `0` | Lo calcula el motor: hash FNV de Canyon-TRN sobre su base de horizontes; valor de Default (0). |
-| 48 | `hazard_bitmask` | `u16` | `uint16` | no | `hazard_bitmask` | Calculado con los umbrales de P1. |
+| 48 | `hazard_bitmask` | `u16` | `uint16` | no | `hazard_bitmask` | Calculado con los umbrales canónicos. |
 | 50 | `padding_crc` | `[u8; 14]` | `fixed_size_binary[14]` | no | `14 bytes a cero` | H3MarsGrid::insert vuelve a sellar el CRC al cargar. |
 
 Campos que calcula el motor: `base_metabolic_cost` (siempre nulo), `horizon_hash_id` (siempre 0) y `padding_crc` (14 bytes a cero); ver §9. Parcialmente nulos: `thermal_inertia_tiu` (139.978 de 141.313 celdas a res. 12) e `isru_h2o_pct` (141.020).
@@ -232,7 +232,7 @@ Comparación en `float32` por los dos lados, como en Rust. Un nulo nunca activa 
 
 ## 8. Demostración con DuckDB
 
-Módulo `red_atlas_p1.hexgrid.duckdb_demo`, sin extensiones (la extensión H3 de DuckDB necesitaría red): el radio y el rumbo se calculan en SQL con `east_m`/`north_m`, y el anillo `grid_disk` y el camino `grid_path_cells` se calculan con `h3` en Python y se pasan a SQL. Los tres sectores de 120° siguen `SpyglassTriSectorSlice` de P3: norte (300°–60°) hidratación, derecha (60°–180°) inercia térmica e izquierda (180°–300°) pendiente, SVF y LOS.
+Módulo `red_atlas_pipeline.hexgrid.duckdb_demo`, sin extensiones (la extensión H3 de DuckDB necesitaría red): el radio y el rumbo se calculan en SQL con `east_m`/`north_m`, y el anillo `grid_disk` y el camino `grid_path_cells` se calculan con `h3` en Python y se pasan a SQL. Los tres sectores de 120° siguen `SpyglassTriSectorSlice` del motor Rust: norte (300°–60°) hidratación, derecha (60°–180°) inercia térmica e izquierda (180°–300°) pendiente, SVF y LOS.
 
 Tiempos medidos sobre `data/nasa-layers/hexgrid_route_res12.parquet` (141.313 filas), DuckDB 2.0.0, Darwin arm64, Python 3.12.13. Son de esta máquina y esta ejecución; no son una garantía para el traje ni para el navegador.
 
@@ -307,22 +307,22 @@ En la ruta (res. 12): de 0,00 a 2,11 m; mediana 0,16 m; percentil 95 0,47 m.
 
 **Campos que calcula el motor y van sin dato o a cero:**
 
-- `base_metabolic_cost`: depende de la velocidad, del sentido de la marcha (subir o bajar la misma celda cuesta distinto) y del deslizamiento; es una propiedad de la arista, no de la celda. Lo calcula `metabolic_dstar.rs` con el modelo de P1.
-- `horizon_hash_id`: identificador de Canyon-TRN (hash FNV sobre la base de horizontes del motor); P1 no tiene esa base. Los ángulos de horizonte de P1 están en `horizon_max_deg` y en el COG de 36 acimuts.
+- `base_metabolic_cost`: depende de la velocidad, del sentido de la marcha (subir o bajar la misma celda cuesta distinto) y del deslizamiento; es una propiedad de la arista, no de la celda. Lo calcula `metabolic_dstar.rs` con el modelo metabólico de referencia.
+- `horizon_hash_id`: identificador de Canyon-TRN (hash FNV sobre la base de horizontes del motor); el pipeline no tiene esa base. Los ángulos de horizonte del pipeline están en `horizon_max_deg` y en el COG de 36 acimuts.
 - `padding_crc`: a cero; `H3MarsGrid::insert` lo sella al cargar.
 
-## 10. Contrato con P3
+## 10. Contrato con el motor Rust
 
 **Resuelto en el motor:**
 
-- Índices H3 reales: el motor usa `h3o` y carga directamente `hexgrid_route_res12_hexcell64b.parquet` (`src/core-engine/tests/p1_hexgrid.rs`).
+- Índices H3 reales: el motor usa `h3o` y carga directamente `hexgrid_route_res12_hexcell64b.parquet` (`src/core-engine/tests/terrain_grid.rs`).
 - «Sin dato» explícito: `CELL_NO_DATA` (NaN) en los `f32`; los NULL de Parquet se cargan así, no como 0.
 - Métrica: `resolution_metrics` ya calcula arista y área con `h3o` escalado (5,77 m de arista media en res. 12).
 - Umbrales de refugio e ISRU: ahora están también en `eva_thresholds.json` (`shelter_sky_view_factor`, `isru_h2o_wt_pct`) y las banderas se calculan desde ahí.
 
-**Pendiente o a revisar por P3:**
+**Pendiente o a revisar en el motor:**
 
-- La bandera NLOS de P1 se activa por LOS geométrica o por RSSI < −100 dBm del enlace primario; en Rust, `HAZARD_FLAG_NLOS` está documentada solo como RSSI < −100 dBm. Con banda S, el WP2 y el WP3 cumplen las dos condiciones.
+- La bandera NLOS del pipeline se activa por LOS geométrica o por RSSI < −100 dBm del enlace primario; en Rust, `HAZARD_FLAG_NLOS` está documentada solo como RSSI < −100 dBm. Con banda S, el WP2 y el WP3 cumplen las dos condiciones.
 
 ## 11. Observaciones sobre los datos
 

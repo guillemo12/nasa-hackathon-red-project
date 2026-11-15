@@ -4,10 +4,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from red_atlas_p1 import config
-from red_atlas_p1.hexgrid import aggregate, duckdb_demo, geo, synthetic, tables
-from red_atlas_p1.hexgrid.constants import full_table_path
-from red_atlas_p1.hexgrid.export import write_parquet
+from red_atlas_pipeline import config
+from red_atlas_pipeline.hexgrid import aggregate, duckdb_demo, geo, synthetic, tables
+from red_atlas_pipeline.hexgrid.constants import full_table_path
+from red_atlas_pipeline.hexgrid.export import write_parquet
 
 N = 40
 

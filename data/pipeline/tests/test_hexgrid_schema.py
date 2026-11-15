@@ -8,9 +8,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from red_atlas_p1.hexgrid import aggregate, geo, synthetic, tables
-from red_atlas_p1.hexgrid.constants import LIB_RS, contract_table_path, full_table_path
-from red_atlas_p1.hexgrid.export import write_parquet
+from red_atlas_pipeline.hexgrid import aggregate, geo, synthetic, tables
+from red_atlas_pipeline.hexgrid.constants import LIB_RS, contract_table_path, full_table_path
+from red_atlas_pipeline.hexgrid.export import write_parquet
 
 RUST_SIZE = {"u64": 8, "u32": 4, "u16": 2, "f32": 4}
 
@@ -87,7 +87,7 @@ def test_tabla_completa_tiene_procedencia_y_resolucion_por_atributo(synth_full):
 def test_parquet_generado_cumple_el_esquema(res):
     fp, cp = full_table_path(res), contract_table_path(res)
     if not (fp.exists() and cp.exists()):
-        pytest.skip("Parquet no generado: uv run python -m red_atlas_p1.hexgrid")
+        pytest.skip("Parquet no generado: uv run python -m red_atlas_pipeline.hexgrid")
     assert pq.read_schema(cp).remove_metadata().equals(tables.CONTRACT_SCHEMA)
     assert pq.read_schema(fp).remove_metadata().equals(tables.FULL_SCHEMA)
     assert pq.read_metadata(cp).num_rows == pq.read_metadata(fp).num_rows
@@ -106,8 +106,8 @@ def test_parquet_generado_padres_res12_en_res9():
 
 
 def test_corredor_alrededor_de_los_tramos():
-    from red_atlas_p1 import config
-    from red_atlas_p1.hexgrid.export import corridor_mask
+    from red_atlas_pipeline import config
+    from red_atlas_pipeline.hexgrid.export import corridor_mask
     nodes = config.scenario_nodes()
     lat0, lon0 = aggregate.base_origin()
     e, n = geo.local_en(np.array([p["lat_pc_deg"] for p in nodes.values()]),

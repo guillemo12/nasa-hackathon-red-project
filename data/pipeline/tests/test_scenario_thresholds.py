@@ -3,9 +3,9 @@ import math
 
 import pytest
 
-from red_atlas_p1 import config
-from red_atlas_p1.scenario import thresholds as thr
-from red_atlas_p1.scenario.thresholds import AMBER, GREEN, RED
+from red_atlas_pipeline import config
+from red_atlas_pipeline.scenario import thresholds as thr
+from red_atlas_pipeline.scenario.thresholds import AMBER, GREEN, RED
 
 
 def test_all_thresholds_parse():

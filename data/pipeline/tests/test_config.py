@@ -1,6 +1,6 @@
 import math
 
-from red_atlas_p1 import config
+from red_atlas_pipeline import config
 
 
 def test_lon_conventions():

@@ -58,7 +58,7 @@ decidir sin leer dos veces. La pantalla enseña primero lo que decide algo y dej
 | En vez de | Decir |
 |---|---|
 | API Rust, motor Rust, backend | el motor de cálculo |
-| P1, datos de P1 | los datos de la misión |
+| datos canónicos, datos del pipeline | los datos de la misión |
 | D* Lite, planificador D* Lite | el planificador |
 | malla H3 res 12 (141.313 celdas) | terreno a 20 m |
 | [E], [D], «de escenario» | (se quita; si importa, «valor supuesto») |

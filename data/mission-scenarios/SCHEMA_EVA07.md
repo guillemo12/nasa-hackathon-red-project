@@ -1,9 +1,9 @@
 # Esquema de la simulación EVA-07 (`eva07_timeline.parquet` y `eva07_events.json`)
 
-Ficheros de escenario de la Persona 1 para el motor de la Persona 3 (estocástico Markov/Poisson, D\* Lite y máquina de estados del traje, en Rust) y para la consola (Fase 4). Son la **implementación de referencia** de la física del canónico (`docs/01-planetary-science-mission/DATOS_CANONICOS_P1.md`, secciones 3 y 4 del entregable 1). No son un motor competidor.
+Ficheros de escenario del pipeline de ciencia para el motor Rust (estocástico Markov/Poisson, D\* Lite y máquina de estados del traje, en Rust) y para la consola. Son la **implementación de referencia** de la física del canónico (`docs/01-planetary-science-mission/DATOS_CANONICOS.md`, secciones 3 y 4 de `CIENCIA_Y_MISION.md`). No son un motor competidor.
 
-- **Generación reproducible:** `cd data/pipeline && uv run python -m red_atlas_p1.scenario` (salida determinista; sin marcas de tiempo).
-- **Código:** `data/pipeline/src/red_atlas_p1/scenario/`. **Tests:** `data/pipeline/tests/test_scenario_*.py`.
+- **Generación reproducible:** `cd data/pipeline && uv run python -m red_atlas_pipeline.scenario` (salida determinista; sin marcas de tiempo).
+- **Código:** `data/pipeline/src/red_atlas_pipeline/scenario/`. **Tests:** `data/pipeline/tests/test_scenario_*.py`.
 - **Entradas:** `triangulo_supervivencia.geojson` y `eva_thresholds.json` (no se modifican).
 - **Versión de esquema:** 1.0.
 
@@ -49,7 +49,7 @@ Compresión zstd. Los metadatos clave-valor del esquema Parquet incluyen:
 |---|---|---|---|
 | `t_min` | int64 | min | Minuto T (−45…165) |
 | `lmst` | string | HH:MM | Hora solar local; 1 min marciano = 1,0275 min terrestres |
-| `act` | int64 | — | Acto del entregable (1–5) |
+| `act` | int64 | — | Acto del escenario (1–5) |
 | `phase_id` | string | — | Fase de la cronología (ver §4) |
 | `location` | string | — | Nodo, o `A→B` si la fase es de marcha |
 | `goal` | string | — | Destino activo del planificador (WP1, WP2, WP3) |
@@ -206,7 +206,7 @@ El intérprete (`scenario/thresholds.py`) no modifica el JSON. Reglas:
    - Con `sustained=False`, un transitorio hasta el pico es ámbar y por encima del pico es rojo.
    - El pico se compara con una tolerancia del 0,5 %, porque el JSON lo guarda truncado (1.072 frente a 1.072,9 W de la fórmula).
 5. **«<-100 o NLOS >60 s»:** segunda variable, que se pasa como `nlos_s`. Más de 60 s sin línea de vista es rojo, aunque el nivel sea ámbar.
-6. **Sentido:** `creciente` / `decreciente` / `banda`, con los límites numéricos del esquema 3.3 del entregable (`numeric_table()`).
+6. **Sentido:** `creciente` / `decreciente` / `banda`, con los límites numéricos del esquema 3.3 del documento científico (`numeric_table()`).
 
 ## 7. Otras discrepancias detectadas (el canónico no se cambia)
 
@@ -216,7 +216,7 @@ El intérprete (`scenario/thresholds.py`) no modifica el JSON. Reglas:
   - En la serie, el NLOS da −106,7 dBm en WP2 (2,15 km) y −104,1 dBm en WP3 (1,6 km): rojo por nivel, además de por persistencia.
 - **Velocidades de 592 W y 839 W:** el canónico solo dice «velocidad reducida». Despejadas, son 0,762 y 0,688 m/s. El validador usa 0,76 y 0,69 m/s [R], que dan 590,9 y 841,5 W.
 - **Margen de WP3 en T+105:** 15 − 9,45 = **5,55 min**, rojo según `walkback_margin_min`. WP3 solo resulta viable porque la regla del margen de 10 min se aplica a la Base, como en el diagrama 3.6, y no al destino de refugio.
-- **Dosis en el refugio:** 51 min a 1,2 mSv/h son 1,02 mSv, no «≤ 1,0». Por tanto, el «≤ 1,6 mSv» del entregable es en rigor 1,62 mSv con sus propios supuestos.
+- **Dosis en el refugio:** 51 min a 1,2 mSv/h son 1,02 mSv, no «≤ 1,0». Por tanto, el «≤ 1,6 mSv» de la versión anterior del documento científico es en rigor 1,62 mSv con sus propios supuestos.
 
 ## 8. Sitio reubicado y potencias de marcha
 

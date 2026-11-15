@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "mission": "EVA-07",
-  "generator": "uv run python -m red_atlas_p1.scenario",
+  "generator": "uv run python -m red_atlas_pipeline.scenario",
   "doc": "data/mission-scenarios/SCHEMA_EVA07.md",
   "time_unit": "min terrestres desde la salida (T+0 = 14:45 LMST)",
   "nominal_dose_profile": "rampa_calibrada",

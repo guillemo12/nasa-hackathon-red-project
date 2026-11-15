@@ -1,4 +1,4 @@
-// Clasificador Verde/Ámbar/Rojo leído de `data/mission-scenarios/eva_thresholds.json` (P1).
+// Clasificador Verde/Ámbar/Rojo leído de `data/mission-scenarios/eva_thresholds.json`.
 // Los límites no se repiten en los componentes: se piden aquí por identificador.
 import { EVA_THRESHOLDS } from '@/data/missionData';
 
@@ -55,7 +55,7 @@ for (const entry of EVA_THRESHOLDS.thresholds) {
   if (band) BANDS.set(entry.id, band);
 }
 
-/** Criterios binarios de P1 (verde cerrado; ámbar y rojo coinciden: «no apto»). */
+/** Criterios binarios canónicos (verde cerrado; ámbar y rojo coinciden: «no apto»). */
 const shelterEntry = EVA_THRESHOLDS.thresholds.find((t) => t.id === 'shelter_sky_view_factor');
 const isruEntry = EVA_THRESHOLDS.thresholds.find((t) => t.id === 'isru_h2o_wt_pct');
 const closedRange = (text: string): [number, number] => {
@@ -75,7 +75,7 @@ export function limits(id: ThresholdId): { amber: number; red: number } {
   return { amber: b?.amber ?? NaN, red: b?.red ?? NaN };
 }
 
-/** Clase del valor según P1. Los valores frontera son ámbar, como en el JSON. */
+/** Clase del valor según los umbrales canónicos. Los valores frontera son ámbar, como en el JSON. */
 export function classify(id: ThresholdId, value: number | null | undefined): Level {
   if (value === null || value === undefined || !Number.isFinite(value)) return 'none';
   if (id === 'shelter_sky_view_factor') return value <= SHELTER_SVF_MAX ? 'green' : 'amber';
@@ -93,7 +93,7 @@ export function classify(id: ThresholdId, value: number | null | undefined): Lev
 export const P1_CONSTANTS = EVA_THRESHOLDS.constants;
 
 /**
- * Factor de terreno η(TIU) del modelo metabólico de P1 (`DATOS_CANONICOS_P1.md` §3,
+ * Factor de terreno η(TIU) del modelo metabólico de referencia (`DATOS_CANONICOS.md` §3,
  * `red_atlas_shared::TERRAIN_ETA_BY_TIU_BAND`). Los cortes 400 y 150 salen del umbral de TIU;
  * el corte intermedio (250) y los cuatro valores solo existen en el documento y en el motor.
  */

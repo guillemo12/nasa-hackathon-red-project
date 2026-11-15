@@ -1,6 +1,6 @@
 //! EVA-07 mission computations shared by `eva07_mission_sim`, `export_mission_results` and the
 //! tests: one place computes the timeline, the T+105 decision inputs, the walkback decision on
-//! P1's real terrain and the Chaos Mode Monte Carlo. Printed figures and exported JSON both come
+//! the real terrain and the Chaos Mode Monte Carlo. Printed figures and exported JSON both come
 //! from here, so what the simulator shows is exactly what the planner used to decide.
 
 use std::path::{Path, PathBuf};
@@ -24,8 +24,8 @@ use crate::stochastic_hazard::{
     CHAOS_O2_SWITCH_L, CHAOS_SOLAR_ACTIVITY, CHAOS_TRAVERSE_LEGS,
 };
 
-/// P1 terrain grid (H3 res 12), path relative to the repository root.
-pub const P1_GRID_PARQUET_REL: &str = "data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet";
+/// Terrain grid (H3 res 12), path relative to the repository root.
+pub const GRID_PARQUET_REL: &str = "data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet";
 /// Exported walkback results, path relative to the repository root.
 pub const PLANNER_WALKBACK_JSON_REL: &str = "data/mission-scenarios/planner_walkback.json";
 /// Exported Chaos Mode results, path relative to the repository root.
@@ -42,7 +42,7 @@ pub fn repo_path(rel: &str) -> PathBuf {
 }
 
 // ============================================================================
-// 1. EVA-07 timeline (P1 model, minute integration)
+// 1. EVA-07 timeline (reference model, minute integration)
 // ============================================================================
 
 /// State of the EVA-07 timeline at the end of minute `t_min`.
@@ -67,7 +67,7 @@ impl TimelineSample {
     }
 }
 
-/// Metabolic power of a phase with the P1 model.
+/// Metabolic power of a phase with the reference model.
 pub fn phase_power_w(phase: &Eva07Phase) -> f64 {
     match phase.effort {
         Eva07Effort::None => 0.0,
@@ -90,7 +90,7 @@ pub fn phase_at(phases: &[Eva07Phase], t_min: f64) -> &Eva07Phase {
         .unwrap_or(&phases[phases.len() - 1])
 }
 
-/// Integrates the timeline minute by minute (P1 convention: the interval `[t-1, t]` is split
+/// Integrates the timeline minute by minute (pipeline convention: the interval `[t-1, t]` is split
 /// among the phases that cover it, whose boundaries may be fractional; the SPE rate profile is
 /// piecewise linear with knots on whole minutes, so the trapezoid on each piece is exact).
 pub fn integrate_timeline(phases: &[Eva07Phase]) -> Vec<TimelineSample> {
@@ -178,11 +178,11 @@ pub fn t105_decision_inputs(rssi_dbm: f32) -> Result<(PlssTelemetry, ActiveHazar
 }
 
 // ============================================================================
-// 3. Walkback decision on P1's real terrain
+// 3. Walkback decision on the real terrain
 // ============================================================================
 
 /// Half-width of the search corridor around WP2 -> Base and WP2 -> WP3 at the T+105 decision,
-/// m. `tests/p1_hexgrid.rs` checks that the corridor gives the same optimum (cost, time, walked
+/// m. `tests/terrain_grid.rs` checks that the corridor gives the same optimum (cost, time, walked
 /// polyline) as the full grid. On the current grid every width from 50 m keeps the optimum;
 /// 200 m keeps a 4x margin over that (it was not chosen to meet a latency target).
 pub const DECISION_CORRIDOR_HALF_WIDTH_M: f64 = 200.0;
@@ -269,7 +269,7 @@ pub struct GridVersion {
     pub planner_fingerprint: String,
 }
 
-/// Walkback decision at T+105 on P1's terrain, as exported to `planner_walkback.json`.
+/// Walkback decision at T+105 on the real terrain, as exported to `planner_walkback.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WalkbackReport {
     pub schema_version: String,
@@ -294,7 +294,7 @@ pub struct WalkbackReport {
     pub t_vital_radiation_min: f64,
     pub current_cell_svf: f64,
     /// Reference only (not used by the decision): time to spend the remaining budget at the
-    /// envelope rate with open-sky exposure (factor 1.0), P1's "ventana a cielo abierto".
+    /// envelope rate with open-sky exposure (factor 1.0), the canonical "ventana a cielo abierto".
     pub open_sky_window_min: f64,
     pub remaining_dose_budget_msv: f64,
     // Decision
@@ -322,7 +322,7 @@ pub struct WalkbackRun {
     pub wp3_h3: u64,
 }
 
-/// Runs the T+105 Walkback Limit Dual on `grid` (P1's res-12 terrain), optionally restricted to
+/// Runs the T+105 Walkback Limit Dual on `grid` (the real res-12 terrain), optionally restricted to
 /// a corridor of `corridor_half_width_m` around WP2 -> Base and WP2 -> WP3. The radio level in
 /// `ActiveHazards` is the primary S-band level of the WP2 cell of the grid (the planner does not
 /// use it and it is not exported).
@@ -415,7 +415,7 @@ fn walkback_report(
     })
 }
 
-/// Primary S-band level of P1's grid at each node of the survival triangle:
+/// Primary S-band level of the real grid at each node of the survival triangle:
 /// `(node id, rssi_dbm)` in Base, WP1, WP2, WP3 order (NaN if the cell is missing).
 pub fn node_radio_levels(grid: &H3MarsGrid) -> Vec<(&'static str, f32)> {
     SURVIVAL_TRIANGLE_SITE
@@ -434,9 +434,9 @@ pub fn full_timeline(wp3: &RouteReport) -> Vec<TimelineSample> {
     integrate_timeline(&red_atlas_shared::eva07_phases(wp3.time_min, wp3.mean_power_w))
 }
 
-/// Loads P1's res-12 grid from `path` with a readable error.
+/// Loads the real res-12 grid from `path` with a readable error.
 pub fn load_grid(path: &Path) -> Result<H3MarsGrid, String> {
-    H3MarsGrid::load_p1_parquet(path).map_err(|e| format!("cannot load P1 grid {}: {e}", path.display()))
+    H3MarsGrid::load_grid_parquet(path).map_err(|e| format!("cannot load terrain grid {}: {e}", path.display()))
 }
 
 // ============================================================================

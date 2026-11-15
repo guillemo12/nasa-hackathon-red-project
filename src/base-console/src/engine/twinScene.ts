@@ -1,4 +1,4 @@
-// Escena Three.js del gemelo 3D. Todo lo que se dibuja sale de la malla H3 de P1 que sirve la
+// Escena Three.js del gemelo 3D. Todo lo que se dibuja sale de la malla H3 del terreno que sirve la
 // API (`/api/terrain`, `/api/hexgrid`, `/api/route-plan`); sin API queda un plano con el
 // triángulo del GeoJSON y la consola lo dice. La imagen del suelo es el mosaico CTX de 6 m
 // co-registrado con el DTM (`/api/ortho`), proyectada por latitud y longitud sobre la malla; si
@@ -461,7 +461,7 @@ export class TwinScene {
       new THREE.LineSegments(gratGeo, new THREE.LineBasicMaterial({ color: PALETTE.text, transparent: true, opacity: 0.12 }))
     );
 
-    // Malla H3 res 9 real de P1: hexágonos con sus vértices de `h3o`.
+    // Malla H3 res 9 real: hexágonos con sus vértices de `h3o`.
     if (this.layers.h3o && this.hexCells.length > 0) {
       const plain: number[] = [];
       const flagged: Record<string, number[]> = { shelter: [], trap: [], isru: [] };

@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
-  "owner": "Persona 1",
+  "owner": "Red Project",
   "generated_utc": "2026-11-14T21:25:22Z",
-  "regenerate_with": "cd data/pipeline && uv run python -m red_atlas_p1.terrain",
+  "regenerate_with": "cd data/pipeline && uv run python -m red_atlas_pipeline.terrain",
   "paths_relative_to": "data/pipeline",
   "rasters_versioned": false,
   "rasters_note": "Los COG son salidas de compilación (build/ está en .gitignore).",

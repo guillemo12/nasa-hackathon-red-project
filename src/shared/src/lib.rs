@@ -24,7 +24,7 @@ pub const MARS_EQ_RADIUS_KM: f64 = 3396.19;
 pub const MARS_POLAR_RADIUS_KM: f64 = 3376.20;
 
 /// Reference sphere radius of the NASA datasets (MOLA, CRS IAU_2015:49900) in km.
-/// This is the radius used to scale the H3 grid (defined by P1).
+/// This is the radius used to scale the H3 grid (canonical data).
 pub const MARS_H3_REFERENCE_RADIUS_KM: f64 = MARS_EQ_RADIUS_KM;
 
 /// Earth authalic radius used by the original H3 grid, in km.
@@ -37,77 +37,77 @@ pub const H3_MARS_LINEAR_SCALE: f64 = MARS_H3_REFERENCE_RADIUS_KM / EARTH_H3_AUT
 /// Surface area scale factor of Mars vs. Earth for H3 hexagonal cells (0.5331² ≈ 0.2842).
 pub const H3_MARS_AREA_SCALE: f64 = H3_MARS_LINEAR_SCALE * H3_MARS_LINEAR_SCALE;
 
-/// Mass of the astronaut in kg (P1).
+/// Mass of the astronaut in kg (canonical data).
 pub const ASTRO_MASS_KG: f64 = 80.0;
 
-/// Mass of the pressurized EVA spacesuit and PLSS backpack in kg (P1: ~90 kg including the PLSS backpack).
+/// Mass of the pressurized EVA spacesuit and PLSS backpack in kg (canonical: ~90 kg including the PLSS backpack).
 pub const SUIT_MASS_KG: f64 = 90.0;
 
 /// Total mass of astronaut plus suit (170 kg total).
 pub const TOTAL_EVA_MASS_KG: f64 = ASTRO_MASS_KG + SUIT_MASS_KG;
 
 /// Energy equivalent of metabolic oxygen consumption in Joules per Liter (STPD).
-/// 20 100 J/L ⇒ 1 L/min of O2 = 335 W (P1).
+/// 20 100 J/L ⇒ 1 L/min of O2 = 335 W (canonical data).
 pub const O2_ENERGY_JOULES_PER_LITER: f64 = 20100.0;
 
 /// Safety margin factor for Walkback Limit (0.85 = 15% mandatory reserve).
 pub const WALKBACK_SAFETY_FACTOR: f32 = 0.85;
 
-/// Communication radio shadow (NLOS) threshold in dBm: red below -100 dBm (P1).
+/// Communication radio shadow (NLOS) threshold in dBm: red below -100 dBm (canonical data).
 pub const NLOS_RSSI_THRESHOLD_DBM: f32 = -100.0;
 
-/// Radio amber threshold in dBm: amber between -85 and -100 dBm (P1).
+/// Radio amber threshold in dBm: amber between -85 and -100 dBm (canonical data).
 pub const RSSI_AMBER_THRESHOLD_DBM: f32 = -85.0;
 
-/// Critical slope angle threshold in degrees where mobility is severely impaired (P1: red > 20 deg).
+/// Critical slope angle threshold in degrees where mobility is severely impaired (canonical: red > 20 deg).
 pub const CRITICAL_SLOPE_DEG: f32 = 20.0;
 
-/// Slope amber threshold in degrees (P1: amber 10-20 deg).
+/// Slope amber threshold in degrees (canonical: amber 10-20 deg).
 pub const SLOPE_AMBER_DEG: f32 = 10.0;
 
 /// Unpassable slope threshold in degrees for pressurized spacesuit walking.
 pub const UNPASSABLE_SLOPE_DEG: f32 = 30.0;
 
-/// Low Thermal Inertia Unit (TIU) threshold indicating treacherous soft regolith trap (P1: red < 150 TIU).
+/// Low Thermal Inertia Unit (TIU) threshold indicating treacherous soft regolith trap (canonical: red < 150 TIU).
 pub const LOW_TIU_TRAP_THRESHOLD: f32 = 150.0;
 
-/// Thermal inertia amber threshold (P1: green > 400 TIU, amber 150-400 TIU).
+/// Thermal inertia amber threshold (canonical: green > 400 TIU, amber 150-400 TIU).
 pub const TIU_AMBER_THRESHOLD: f32 = 400.0;
 
-/// Solar Particle Event (SPE) critical (red) dose rate threshold in mSv/h (P1: red > 1.0 mSv/h).
+/// Solar Particle Event (SPE) critical (red) dose rate threshold in mSv/h (canonical: red > 1.0 mSv/h).
 pub const SPE_CRITICAL_RATE_MSV_H: f32 = 1.0;
 
-/// Dose rate amber threshold in mSv/h (P1: amber 0.05-1.0 mSv/h).
+/// Dose rate amber threshold in mSv/h (canonical: amber 0.05-1.0 mSv/h).
 pub const SPE_AMBER_RATE_MSV_H: f32 = 0.05;
 
-/// Open-sky peak of the design SPE envelope in mSv/h (P1, scenario value).
+/// Open-sky peak of the design SPE envelope in mSv/h (canonical, scenario value).
 pub const SPE_PEAK_ENVELOPE_MSV_H: f32 = 8.0;
 
-/// Maximum SPE dose budget per EVA in mSv (P1 flight rule: 2 mSv => 15 min under open sky).
+/// Maximum SPE dose budget per EVA in mSv (canonical flight rule: 2 mSv => 15 min under open sky).
 pub const EVA_SPE_DOSE_BUDGET_MSV: f32 = 2.0;
 
-/// Surface GCR background measured by RAD at Gale, in mSv/h (P1: ~0.64 mSv/day).
+/// Surface GCR background measured by RAD at Gale, in mSv/h (canonical: ~0.64 mSv/day).
 pub const GCR_SURFACE_RATE_MSV_H: f32 = 0.027;
 
-/// Dust optical depth tau (880 nm) amber threshold (P1: amber 1.0-2.0).
+/// Dust optical depth tau (880 nm) amber threshold (canonical: amber 1.0-2.0).
 pub const DUST_TAU_AMBER: f32 = 1.0;
 
-/// Dust optical depth tau (880 nm) red threshold (P1: red > 2.0).
+/// Dust optical depth tau (880 nm) red threshold (canonical: red > 2.0).
 pub const DUST_TAU_RED: f32 = 2.0;
 
-/// Wind speed amber threshold in m/s (P1: amber 10-20 m/s).
+/// Wind speed amber threshold in m/s (canonical: amber 10-20 m/s).
 pub const WIND_AMBER_M_S: f32 = 10.0;
 
-/// Wind speed red threshold in m/s (P1: red > 20 m/s).
+/// Wind speed red threshold in m/s (canonical: red > 20 m/s).
 pub const WIND_RED_M_S: f32 = 20.0;
 
-/// O2 consumption amber threshold in L/min STPD (P1: amber 1.35-1.75).
+/// O2 consumption amber threshold in L/min STPD (canonical: amber 1.35-1.75).
 pub const O2_RATE_AMBER_L_MIN: f32 = 1.35;
 
-/// O2 consumption red threshold in L/min STPD (P1: red > 1.75 sustained; peak 3.2).
+/// O2 consumption red threshold in L/min STPD (canonical: red > 1.75 sustained; peak 3.2).
 pub const O2_RATE_RED_L_MIN: f32 = 1.75;
 
-/// Minimum structural water content to flag a cell as ISRU resource (P1: > 12% H2O).
+/// Minimum structural water content to flag a cell as ISRU resource (canonical: > 12% H2O).
 pub const ISRU_WATER_MIN_PCT: f32 = 12.0;
 
 /// Maximum Sky View Factor for a cell to count as topographic shelter.
@@ -133,7 +133,7 @@ pub const REPORTED_HAZARD_CAUTION_COST_FACTOR: f64 = 3.0;
 pub const REPORTED_POINT_SNAP_MAX_M: f64 = 30.0;
 
 // ----------------------------------------------------------------------------
-// 1b. P1 reference metabolic model
+// 1b. Reference metabolic model
 //     M = 120 + eta*0.285*W*v + W*v*sin(theta) / (0.25*(1 - s))   [W],  W = mass*g_Mars
 // ----------------------------------------------------------------------------
 
@@ -146,11 +146,11 @@ pub const METABOLIC_LEVEL_COEF: f64 = 0.285;
 /// Muscular efficiency of the climbing work term.
 pub const METABOLIC_CLIMB_EFFICIENCY: f64 = 0.25;
 
-/// Lower TIU bound (exclusive) of the eta = 1.3 band (P1: eta = 1.3 for 250 < TIU <= 400;
-/// exactly 250 TIU belongs to the 1.6 band, as in P1's `eta_from_tiu`).
+/// Lower TIU bound (exclusive) of the eta = 1.3 band (canonical: eta = 1.3 for 250 < TIU <= 400;
+/// exactly 250 TIU belongs to the 1.6 band, as in the pipeline's `eta_from_tiu`).
 pub const TIU_ETA_MID_THRESHOLD: f32 = 250.0;
 
-/// P1 terrain factors eta: [> 400 TIU, 250-400, 150-250, < 150].
+/// Reference terrain factors eta: [> 400 TIU, 250-400, 150-250, < 150].
 pub const TERRAIN_ETA_BY_TIU_BAND: [f64; 4] = [1.0, 1.3, 1.6, 2.1];
 
 // ============================================================================
@@ -192,7 +192,7 @@ fn crc16_ccitt(data: &[u8]) -> u16 {
     crc
 }
 
-/// "No data" sentinel for the `f32` fields of `HexCellState64B` (P1 Parquet `NULL`s, e.g. TIU
+/// "No data" sentinel for the `f32` fields of `HexCellState64B` (pipeline Parquet `NULL`s, e.g. TIU
 /// outside the scenario zones). NaN never satisfies a threshold comparison, so a missing value
 /// never raises a hazard flag. `serde_json` writes NaN as `null`; `f32_or_no_data` reads it back.
 pub const CELL_NO_DATA: f32 = f32::NAN;
@@ -215,11 +215,11 @@ pub fn or_assumed(value: f32, assumed: f32) -> f32 {
     }
 }
 
-/// Planner assumption for a cell without thermal inertia (P1 `NULL`: 139,978 of the 141,313
+/// Planner assumption for a cell without thermal inertia (`NULL`: 139,978 of the 141,313
 /// resolution-12 cells, since TIU only exists inside the scenario discs). Mid band 250-400 TIU
-/// (eta 1.3): neither firm ground (> 400) nor regolith trap (< 150); it is also the band of P3's
+/// (eta 1.3): neither firm ground (> 400) nor regolith trap (< 150); it is also the band of the engine's
 /// synthetic background (360 TIU). Hazard flags and trap checks keep using the raw value, so a
-/// missing TIU never raises `REGOLITH_TRAP`. Open decision for P1 (no quantitative THEMIS TI).
+/// missing TIU never raises `REGOLITH_TRAP`. Open decision for the science dataset (no quantitative THEMIS TI).
 pub const TIU_NO_DATA_ASSUMED: f32 = 325.0;
 
 /// Planner assumption for a cell without Sky View Factor: open sky (1.0), the worst case for dose.
@@ -384,7 +384,7 @@ pub struct MissionWaypoint {
 
 /// Static site record of a Survival Triangle node (single source of truth for site data).
 ///
-/// Provenance (P1, `data/mission-scenarios/triangulo_supervivencia.geojson`): coordinates and
+/// Provenance (canonical, `data/mission-scenarios/triangulo_supervivencia.geojson`): coordinates and
 /// slopes derived from the CTX 20 m DTM, elevations measured on it; TIU, water and the WP3
 /// alcove SVF are design-scenario values.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -402,7 +402,7 @@ pub struct WaypointSite {
     pub sky_view_factor: f32,
     /// Sky View Factor derived from the DTM (a 2.5D DEM cannot represent the WP3 overhang).
     pub sky_view_factor_dem: f32,
-    /// Structural water content in wt% (scenario; `CELL_NO_DATA` where P1 gives no value).
+    /// Structural water content in wt% (scenario; `CELL_NO_DATA` where the canonical data give no value).
     pub h2o_wt_pct: f32,
     /// Geometric radio line of sight to the Base antenna (derived from the DTM).
     pub radio_los_base: bool,
@@ -410,7 +410,7 @@ pub struct WaypointSite {
 }
 
 /// A planned or contingency leg between two Survival Triangle nodes (indices into
-/// `SURVIVAL_TRIANGLE_SITE`). Distances, elevation deltas and bearings from the P1 GeoJSON.
+/// `SURVIVAL_TRIANGLE_SITE`). Distances, elevation deltas and bearings from the route GeoJSON.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SurvivalLeg {
     pub id: &'static str,
@@ -424,7 +424,7 @@ pub struct SurvivalLeg {
 // ============================================================================
 // 4b. Site data (SINGLE place for waypoint coordinates, elevations and pressure)
 // ----------------------------------------------------------------------------
-// Relocated P1 site (2026-11-14): SW basin of Melas Chasma, at the foot of the SW wall,
+// Relocated site (2026-11-14): SW basin of Melas Chasma, at the foot of the SW wall,
 // 13.6 km SW of the original 9.8S 283.6E placement. CRS IAU_2015:49900, lon East 0-360,
 // elevations on the MOLA areoid.
 // ============================================================================
@@ -489,7 +489,7 @@ pub const SURVIVAL_TRIANGLE_SITE: [WaypointSite; 4] = [
     },
 ];
 
-/// Legs of the Survival Triangle (P1 GeoJSON): L1 Base->WP1, L2 WP1->WP2, L3 WP2->WP3 (escape),
+/// Legs of the Survival Triangle (route GeoJSON): L1 Base->WP1, L2 WP1->WP2, L3 WP2->WP3 (escape),
 /// L4 WP3->Base and R1 WP2->Base (straight-line contingency return).
 pub const SURVIVAL_TRIANGLE_LEGS: [SurvivalLeg; 5] = [
     SurvivalLeg { id: "L1", from: 0, to: 1, distance_m: 1500.0, delta_elev_m: 78.0, bearing_deg: 152.0 },
@@ -511,31 +511,31 @@ pub const SITE_REFERENCE_LON_DEG: f64 = SURVIVAL_TRIANGLE_SITE[0].lon_deg;
 /// Base Habitat elevation (MOLA datum) in m.
 pub const SITE_BASE_ELEV_M: f32 = SURVIVAL_TRIANGLE_SITE[0].elev_m;
 
-/// Base atmospheric pressure in mbar (P1: P = 610 Pa * exp(-z / 11.1 km) = 708 Pa at -1,660 m;
+/// Base atmospheric pressure in mbar (canonical: P = 610 Pa * exp(-z / 11.1 km) = 708 Pa at -1,660 m;
 /// CO2 column 19.0 g/cm^2). Still above the water triple point (611 Pa).
 pub const MELAS_BASE_PRESSURE_MBAR: f64 = 7.08;
 
-/// EVA-07 scenario: dust optical depth before the storm front (P1: tau 0.7 -> 2.4).
+/// EVA-07 scenario: dust optical depth before the storm front (canonical: tau 0.7 -> 2.4).
 pub const DUST_TAU_NOMINAL: f32 = 0.7;
 
-/// EVA-07 scenario: dust optical depth during the storm front (P1: tau 0.7 -> 2.4).
+/// EVA-07 scenario: dust optical depth during the storm front (canonical: tau 0.7 -> 2.4).
 pub const DUST_TAU_STORM: f32 = 2.4;
 
-/// EVA-07 scenario: local ramp slope at WP2 in degrees (P1 shared figure, scenario value;
+/// EVA-07 scenario: local ramp slope at WP2 in degrees (canonical shared figure, scenario value;
 /// the real DTM slope of the node is `SURVIVAL_TRIANGLE_SITE[2].slope_dem_deg` = 19.4 deg).
 pub const WP2_RAMP_SLOPE_DEG: f32 = 22.0;
 
-/// EVA-07 scenario: walking speed on the WP2 ramp in m/s (P1).
+/// EVA-07 scenario: walking speed on the WP2 ramp in m/s (canonical data).
 pub const WP2_TRAVERSE_SPEED_MPS: f64 = 0.55;
 
-/// EVA-07 scenario: slip fraction on the WP2 ramp (P1: 30%).
+/// EVA-07 scenario: slip fraction on the WP2 ramp (canonical: 30%).
 pub const WP2_SLIP_FRACTION: f64 = 0.30;
 
 // ----------------------------------------------------------------------------
-// 4c. Radio link budget (P1 `scenario/constants.py` and `SCHEMA_HEXGRID.md` §9)
+// 4c. Radio link budget (`scenario/constants.py` and `SCHEMA_HEXGRID.md` §9)
 // ----------------------------------------------------------------------------
 // Primary data link (the Zenoh session): S band, 2.4 GHz, 1 W, isotropic antennas. It is the
-// link that drops behind the relief (WP2 -103.1 dBm, WP3 -107.9 dBm on P1's grid, knife-edge
+// link that drops behind the relief (WP2 -103.1 dBm, WP3 -107.9 dBm on the real grid, knife-edge
 // diffraction over the CTX DTM). UHF 435 MHz, 1 W stays as a low-rate beacon that survives
 // degraded (-81.0 / -85.7 dBm) and the system does not depend on it.
 
@@ -545,10 +545,10 @@ pub const RADIO_PRIMARY_FREQ_MHZ: f64 = 2400.0;
 /// Primary data link transmitter power, dBm (1 W).
 pub const RADIO_TX_POWER_DBM: f64 = 30.0;
 
-/// Antenna gain at each end, dBi (isotropic: P1 gives no gains).
+/// Antenna gain at each end, dBi (isotropic: the canonical data give no gains).
 pub const RADIO_ANTENNA_GAIN_DBI: f64 = 0.0;
 
-/// Diffraction loss without line of sight when no per-cell value is available, dB (P1: mean of
+/// Diffraction loss without line of sight when no per-cell value is available, dB (canonical: mean of
 /// the 2.4 GHz single knife-edge losses at WP2 and WP3, 26.4 and 33.8 dB). The real grid carries
 /// its own per-cell level in `los_base_rssi_dbm`; this value only fills NULL cells and the
 /// synthetic corridor.
@@ -586,10 +586,10 @@ pub fn beacon_rssi_dbm(distance_m: f64, diffraction_db: f64) -> f32 {
 }
 
 // ----------------------------------------------------------------------------
-// 4d. EVA-07 reference timeline (P1 `eva07_events.json`; minutes after departure, 14:45 LMST)
+// 4d. EVA-07 reference timeline (`eva07_events.json`; minutes after departure, 14:45 LMST)
 // ----------------------------------------------------------------------------
 
-/// Usable primary O2 mass carried by the suit at departure, in g (P1, scenario).
+/// Usable primary O2 mass carried by the suit at departure, in g (canonical, scenario).
 pub const SUIT_O2_PRIMARY_USABLE_G: f64 = 800.0;
 
 /// O2 density at STPD in g/L.
@@ -599,20 +599,20 @@ pub const O2_DENSITY_G_PER_L: f64 = 1.429;
 pub const SUIT_O2_PRIMARY_USABLE_L: f64 = SUIT_O2_PRIMARY_USABLE_G / O2_DENSITY_G_PER_L;
 
 /// Primary O2 amber band starts at or below this percentage of the usable tank
-/// (P1 `eva_thresholds.json` `o2_primary_pct`: green > 50, amber 30-50, red < 30).
+/// (`eva_thresholds.json` `o2_primary_pct`: green > 50, amber 30-50, red < 30).
 pub const O2_PRIMARY_AMBER_PCT: f64 = 50.0;
 /// Primary O2 red band (abort / change of destination) below this percentage of the tank.
 pub const O2_PRIMARY_RED_PCT: f64 = 30.0;
 /// Red primary O2 level in litres: 30 % of 559.8 L = 167.9 L.
 pub const O2_PRIMARY_RED_L: f64 = SUIT_O2_PRIMARY_USABLE_L * O2_PRIMARY_RED_PCT / 100.0;
 
-/// Sustained red limit of metabolic power in W (P1 `eva_thresholds.json`: > 585 W sustained).
+/// Sustained red limit of metabolic power in W (`eva_thresholds.json`: > 585 W sustained).
 pub const METABOLIC_RED_SUSTAINED_W: f64 = 585.0;
 
-/// Light ISRU sampling work at WP1 in W (P1, scenario).
+/// Light ISRU sampling work at WP1 in W (canonical, scenario).
 pub const ISRU_WORK_POWER_W: f64 = 250.0;
 
-/// Pressurized rest inside the WP3 shelter in W (P1, scenario).
+/// Pressurized rest inside the WP3 shelter in W (canonical, scenario).
 pub const SHELTER_REST_POWER_W: f64 = 130.0;
 
 /// Minute of the T+105 alert: SPE + dust, Dynamic Goal Switching and start of the escape.
@@ -622,10 +622,10 @@ pub const EVA07_DECISION_T_MIN: f64 = 105.0;
 
 // --- Planner pace rule (single definition) ------------------------------------------------
 // On every edge the planner walks at the highest speed that satisfies BOTH a speed cap and a
-// metabolic power cap, with the shared P1 metabolic model (edge grade, terrain eta from TIU,
+// metabolic power cap, with the shared reference metabolic model (edge grade, terrain eta from TIU,
 // slip). Nothing here is tuned to hit a published time.
 
-/// Emergency escape speed cap in m/s (P1 `ESCAPE_SPEED_M_S`, WP2 -> WP3 urgent march).
+/// Emergency escape speed cap in m/s (`ESCAPE_SPEED_M_S`, WP2 -> WP3 urgent march).
 pub const ESCAPE_SPEED_CAP_MPS: f64 = 1.25;
 /// Emergency escape metabolic power cap in W (team decision: short emergency effort).
 pub const ESCAPE_POWER_CAP_W: f64 = 650.0;
@@ -634,7 +634,7 @@ pub const RETURN_SPEED_CAP_MPS: f64 = 1.0;
 /// Sustained return metabolic power cap in W: the sustained red limit of `eva_thresholds.json`.
 pub const RETURN_POWER_CAP_W: f64 = METABOLIC_RED_SUSTAINED_W;
 /// Slip fraction applied on loose-regolith trap edges (TIU < 150 and cell slope > 20 deg),
-/// P1's WP2 value. Elsewhere s = 0.
+/// the canonical WP2 value. Elsewhere s = 0.
 pub const REGOLITH_TRAP_SLIP_FRACTION: f64 = WP2_SLIP_FRACTION;
 /// Floor speed in m/s so that a capped edge is slow but never divides by zero.
 pub const PACE_MIN_SPEED_MPS: f64 = 0.05;
@@ -648,7 +648,7 @@ pub struct PaceProfile {
     pub dust_visibility_limits_speed: bool,
 }
 
-/// Emergency escape to the shelter: 1.25 m/s and 650 W (no visibility cap: P1 escape rule).
+/// Emergency escape to the shelter: 1.25 m/s and 650 W (no visibility cap: canonical escape rule).
 pub const PACE_EMERGENCY_ESCAPE: PaceProfile = PaceProfile {
     speed_cap_mps: ESCAPE_SPEED_CAP_MPS,
     power_cap_w: ESCAPE_POWER_CAP_W,
@@ -669,7 +669,7 @@ pub enum Eva07Effort {
     None,
     /// Scenario power in W (no walking model).
     Scenario(f64),
-    /// P1 metabolic model. `slope_deg = None` uses the leg grade atan(dz / d) of `leg`
+    /// reference metabolic model. `slope_deg = None` uses the leg grade atan(dz / d) of `leg`
     /// (downhill grades earn no credit in the model).
     Walk {
         leg: usize,
@@ -688,7 +688,7 @@ pub struct Eva07Phase {
     pub t0_min: f64,
     pub t1_min: f64,
     pub effort: Eva07Effort,
-    /// Exposure factor applied to the open-sky SPE rate: 1.0 while walking (P1 "open sky"
+    /// Exposure factor applied to the open-sky SPE rate: 1.0 while walking (canonical "open sky"
     /// convention), the WP3 alcove SVF once under the overhang.
     pub dose_factor: f64,
 }
@@ -697,7 +697,7 @@ const fn mean_tiu(a: usize, b: usize) -> f32 {
     (SURVIVAL_TRIANGLE_SITE[a].thermal_inertia_tiu + SURVIVAL_TRIANGLE_SITE[b].thermal_inertia_tiu) / 2.0
 }
 
-/// EVA-07 phases (P1 `SCHEMA_EVA07.md` section 4). Walking speeds of L1 and L2 are the means
+/// EVA-07 phases (`SCHEMA_EVA07.md` section 4). Walking speeds of L1 and L2 are the means
 /// imposed by the fixed milestones (L1 1,500 m in 28 min, L2 1,200 m in 23 min) and eta comes
 /// from the mean TIU of the two leg nodes; the 110 TIU bank (eta 2.1) applies on the WP2 ramp
 /// (T+98-105). These are the phases up to the T+105 decision; they do not depend on the planner.
@@ -727,13 +727,13 @@ pub const EVA07_PRE_DECISION_PHASES: [Eva07Phase; 7] = [
         },
         dose_factor: 1.0,
     },
-    // Pace regulated so that the power stays at the sustained red limit (P1: 0.268 m/s).
+    // Pace regulated so that the power stays at the sustained red limit (canonical: 0.268 m/s).
     Eva07Phase { id: "A3_rampa_lenta", t0_min: 101.0, t1_min: 105.0, effort: Eva07Effort::Scenario(METABOLIC_RED_SUSTAINED_W), dose_factor: 1.0 },
 ];
 
-/// Full EVA-07 phases (P1 `SCHEMA_EVA07.md` section 4): the pre-decision phases, then the
+/// Full EVA-07 phases (`SCHEMA_EVA07.md` section 4): the pre-decision phases, then the
 /// escape to WP3 that the D* Lite planner computes at T+105 (`escape_time_min`, mean power
-/// `escape_mean_power_w`; open-sky exposure while walking, P1 convention), then the shelter
+/// `escape_mean_power_w`; open-sky exposure while walking, pipeline convention), then the shelter
 /// hold under the WP3 overhang (SVF 0.15) until T+165. The escape is assumed to end before
 /// T+125 (checked: `escape_time_min` is clamped to that window).
 pub fn eva07_phases(escape_time_min: f64, escape_mean_power_w: f64) -> [Eva07Phase; 12] {
@@ -753,7 +753,7 @@ pub fn eva07_phases(escape_time_min: f64, escape_mean_power_w: f64) -> [Eva07Pha
 
 /// Nominal open-sky SPE rate profile ("rampa calibrada"), piecewise linear knots
 /// `(T min, mSv/h)`; zero before the first knot and constant after the last one.
-/// The (108, 5) knot is a free parameter fitted by P1 to the ~0.6 mSv dose on arrival at WP3.
+/// The (108, 5) knot is a free parameter fitted by the pipeline to the ~0.6 mSv dose on arrival at WP3.
 pub const EVA07_SPE_CALIBRATED_KNOTS: [(f64, f64); 5] =
     [(105.0, 0.0), (108.0, 5.0), (125.0, 8.0), (140.0, 8.0), (165.0, 2.0)];
 
@@ -1027,7 +1027,7 @@ mod tests {
         assert_eq!(waypoints[2].kind, MissionWaypointKind::Wp2FaultSlope);
         assert_eq!(waypoints[3].kind, MissionWaypointKind::Wp3CliffShelter);
 
-        // Relocated P1 site: SW basin of Melas Chasma (~9.9 S, 283.39 E), basin floor ~ -1.5 km.
+        // Relocated site: SW basin of Melas Chasma (~9.9 S, 283.39 E), basin floor ~ -1.5 km.
         for wp in &waypoints {
             assert!(
                 wp.lat_deg < -9.85 && wp.lat_deg > -9.95,
@@ -1058,7 +1058,7 @@ mod tests {
 
     #[test]
     fn test_radio_link_budget_and_spe_profile() {
-        // P1 free-space figures: S band 108.0 dB at 2.5 km (about -78 dBm with LOS),
+        // Canonical free-space figures: S band 108.0 dB at 2.5 km (about -78 dBm with LOS),
         // UHF beacon 93.2 dB (about -63 dBm).
         assert!((free_space_loss_db(2500.0, RADIO_PRIMARY_FREQ_MHZ) - 108.0).abs() < 0.05);
         assert!((free_space_loss_db(2500.0, RADIO_BEACON_FREQ_MHZ) - 93.2).abs() < 0.05);
@@ -1219,12 +1219,12 @@ mod tests {
         out
     }
 
-    /// Fails if a radio constant of `src/shared` diverges from P1's validator
-    /// (`data/pipeline/src/red_atlas_p1/scenario/constants.py`, where P1 keeps them).
+    /// Fails if a radio constant of `src/shared` diverges from the pipeline validator
+    /// (`data/pipeline/src/red_atlas_pipeline/scenario/constants.py`, where the pipeline keeps them).
     #[test]
-    fn test_radio_constants_match_p1_validator() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/pipeline/src/red_atlas_p1/scenario/constants.py");
-        let text = std::fs::read_to_string(path).expect("P1 constants.py readable");
+    fn test_radio_constants_match_pipeline_validator() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/pipeline/src/red_atlas_pipeline/scenario/constants.py");
+        let text = std::fs::read_to_string(path).expect("pipeline constants.py readable");
         let value = |name: &str| -> f64 {
             text.lines()
                 .find_map(|l| {
@@ -1247,13 +1247,13 @@ mod tests {
             .filter(|(k, v)| (value(k) - v).abs() > 1e-9)
             .map(|(k, v)| format!("{k}: src/shared {v} != constants.py {}", value(k)))
             .collect();
-        assert!(bad.is_empty(), "radio constants diverge from P1:\n{}", bad.join("\n"));
+        assert!(bad.is_empty(), "radio constants diverge from the pipeline:\n{}", bad.join("\n"));
     }
 
-    /// Fails if any `src/shared` constant that has a counterpart in P1's
+    /// Fails if any `src/shared` constant that has a counterpart in the pipeline's
     /// `data/mission-scenarios/eva_thresholds.json` diverges from it.
     #[test]
-    fn test_constants_match_p1_eva_thresholds_json() {
+    fn test_constants_match_eva_thresholds_json() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/mission-scenarios/eva_thresholds.json");
         let text = std::fs::read_to_string(path).expect("eva_thresholds.json readable");
         let doc: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
@@ -1317,7 +1317,7 @@ mod tests {
         check("O2_PRIMARY_AMBER_PCT", O2_PRIMARY_AMBER_PCT, band("o2_primary_pct", "green")[0]);
         check("O2_PRIMARY_RED_PCT", O2_PRIMARY_RED_PCT, band("o2_primary_pct", "red")[0]);
 
-        assert!(failures.is_empty(), "constants diverge from P1:\n{}", failures.join("\n"));
+        assert!(failures.is_empty(), "constants diverge from the pipeline:\n{}", failures.join("\n"));
         assert_eq!(threshold_numbers("-85 a -100"), vec![-85.0, -100.0]);
         assert_eq!(threshold_numbers("10-20"), vec![10.0, 20.0]);
     }

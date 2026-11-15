@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "owner": "Persona 1",
+  "owner": "Red Project",
   "note": "Umbrales Verde/Ambar/Rojo para la maquina de estados determinista del traje. Verde = nominal; Ambar = precaucion; Rojo = aborto / cambio de destino. Procedencia: M = medido o publicado, D = derivado, E = supuesto de escenario.",
   "constants": {
     "g_mars_m_s2": 3.72076,

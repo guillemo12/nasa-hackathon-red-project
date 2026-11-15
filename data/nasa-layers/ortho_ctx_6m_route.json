@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "generated_utc": "2026-11-15T17:11:16Z",
-  "generator": "uv run python -m red_atlas_p1.terrain.ortho_texture",
+  "generator": "uv run python -m red_atlas_pipeline.terrain.ortho_texture",
   "image": "ortho_ctx_6m_route.png",
   "format": "PNG gris + alfa, 8 bits; fila 0 = borde norte; columnas hacia el este",
   "width": 594,

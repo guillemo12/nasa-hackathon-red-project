@@ -7,8 +7,8 @@
 //! - **Act 3**: WP2 NLOS radio shadow + Canyon-TRN Skyline Matching (crushing ~12m drift to <0.5m) + 110 TIU / 22° slope biomechanics.
 //! - **Act 4**: T+105 min 4-hazard simultaneous impact + Dynamic Goal Switching + Single-Alert Fusion + TMR 2-of-3 SEU protection.
 //! - **Act 5**: Survival at WP3 cliff shelter (SVF=0.15, 85% SPE radiation attenuation) + Zenoh CRDT telemetry replay.
-//! - **Timeline**: EVA-07 O2 and SPE dose computed with the P1 metabolic model over
-//!   `red_atlas_shared::eva07_phases` (escape from the planner) and compared with P1's
+//! - **Timeline**: EVA-07 O2 and SPE dose computed with the reference metabolic model over
+//!   `red_atlas_shared::eva07_phases` (escape from the planner) and compared with the pipeline's
 //!   `eva07_events.json`. All mission figures come from `red_atlas_core::mission`, the same code
 //!   that writes `data/mission-scenarios/planner_walkback.json` and `chaos_mode_results.json`.
 
@@ -28,7 +28,7 @@ use red_atlas_core::neuro_symbolic::{
 use red_atlas_core::mission::{
     compute_chaos_export, compute_t105_walkback, full_timeline, integrate_timeline, load_grid,
     node_radio_levels, repo_path, sample_at, TimelineSample, WalkbackReport, CHAOS_SEED, CHAOS_SOLAR_HOUR,
-    CHAOS_TRIALS, DECISION_CORRIDOR_HALF_WIDTH_M, P1_GRID_PARQUET_REL,
+    CHAOS_TRIALS, DECISION_CORRIDOR_HALF_WIDTH_M, GRID_PARQUET_REL,
 };
 use red_atlas_shared::{
     melas_chasma_survival_triangle, ActiveHazards, 
@@ -43,10 +43,10 @@ use red_atlas_shared::{
     WP2_SLIP_FRACTION, WP2_TRAVERSE_SPEED_MPS,
 };
 
-/// P1 reference timeline (`data/mission-scenarios/eva07_events.json`), embedded at build time.
-const P1_EVENTS_JSON: &str = include_str!("../../../../data/mission-scenarios/eva07_events.json");
+/// Reference timeline (`data/mission-scenarios/eva07_events.json`), embedded at build time.
+const REFERENCE_EVENTS_JSON: &str = include_str!("../../../../data/mission-scenarios/eva07_events.json");
 
-/// Tolerances of the timeline comparison against P1 (same model, minute integration).
+/// Tolerances of the timeline comparison against the pipeline (same model, minute integration).
 const O2_PCT_TOLERANCE: f64 = 0.05;
 const DOSE_MSV_TOLERANCE: f64 = 0.005;
 
@@ -88,9 +88,9 @@ fn run() -> Result<(), String> {
     // is integrated after Act 4 with the escape that the planner computes.
     let pre_timeline = integrate_timeline(&EVA07_PRE_DECISION_PHASES);
 
-    // P1's real terrain grid (H3 res 12): radio levels at the nodes and the T+105 planner.
-    let grid_path = repo_path(P1_GRID_PARQUET_REL);
-    println!("[GRID]   Loading P1 terrain grid {} ...", P1_GRID_PARQUET_REL);
+    // the real terrain grid (H3 res 12): radio levels at the nodes and the T+105 planner.
+    let grid_path = repo_path(GRID_PARQUET_REL);
+    println!("[GRID]   Loading terrain grid {} ...", GRID_PARQUET_REL);
     let load_start = std::time::Instant::now();
     let real_grid = load_grid(&grid_path)?;
     println!(
@@ -343,7 +343,7 @@ fn run() -> Result<(), String> {
 
     // 1. NLOS Radio Drop
     println!(
-        "\n[COMM] Base Habitat S-band link drops behind the terrain spur (P1 grid level, knife-edge diffraction):"
+        "\n[COMM] Base Habitat S-band link drops behind the terrain spur (terrain-grid level, knife-edge diffraction):"
     );
     println!(
         "       RSSI = {:.1} dBm (Threshold: {:.1} dBm)",
@@ -579,22 +579,22 @@ fn run() -> Result<(), String> {
         WP2_RAMP_SLOPE_DEG, wp2_cell.thermal_inertia_tiu
     );
     println!(
-        "        4. H4 (Radio shadow)    : S band {:.1} dBm < {:.0} dBm (P1 grid level at WP2)",
+        "        4. H4 (Radio shadow)    : S band {:.1} dBm < {:.0} dBm (terrain-grid level at WP2)",
         rssi_wp2, NLOS_RSSI_THRESHOLD_DBM
     );
 
-    // T+105 decision on P1's real terrain (H3 res 12, DTM CTX 20 m): same computation as
+    // T+105 decision on the real terrain (H3 res 12, DTM CTX 20 m): same computation as
     // `data/mission-scenarios/planner_walkback.json` (red_atlas_core::mission).
-    println!("\n[D* LITE] D* Lite evaluates the Walkback Limit Dual on P1 terrain...");
+    println!("\n[D* LITE] D* Lite evaluates the Walkback Limit Dual on the real terrain...");
     let dgs_start = std::time::Instant::now();
     let walkback_run = compute_t105_walkback(
         &real_grid,
-        P1_GRID_PARQUET_REL,
+        GRID_PARQUET_REL,
         Some(DECISION_CORRIDOR_HALF_WIDTH_M),
     )?;
     println!(
         "        - Corridor (+/-{:.0} m) extraction + planner graph + replanning: {:.1} ms \
-         (replanning alone: see p1_res12_decision_latency)",
+         (replanning alone: see res12_decision_latency)",
         DECISION_CORRIDOR_HALF_WIDTH_M,
         dgs_start.elapsed().as_secs_f64() * 1000.0
     );
@@ -605,7 +605,7 @@ fn run() -> Result<(), String> {
     let wp3_wp = &waypoints[3];
     let wp3_cell = *real_grid
         .get_cell(walkback_run.wp3_h3)
-        .ok_or("WP3 cell missing from the P1 grid")?;
+        .ok_or("WP3 cell missing from the terrain grid")?;
 
     println!("\n[METRICS] FIGURES USED BY THE DECISION (SPE envelope {:.1} mSv/h x cell SVF):", wb.spe_rate_envelope_msv_h);
     println!(
@@ -860,25 +860,25 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-/// Prints the EVA-07 milestones (power, O2 left, SPE dose) next to P1's reference timeline and
+/// Prints the EVA-07 milestones (power, O2 left, SPE dose) next to the pipeline's reference timeline and
 /// checks that O2 and dose agree within tolerance. Walkback times are reported, not forced.
 fn print_timeline_vs_p1(timeline: &[TimelineSample], wb: &WalkbackReport) -> Result<(), String> {
-    print_banner("TIMELINE", "EVA-07 MILESTONES vs P1 REFERENCE (eva07_events.json)");
-    let events: serde_json::Value = serde_json::from_str(P1_EVENTS_JSON)
-        .map_err(|e| format!("P1 eva07_events.json does not parse: {e}"))?;
+    print_banner("TIMELINE", "EVA-07 MILESTONES vs PIPELINE REFERENCE (eva07_events.json)");
+    let events: serde_json::Value = serde_json::from_str(REFERENCE_EVENTS_JSON)
+        .map_err(|e| format!("eva07_events.json does not parse: {e}"))?;
     let list = events["events"]
         .as_array()
-        .ok_or("P1 eva07_events.json has no events[] array")?;
+        .ok_or("eva07_events.json has no events[] array")?;
     println!(
         "  {:>5}  {:<24} {:>8} {:>8} {:>8} {:>9} {:>9}",
-        "T", "Milestone", "Power W", "O2 %", "P1 O2 %", "Dose mSv", "P1 mSv"
+        "T", "Milestone", "Power W", "O2 %", "Ref O2 %", "Dose mSv", "Ref mSv"
     );
     let mut max_o2_diff: f64 = 0.0;
     let mut max_dose_diff: f64 = 0.0;
     for event in list {
         let id = event["id"].as_str().unwrap_or("?");
         let field = |v: &serde_json::Value, name: &str| {
-            v.as_f64().ok_or_else(|| format!("P1 event {id}: missing numeric {name}"))
+            v.as_f64().ok_or_else(|| format!("eva07_events.json event {id}: missing numeric {name}"))
         };
         let t = field(&event["t_min"], "t_min")? as i32;
         let values = &event["values"];
@@ -896,29 +896,29 @@ fn print_timeline_vs_p1(timeline: &[TimelineSample], wb: &WalkbackReport) -> Res
         "  Max |diff|: O2 {:.3} pct-pt (tol {:.2}), SPE dose {:.4} mSv (tol {:.3})",
         max_o2_diff, O2_PCT_TOLERANCE, max_dose_diff, DOSE_MSV_TOLERANCE
     );
-    assert!(max_o2_diff < O2_PCT_TOLERANCE, "O2 timeline diverges from P1");
-    assert!(max_dose_diff < DOSE_MSV_TOLERANCE, "SPE dose timeline diverges from P1");
+    assert!(max_o2_diff < O2_PCT_TOLERANCE, "O2 timeline diverges from the pipeline reference");
+    assert!(max_dose_diff < DOSE_MSV_TOLERANCE, "SPE dose timeline diverges from the pipeline reference");
 
     let t105_ref = list
         .iter()
         .find(|ev| ev["id"] == "dynamic_goal_switching")
         .map(|ev| &ev["values"])
-        .ok_or("P1 eva07_events.json has no dynamic_goal_switching event")?;
-    println!("\n  Walkback at T+105 (engine: planner_walkback.json, which P1's validator reads):");
+        .ok_or("eva07_events.json has no dynamic_goal_switching event")?;
+    println!("\n  Walkback at T+105 (engine: planner_walkback.json, which the pipeline validator reads):");
     println!(
-        "    - To Base : {:>6.2} min over {:.0} m walked (P1 {:.1} min)",
+        "    - To Base : {:>6.2} min over {:.0} m walked (ref {:.1} min)",
         wb.base.time_min,
         wb.base.length_m,
         t105_ref["base_time_min"].as_f64().unwrap_or(f64::NAN)
     );
     println!(
-        "    - To WP3  : {:>6.2} min over {:.0} m walked (P1 {:.1} min)",
+        "    - To WP3  : {:>6.2} min over {:.0} m walked (ref {:.1} min)",
         wb.wp3.time_min,
         wb.wp3.length_m,
         t105_ref["wp3_time_min"].as_f64().unwrap_or(f64::NAN)
     );
     println!(
-        "    - T_vital {:.1} min (used to decide) | open-sky window {:.1} min (reference, P1 15 min)",
+        "    - T_vital {:.1} min (used to decide) | open-sky window {:.1} min (reference, canonical 15 min)",
         wb.t_vital_min, wb.open_sky_window_min
     );
     Ok(())

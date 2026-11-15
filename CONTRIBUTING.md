@@ -1,29 +1,40 @@
-# 🤝 Guía de Trabajo en Paralelo y Flujo en Git — Equipo Red Project
+# Cómo contribuir
 
-Para que los 3 integrantes del equipo trabajen a máxima velocidad durante el hackathon **sin conflictos de *merge***, cada miembro tiene asignados sus propios directorios de trabajo:
+## Estructura y responsables por área
 
----
+| Área | Documentación | Código y datos |
+| :--- | :--- | :--- |
+| Ciencia planetaria y datos | [`docs/01-planetary-science-mission/`](docs/01-planetary-science-mission/) | [`data/pipeline/`](data/pipeline/), [`data/nasa-layers/`](data/nasa-layers/), [`data/mission-scenarios/`](data/mission-scenarios/) |
+| Producto y UX | [`docs/02-product-ux-ui/`](docs/02-product-ux-ui/) | [`src/base-console/`](src/base-console/), [`src/eva-tactical-hud/`](src/eva-tactical-hud/) |
+| Arquitectura e IA | [`docs/03-system-architecture-ai/`](docs/03-system-architecture-ai/) | [`src/core-engine/`](src/core-engine/), [`src/shared/`](src/shared/) |
+| Entrega y pitch | [`docs/04-pitch-and-submission/`](docs/04-pitch-and-submission/) | [`assets/`](assets/) |
 
-## 👥 Asignación de Directorios por Rol
+## Reglas de los datos
 
-| Miembro | Rol Principal | Directorio de Documentación | Directorios de Código / Datos / Assets |
-| :--- | :--- | :--- | :--- |
-| **🧑‍🚀 Persona 1** | Ciencia Planetaria, Datasets NASA y Escenario Marswalk | [`docs/01-planetary-science-mission/`](./docs/01-planetary-science-mission/) | [`data/nasa-layers/`](./data/nasa-layers/), [`data/mission-scenarios/`](./data/mission-scenarios/) |
-| **🎨 Persona 2** | Producto, UX/UI y Sistema Visual Multicapa | [`docs/02-product-ux-ui/`](./docs/02-product-ux-ui/) | [`src/base-console/`](./src/base-console/), [`src/eva-tactical-hud/`](./src/eva-tactical-hud/), [`assets/mockups/`](./assets/mockups/) |
-| **⚙️ Persona 3** | Arquitectura Técnica, Motores GIS e IA Offline | [`docs/03-system-architecture-ai/`](./docs/03-system-architecture-ai/) | [`src/core-engine/`](./src/core-engine/), [`src/shared/`](./src/shared/), [`assets/diagrams/`](./assets/diagrams/) |
-| **🏆 Los 3 (Fase 4)** | Cierre, Pitch Deck, Vídeo y Formulario NASA | [`docs/04-pitch-and-submission/`](./docs/04-pitch-and-submission/) | [`assets/pitch/`](./assets/pitch/) |
+- **El motor Rust sobre el terreno real es la fuente de verdad.** Las cifras de decisión (Walkback, T_vital, Chaos Mode) se regeneran con `cargo run --release --bin export_mission_results` en `src/core-engine` y los documentos citan lo que exporta.
+- **Cada cifra lleva su procedencia:** [M] medida o publicada, [D] derivada por cálculo, [E] supuesto del escenario de diseño. No se inventan datos ni identificadores de producto.
+- Un cambio de cifra se hace en [`DATOS_CANONICOS.md`](docs/01-planetary-science-mission/DATOS_CANONICOS.md) y en los JSON de `data/mission-scenarios/`, y después se regeneran las salidas del pipeline.
 
----
+## Antes de subir cambios
 
-## 🔄 Comandos Rápidos de Sincronización en Git
+```bash
+cargo test --manifest-path src/shared/Cargo.toml
+```
 
-1. **Antes de empezar a editar tu entregable:**
-   ```bash
-   git pull origin main
-   ```
-2. **Al pegar los resultados de tu IA en tu archivo de entregable:**
-   ```bash
-   git add .
-   git commit -m "docs(p1/p2/p3): completar entregable con especificaciones de IA"
-   git push origin main
-   ```
+```bash
+cargo test --release --manifest-path src/core-engine/Cargo.toml
+```
+
+```bash
+cd data/pipeline && uv run pytest
+```
+
+```bash
+npm --prefix src/base-console run build
+```
+
+## Convenciones
+
+- Mensajes de commit con [Conventional Commits](https://www.conventionalcommits.org/): `feat(core-engine): …`, `fix(pipeline): …`, `docs: …`.
+- Documentación en español con ortografía completa; identificadores de código en inglés.
+- Diagramas en Mermaid embebido en Markdown.

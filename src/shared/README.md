@@ -1,8 +1,9 @@
 # 📐 `src/shared/` — Constantes Físicas Marcianas, Esquemas Comunes y Contratos Zenoh/ROS 2
 
 **Proyecto:** **R.E.D. ATLAS** (*Reconnaissance, EVA & Dynamic-survival Atlas*)  
-**Responsable de Especificación:** Persona 3 (Arquitectura e Integración) en coordinación con Persona 1 (Ciencia) y Persona 2 (UX/UI)  
-**Modalidad:** Especificación técnica compartida sin código fuente de programación (fuente única de verdad entre `core-engine/`, `base-console/` y `eva-tactical-hud/`).
+**Área:** Arquitectura e IA, con Ciencia planetaria y datos.  
+**Implementado:** el crate Rust `red-atlas-shared` ([`src/lib.rs`](src/lib.rs)) con las constantes físicas, umbrales, escenario EVA-07 y el struct `HexCellState64B`; sus tests comprueban que coinciden con el pipeline (`cargo test`).  
+**Diseño (no implementado todavía):** los contratos Zenoh / ROS 2 de la sección 3 y los consumidores CesiumJS, WASM y DuckDB Spatial que se citan como objetivo.
 
 ---
 
@@ -17,15 +18,15 @@ Todos los subsistemas (pipeline Python `GDAL`, motor en Rust `core-engine` nativ
 | **Radio Polar Marciano** | $R_{\text{pol}}$ | `3376.20` | $\text{km}$ | Elipsoide de Referencia **IAU Mars 2000** |
 | **Radio de Referencia (Escalado `h3o`)** | $R_{\text{Mars}}$ | `3396.19` (factor lineal $3396.19 / 6371.0088 = 0.5331\times$ Tierra; área $0.2842\times$) | $\text{km}$ | Esfera de referencia de los datos NASA (MOLA, `IAU_2015:49900`); `MARS_H3_REFERENCE_RADIUS_KM` |
 | **Datum Vertical de Referencia** | $z_0$ | Equipotencial MOLA ($0\text{ m}$) | $\text{m}$ | *MGS Mars Orbiter Laser Altimeter* |
-| **Presión Atmosférica Base (Melas Chasma)** | $P_{\text{atm}}$ | `7.08` ($708\text{ Pa}$ = $610\text{ Pa} \cdot e^{-z/11.1\text{ km}}$ a $-1.660\text{ m}$; columna de CO₂ $19.0\text{ g/cm}^2$) | $\text{mbar}$ | Bloque de emplazamiento `SURVIVAL_TRIANGLE_SITE` / `MELAS_BASE_PRESSURE_MBAR` (P1, DTM CTX 20 m) |
+| **Presión Atmosférica Base (Melas Chasma)** | $P_{\text{atm}}$ | `7.08` ($708\text{ Pa}$ = $610\text{ Pa} \cdot e^{-z/11.1\text{ km}}$ a $-1.660\text{ m}$; columna de CO₂ $19.0\text{ g/cm}^2$) | $\text{mbar}$ | Bloque de emplazamiento `SURVIVAL_TRIANGLE_SITE` / `MELAS_BASE_PRESSURE_MBAR` (DTM CTX 20 m) |
 | **Latencia de Comunicación Tierra-Marte** | $\Delta t_{\text{Earth}}$ | `182 – 1340` ($3.0\text{ – }22.3\text{ min}$) | $\text{s}$ | Distancia orbital mínima/máxima (justifica Edge Offline) |
-| **Masa Total Astronauta + Traje EVA** | $m_{\text{total}}$ | `170.0` ($80\text{ kg} + 90\text{ kg}$ traje con mochila de soporte vital) | $\text{kg}$ | Modelo metabólico de referencia de P1 (`D* Lite`) |
+| **Masa Total Astronauta + Traje EVA** | $m_{\text{total}}$ | `170.0` ($80\text{ kg} + 90\text{ kg}$ traje con mochila de soporte vital) | $\text{kg}$ | Modelo metabólico de referencia (`D* Lite`) |
 | **Equivalente Energético del Oxígeno** | $k_{O_2}$ | `20100` ($1\text{ L/min} = 335\text{ W}$) | $\text{J / L}_{O_2}\text{ (STPD)}$ | Conversión de tasa metabólica ($\text{W}$) a consumo $\dot{V}_{O_2}$ |
-| **Modelo Metabólico (P1)** | $\dot{M}$ | $120 + \eta \cdot 0.285 \cdot W v + W v \sin\theta / (0.25(1-s))$, $W = m_{\text{total}} g_M$; $\eta$ = 1,0 / 1,3 / 1,6 / 2,1 para TIU > 400 / 250–400 / 150–250 / < 150; sin crédito de pendiente en bajada | $\text{W}$ | Llano 1 m/s = 300 W; WP2 (22°, 0,55 m/s, $s = 0.30$) = 1.073 W = 3,2 L/min |
-| **Umbrales de Radio (enlace primario en banda S, 2,4 GHz)** | $\text{RSSI}$ | Verde $> -85$; ámbar $-85$ a $-100$; rojo $< -100$ (WP2 $-103$, WP3 $-108\text{ dBm}$ en la malla de P1) | $\text{dBm}$ | `eva_thresholds.json` (P1); `RADIO_PRIMARY_FREQ_MHZ` 2400, baliza UHF `RADIO_BEACON_FREQ_MHZ` 435 |
-| **Radiación SPE** | $\dot{D}_{\text{SPE}}$ | Pico de la envolvente `8` a cielo abierto; ámbar `0.05 – 1.0`; rojo $> 1.0$; presupuesto `2` mSv por EVA ($\Rightarrow 15\text{ min}$ a cielo abierto) | $\text{mSv/h}$ | Entregable 1 / `eva_thresholds.json` (P1) |
-| **Pendiente / Inercia Térmica** | $\theta$, $I$ | Pendiente ámbar 10–20°, rojo $> 20°$; TIU ámbar 150–400, rojo $< 150$ | °, TIU | `eva_thresholds.json` (P1) |
-| **Polvo y Viento** | $\tau$, $u$ | $\tau$ ámbar 1,0–2,0, rojo $> 2.0$ (escenario 0,7 → 2,4); viento ámbar 10–20, rojo $> 20$ m/s | —, m/s | `eva_thresholds.json` (P1) |
+| **Modelo Metabólico de referencia** | $\dot{M}$ | $120 + \eta \cdot 0.285 \cdot W v + W v \sin\theta / (0.25(1-s))$, $W = m_{\text{total}} g_M$; $\eta$ = 1,0 / 1,3 / 1,6 / 2,1 para TIU > 400 / 250–400 / 150–250 / < 150; sin crédito de pendiente en bajada | $\text{W}$ | Llano 1 m/s = 300 W; WP2 (22°, 0,55 m/s, $s = 0.30$) = 1.073 W = 3,2 L/min |
+| **Umbrales de Radio (enlace primario en banda S, 2,4 GHz)** | $\text{RSSI}$ | Verde $> -85$; ámbar $-85$ a $-100$; rojo $< -100$ (WP2 $-103$, WP3 $-108\text{ dBm}$ en la malla real) | $\text{dBm}$ | `eva_thresholds.json`; `RADIO_PRIMARY_FREQ_MHZ` 2400, baliza UHF `RADIO_BEACON_FREQ_MHZ` 435 |
+| **Radiación SPE** | $\dot{D}_{\text{SPE}}$ | Pico de la envolvente `8` a cielo abierto; ámbar `0.05 – 1.0`; rojo $> 1.0$; presupuesto `2` mSv por EVA ($\Rightarrow 15\text{ min}$ a cielo abierto) | $\text{mSv/h}$ | CIENCIA_Y_MISION.md / `eva_thresholds.json` |
+| **Pendiente / Inercia Térmica** | $\theta$, $I$ | Pendiente ámbar 10–20°, rojo $> 20°$; TIU ámbar 150–400, rojo $< 150$ | °, TIU | `eva_thresholds.json` |
+| **Polvo y Viento** | $\tau$, $u$ | $\tau$ ámbar 1,0–2,0, rojo $> 2.0$ (escenario 0,7 → 2,4); viento ámbar 10–20, rojo $> 20$ m/s | —, m/s | `eva_thresholds.json` |
 | **Margen de Seguridad *Walkback Limit*** | $\alpha_{\text{sec}}$ | `0.85` (15% reserva obligatoria) | adimensional | Regla determinista de *Dynamic Goal Switching* |
 
 ---
@@ -37,7 +38,7 @@ Para evitar divergencias entre el backend en **Rust**, el pipeline de **Python**
 | Formato Estándar | Entidad de Datos | Consumidores Principales | Contenido y Restricciones |
 | :--- | :--- | :--- | :--- |
 | **Cloud-Optimized GeoTIFF (`COG`)** | Rasters continuos de Melas Chasma (`MOLA/HRSC`, `HiRISE`, `THEMIS`, `CRISM`) | `CesiumJS`, `Three.js`, `Python GDAL` | Proyección IAU Mars 2000, pirámides internas (*overviews*) para *streaming* de teselas por rangos HTTP. |
-| **Apache Parquet + Struct 64B** | Vector de Estado Tensorial por celda hexagonal `h3o` (`Res 7–14`) | `Rust Core`, `DuckDB Spatial`, `WASM Spyglass` | 12 atributos físicos empaquetados (`u64` `h3_index` = índice H3 real de `h3o`, el mismo que el Parquet de P1; `f32` elevación, pendiente, TIU, $\% \text{H}_2\text{O}$, $\Psi_{\text{SVF}}$, RSSI, coste base) + `padding_crc` contra SEU. |
+| **Apache Parquet + Struct 64B** | Vector de Estado Tensorial por celda hexagonal `h3o` (`Res 7–14`) | `Rust Core`, `DuckDB Spatial`, `WASM Spyglass` | 12 atributos físicos empaquetados (`u64` `h3_index` = índice H3 real de `h3o`, el mismo que el Parquet de la malla; `f32` elevación, pendiente, TIU, $\% \text{H}_2\text{O}$, $\Psi_{\text{SVF}}$, RSSI, coste base) + `padding_crc` contra SEU. |
 | **GeoJSON (RFC 7946 adaptado)** | Nodos del *"Triángulo de Supervivencia"* y rutas exportadas (`A*` / `D* Lite`) | `React HUD`, `Tablet de Muñeca`, `ROS 2 rclrs` | Geometrías `Point` / `LineString` con propiedades de coste metabólico acumulado, dosis SPE esperada y tiempo estimado por tramo. |
 
 ---

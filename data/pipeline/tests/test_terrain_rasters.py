@@ -9,9 +9,9 @@ import rasterio
 from affine import Affine
 from rio_cogeo.cogeo import cog_validate
 
-from red_atlas_p1 import config
-from red_atlas_p1.terrain import overlay, reality, settings
-from red_atlas_p1.terrain.rasters import (Raster, from_array, read_cog, read_window, sample,
+from red_atlas_pipeline import config
+from red_atlas_pipeline.terrain import overlay, reality, settings
+from red_atlas_pipeline.terrain.rasters import (Raster, from_array, read_cog, read_window, sample,
                                           sample_raster, write_cog)
 
 R = config.MARS_RADIUS_M

@@ -86,7 +86,7 @@ export const PointList: React.FC<{ points: ReportedPoint[]; onRemove?: (id: numb
               <p className="t-label text-ink-3 num">
                 Celda: pendiente {fmt(p.cell.slope_deg, 1)}°, SVF {fmt(p.cell.sky_view_factor, 2)}
                 {p.kind === 'REFUGIO' ? (p.cell.dtm_shelter ? ' (la malla del terreno lo da como abrigo)' : ' (la malla del terreno lo da a cielo abierto)') : ''}
-                {p.kind === 'ISRU' ? `, H₂O ${p.cell.isru_h2o_pct === null ? 'sin dato en la malla' : `${fmt(p.cell.isru_h2o_pct, 1)} % (valor de escenario de P1, no medido)`}` : ''}
+                {p.kind === 'ISRU' ? `, H₂O ${p.cell.isru_h2o_pct === null ? 'sin dato en la malla' : `${fmt(p.cell.isru_h2o_pct, 1)} % (valor de escenario, no medido)`}` : ''}
               </p>
             )}
           </div>

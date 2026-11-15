@@ -2,7 +2,7 @@
 
 Las potencias de marcha salen del modelo con las pendientes reales del sitio reubicado y no
 hay ningún parámetro ajustado al O₂. Los porcentajes de O₂ por hito son una salida propia de
-la Persona 1: sus tests son de **regresión** (fijan el resultado actual). El de T+28 se
+el pipeline: sus tests son de **regresión** (fijan el resultado actual). El de T+28 se
 comprueba además a mano, con la fórmula escrita en el test.
 """
 import itertools
@@ -12,10 +12,10 @@ import math
 import pyarrow.parquet as pq
 import pytest
 
-from red_atlas_p1.scenario import constants as K
-from red_atlas_p1.scenario import engine_results as eng
-from red_atlas_p1.scenario import export
-from red_atlas_p1.scenario import timeline as tl
+from red_atlas_pipeline.scenario import constants as K
+from red_atlas_pipeline.scenario import engine_results as eng
+from red_atlas_pipeline.scenario import export
+from red_atlas_pipeline.scenario import timeline as tl
 
 O2_TOL_PCT = 0.1      # el canónico da el O₂ con un decimal
 DOSE_TOL_MSV = 0.05

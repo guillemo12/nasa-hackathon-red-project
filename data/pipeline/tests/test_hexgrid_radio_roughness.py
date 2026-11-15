@@ -7,15 +7,15 @@ import numpy as np
 import pytest
 from affine import Affine
 
-from red_atlas_p1 import config
-from red_atlas_p1.hexgrid import layers as hl
-from red_atlas_p1.hexgrid import radio
-from red_atlas_p1.hexgrid.layers import planar_residual_std
-from red_atlas_p1.scenario import constants as K
-from red_atlas_p1.scenario.radio import fspl_db, received_dbm
-from red_atlas_p1.scenario.thresholds import load_specs
-from red_atlas_p1.terrain import derive
-from red_atlas_p1.terrain.rasters import Raster
+from red_atlas_pipeline import config
+from red_atlas_pipeline.hexgrid import layers as hl
+from red_atlas_pipeline.hexgrid import radio
+from red_atlas_pipeline.hexgrid.layers import planar_residual_std
+from red_atlas_pipeline.scenario import constants as K
+from red_atlas_pipeline.scenario.radio import fspl_db, received_dbm
+from red_atlas_pipeline.scenario.thresholds import load_specs
+from red_atlas_pipeline.terrain import derive
+from red_atlas_pipeline.terrain.rasters import Raster
 
 needs_cogs = pytest.mark.skipif(bool(hl.missing_inputs()), reason="faltan los COG de build/cog")
 
@@ -170,7 +170,7 @@ def test_rugosidad_real_en_la_ruta():
 # --- umbrales en el JSON ---------------------------------------------------------------
 def test_umbrales_nuevos_legibles_por_el_validador():
     specs = load_specs()
-    from red_atlas_p1.scenario.thresholds import classify
+    from red_atlas_pipeline.scenario.thresholds import classify
     assert {"shelter_sky_view_factor", "isru_h2o_wt_pct"} <= set(specs)
     assert classify("shelter_sky_view_factor", 0.20) == "VERDE"
     assert classify("shelter_sky_view_factor", 0.21) == "ROJO"

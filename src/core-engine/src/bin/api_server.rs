@@ -1,7 +1,7 @@
 //! Dynamic HTTP API Server for R.E.D. ATLAS (`red-atlas-core`).
 //!
-//! Serves P1's canonical data (`data/mission-scenarios/*.json`, `data/nasa-layers/*.parquet`)
-//! and P3's Rust engines (`GuardrailFsm`, `MetabolicDStarPlanner`, `run_chaos_mode_monte_carlo`,
+//! Serves the canonical data (`data/mission-scenarios/*.json`, `data/nasa-layers/*.parquet`)
+//! and the Rust engines (`GuardrailFsm`, `MetabolicDStarPlanner`, `run_chaos_mode_monte_carlo`,
 //! `H3MarsGrid`) over HTTP on `127.0.0.1:3001` for `src/base-console/`.
 //!
 //! Every figure comes from the data files or from `red_atlas_shared`; nothing is hard-coded to
@@ -24,7 +24,7 @@ use red_atlas_core::reported_points::{
 use red_atlas_core::mission::{
     chaos_corridor_cells, repo_path, CHAOS_CORRIDOR_RES, CHAOS_MODE_JSON_REL, CHAOS_SEED,
     CHAOS_SOLAR_HOUR, CHAOS_TRIALS, DECISION_BATTERY_REMAINING_MIN, DECISION_LCVG_REMAINING_MIN,
-    DECISION_WIND_M_S, P1_GRID_PARQUET_REL, PLANNER_WALKBACK_JSON_REL,
+    DECISION_WIND_M_S, GRID_PARQUET_REL, PLANNER_WALKBACK_JSON_REL,
 };
 use red_atlas_core::neuro_symbolic::GuardrailFsm;
 use red_atlas_core::stochastic_hazard::run_chaos_mode_monte_carlo;
@@ -43,7 +43,7 @@ const EVENTS_JSON_REL: &str = "data/mission-scenarios/eva07_events.json";
 const GEOJSON_REL: &str = "data/mission-scenarios/triangulo_supervivencia.geojson";
 const LAYERS_CATALOG_REL: &str = "data/nasa-layers/layers_catalog.json";
 const GRID_RES9_REL: &str = "data/nasa-layers/hexgrid_route_res9_hexcell64b.parquet";
-/// Orbital texture of the 3D twin and its provenance (`red_atlas_p1.terrain.ortho_texture`).
+/// Orbital texture of the 3D twin and its provenance (`red_atlas_pipeline.terrain.ortho_texture`).
 const ORTHO_PNG_REL: &str = "data/nasa-layers/ortho_ctx_6m_route.png";
 const ORTHO_JSON_REL: &str = "data/nasa-layers/ortho_ctx_6m_route.json";
 /// Most points the API keeps at once (the planner replans every leg they touch).
@@ -56,7 +56,7 @@ const GEOJSON_FALLBACK: &str =
 
 /// Mars sol / Earth day: Earth minutes are divided by this to get Mars local minutes.
 const MARS_SOL_OVER_EARTH_DAY: f64 = 88_775.244 / 86_400.0;
-/// LMST at T+0 (P1: departure 14:45 LMST), in Mars local minutes.
+/// LMST at T+0 (canonical: departure 14:45 LMST), in Mars local minutes.
 const DEPARTURE_LMST_MIN: f64 = 14.0 * 60.0 + 45.0;
 /// Spacing of the terrain heightfield served to the 3D twin, m: the posting of the CTX DTM
 /// (20 m), so the mesh neither drops nor invents relief.
@@ -272,7 +272,7 @@ fn sha256_hex(data: &[u8]) -> String {
 /// Digest of the files the pre-EVA `bundle_sync` would carry (`src/shared/README.md` §3):
 /// the res-12 `h3o` sub-grid, the route GeoJSON and the EVA-07 scenario.
 fn compute_bundle() -> Bundle {
-    let rels = [P1_GRID_PARQUET_REL, GEOJSON_REL, EVENTS_JSON_REL];
+    let rels = [GRID_PARQUET_REL, GEOJSON_REL, EVENTS_JSON_REL];
     let mut all = Vec::new();
     let mut files = Vec::new();
     for rel in rels {
@@ -285,11 +285,11 @@ fn compute_bundle() -> Bundle {
 }
 
 // ============================================================================
-// EVA-07 timeline sampling (P1 `eva07_events.json`: events + phases)
+// EVA-07 timeline sampling (`eva07_events.json`: events + phases)
 // ============================================================================
 
 /// Local Mean Solar Time `hh:mm` at `t_min` Earth minutes from departure (truncated to the
-/// minute, as P1 writes it in `eva07_events.json`).
+/// minute, as the pipeline writes it in `eva07_events.json`).
 fn format_lmst(t_min: f64) -> String {
     let mars_min = (DEPARTURE_LMST_MIN + t_min / MARS_SOL_OVER_EARTH_DAY).rem_euclid(24.0 * 60.0);
     let whole = (mars_min + 1e-9).floor() as i64;
@@ -382,7 +382,7 @@ fn location_at(phases: &[Value], t: f64) -> Location {
     }
 }
 
-/// P1 node ids (`node_id` of the GeoJSON, `location` / `goal` of the phases), in the order of
+/// Canonical node ids (`node_id` of the GeoJSON, `location` / `goal` of the phases), in the order of
 /// `SURVIVAL_TRIANGLE_SITE`.
 const NODE_IDS: [&str; 4] = ["BASE", "WP1", "WP2", "WP3"];
 /// Index of the WP2 node (the 22° scenario ramp) in `SURVIVAL_TRIANGLE_SITE`.
@@ -427,7 +427,7 @@ fn state_code(state: SafetyGuardrailState) -> (&'static str, &'static str) {
 /// - Text fields, radio, dust and viability: last milestone at or before `t` (two milestones
 ///   share T+105: at exactly T+105 the first one titles the instant).
 /// - Metabolic power, O2 rate, active threats, location and goal: the phase that contains `t`
-///   (P1's phases are steps, not ramps).
+///   (the pipeline phases are steps, not ramps).
 /// - O2 left and accumulated doses: integrated from the last milestone with the phase rates and
 ///   the SPE profiles of the JSON (`spe_profile_comparison`), so every milestone is reproduced.
 /// - Walkback times, routes and O2 needs: linear between milestones (the astronaut is walking);
@@ -546,7 +546,7 @@ fn sample_eva07(doc: &Value, t_target: f64) -> Option<Value> {
     let (target_bearing, target_dist_m) = match goal_i {
         Some(g) if !at_goal && lat.is_finite() => {
             let site = &SURVIVAL_TRIANGLE_SITE[g];
-            // Leg bearing of P1 where the astronaut is on (or at the start of) a canonical leg.
+            // Canonical leg bearing where the astronaut is on (or at the start of) a canonical leg.
             let leg = from_i.and_then(|a| leg_between(a, g));
             let bearing = match leg {
                 Some(l) => SURVIVAL_TRIANGLE_LEGS[l].bearing_deg as f64,
@@ -565,7 +565,7 @@ fn sample_eva07(doc: &Value, t_target: f64) -> Option<Value> {
         _ => (f64::NAN, 0.0),
     };
 
-    // Terrain under the astronaut for the guardrail (P1's own phase model): node values at a
+    // Terrain under the astronaut for the guardrail (the pipeline's own phase model): node values at a
     // node (the 22° ramp at WP2), leg grade and mean TIU of the two nodes on a leg.
     let (cell_slope, cell_tiu, cell_svf) = match (from_i, to_i) {
         (Some(a), Some(b)) if a == b => {
@@ -611,7 +611,7 @@ fn sample_eva07(doc: &Value, t_target: f64) -> Option<Value> {
             rssi_dbm: f(&values, "radio_rssi_dbm") as f32,
         };
         let dose = f(&values, "dose_spe_msv") as f32;
-        // P1 gives no time model for cooling water or battery: the engine only has their
+        // The canonical data give no time model for cooling water or battery: the engine only has their
         // autonomy at the T+105 decision. They are passed as those fixed inputs (the guardrail
         // does not read them) and are left out of T_vital, which here is O2 and radiation.
         let telemetry = PlssTelemetry {
@@ -760,7 +760,7 @@ fn place_on_planned_route(smp: &mut Value, plan: &Value) {
 }
 
 // ============================================================================
-// Terrain, hex grid, Spyglass and routes on P1's real grid
+// Terrain, hex grid, Spyglass and routes on the real grid
 // ============================================================================
 
 fn load_aoi(grid9: &H3MarsGrid) -> Aoi {
@@ -791,7 +791,7 @@ fn load_aoi(grid9: &H3MarsGrid) -> Aoi {
 fn build_terrain_json(state: &AppState) -> String {
     let aoi = state.aoi;
     let (grid, res, source): (&H3MarsGrid, u8, &str) = match &state.grid12 {
-        Some(g) => (g, 12, P1_GRID_PARQUET_REL),
+        Some(g) => (g, 12, GRID_PARQUET_REL),
         None => (&state.grid9, 9, GRID_RES9_REL),
     };
     let m_per_deg_lat = MARS_RADIUS_M.to_radians();
@@ -844,7 +844,7 @@ fn build_terrain_json(state: &AppState) -> String {
         "h3_res": res,
         "grid_cells": grid.len(),
         "crs": "IAU_2015:49900",
-        "note": "Cada nodo toma sin interpolar los atributos de la celda H3 que lo contiene. Cota, pendiente, SVF y RSSI derivan del DTM CTX de 20 m; TIU y H2O solo existen en las zonas de escenario [E] de P1.",
+        "note": "Cada nodo toma sin interpolar los atributos de la celda H3 que lo contiene. Cota, pendiente, SVF y RSSI derivan del DTM CTX de 20 m; TIU y H2O solo existen en las zonas de escenario [E].",
         "aoi": { "lat_min": aoi.lat_min, "lat_max": aoi.lat_max, "lon_e_min": aoi.lon_min, "lon_e_max": aoi.lon_max },
         "rows": rows,
         "cols": cols,
@@ -871,7 +871,7 @@ fn build_terrain_json(state: &AppState) -> String {
     .to_string()
 }
 
-/// The res-9 cells of P1 with their real H3 hexagon outlines.
+/// The res-9 cells of the terrain grid with their real H3 hexagon outlines.
 fn build_hexgrid_json(state: &AppState) -> String {
     let mut cells: Vec<&HexCellState64B> = state.grid9.cells.values().collect();
     cells.sort_unstable_by_key(|c| c.h3_index);
@@ -1090,7 +1090,7 @@ fn point_label(points: &[ReportedPoint], id: u32) -> String {
     points.iter().find(|p| p.id == id).map_or_else(|| format!("punto {id}"), |p| p.label.clone())
 }
 
-/// D* Lite plan of every canonical leg on P1's res-12 terrain at the sustained pace, under
+/// D* Lite plan of every canonical leg on the real res-12 terrain at the sustained pace, under
 /// nominal conditions (τ 0.7, GCR only), with the HAZARD points reported from the EVA.
 /// `spe_envelope_dose_msv` is what the same path would cost under the 8 mSv/h design envelope
 /// (rate × SVF of each cell walked).
@@ -1193,7 +1193,7 @@ fn compute_route_plan(
     }
     let plan = json!({
         "engine": "MetabolicDStarPlanner::plan_path (red-atlas-core, Rust)",
-        "grid": { "path": P1_GRID_PARQUET_REL, "resolution": grid.res, "cells": grid.len(),
+        "grid": { "path": GRID_PARQUET_REL, "resolution": grid.res, "cells": grid.len(),
                   "planner_fingerprint": format!("{:016x}", grid.planner_fingerprint()) },
         "pace": { "speed_cap_mps": weights.pace.speed_cap_mps, "power_cap_w": weights.pace.power_cap_w },
         "conditions": "nominales: τ 0,7, solo GCR, ritmo de retorno sostenido",
@@ -1297,7 +1297,7 @@ fn emergency_json(grid: &H3MarsGrid, points: &[ReportedPoint], version: u64) -> 
         "engine": "t105_decision_with_reports (red-atlas-core, Rust): Walkback Limit Dual en WP2 con WP3 y los refugios marcados",
         "points_version": version,
         "decision_t_min": red_atlas_shared::EVA07_DECISION_T_MIN,
-        "rule": format!("Primero los refugios que la malla del terreno confirma (SVF de la celda ≤ {}, el mismo que usa el modelo de dosis; en WP3 es el valor de escenario de P1) y, entre ellos, el de menor tiempo de escape al ritmo de emergencia; si empatan, WP3. Un refugio marcado que la malla da a cielo abierto solo se usa si no se puede llegar a ninguno confirmado. Con peligros marcados, las rutas se buscan en toda la malla y rodean sus zonas.", es_num(SHELTER_SVF_MAX as f64)),
+        "rule": format!("Primero los refugios que la malla del terreno confirma (SVF de la celda ≤ {}, el mismo que usa el modelo de dosis; en WP3 es el valor de escenario) y, entre ellos, el de menor tiempo de escape al ritmo de emergencia; si empatan, WP3. Un refugio marcado que la malla da a cielo abierto solo se usa si no se puede llegar a ninguno confirmado. Con peligros marcados, las rutas se buscan en toda la malla y rodean sus zonas.", es_num(SHELTER_SVF_MAX as f64)),
         "canonical_note": "La cronología EVA-07, la orden de voz y la tarjeta de evacuación siguen el escenario canónico (refugio WP3); este bloque es la redecisión del motor con los puntos marcados.",
         "uses_reported_shelter": chosen.reported,
         "chosen_id": chosen.id,
@@ -1375,7 +1375,7 @@ fn points_json(state: &AppState) -> Value {
     })
 }
 
-/// P1's route GeoJSON with the per-leg figures the shared contract asks for
+/// The route GeoJSON with the per-leg figures the shared contract asks for
 /// (`src/shared/README.md` §2): metabolic cost, expected SPE dose and estimated time.
 fn enriched_geojson(state: &AppState) -> Value {
     let mut out = state.geojson.clone();
@@ -1419,7 +1419,7 @@ fn enriched_geojson(state: &AppState) -> Value {
                 props.insert(
                     "planner".into(),
                     json!({
-                        "engine": "D* Lite metabólico (red-atlas-core) sobre la malla H3 res 12 de P1",
+                        "engine": "D* Lite metabólico (red-atlas-core) sobre la malla H3 res 12 del terreno real",
                         "conditions": "nominales: τ 0,7, solo GCR, ritmo sostenido (1,0 m/s y 585 W de tope)",
                         "walked_length_m": l.get("length_m"),
                         "estimated_time_min": l.get("time_min"),
@@ -1441,7 +1441,7 @@ fn enriched_geojson(state: &AppState) -> Value {
                 "route_plan_available": plan.is_some(),
                 "points_version": plan.and_then(|p| p.get("points_version")).cloned().unwrap_or(Value::Null),
                 "reported_points": plan.and_then(|p| p.get("reported_points")).cloned().unwrap_or(json!([])),
-                "grid_parquet": P1_GRID_PARQUET_REL,
+                "grid_parquet": GRID_PARQUET_REL,
                 "bundle_sha256": state.bundle.sha256_hex,
                 "bundle_bytes": state.bundle.bytes,
                 "bundle_files": state.bundle.files,
@@ -1679,11 +1679,11 @@ fn main() {
     let events_doc = read_json(EVENTS_JSON_REL, Some(EVENTS_JSON_FALLBACK)).expect("valid eva07_events.json");
     let geojson = read_json(GEOJSON_REL, Some(GEOJSON_FALLBACK)).expect("valid triangulo_supervivencia.geojson");
 
-    let grid9 = H3MarsGrid::load_p1_parquet(repo_path(GRID_RES9_REL)).expect("load P1 res-9 parquet");
-    println!("[api_server] Malla P1 res 9: {} celdas ({GRID_RES9_REL})", grid9.len());
-    let grid12 = match H3MarsGrid::load_p1_parquet(repo_path(P1_GRID_PARQUET_REL)) {
+    let grid9 = H3MarsGrid::load_grid_parquet(repo_path(GRID_RES9_REL)).expect("load res-9 terrain grid parquet");
+    println!("[api_server] Malla de terreno res 9: {} celdas ({GRID_RES9_REL})", grid9.len());
+    let grid12 = match H3MarsGrid::load_grid_parquet(repo_path(GRID_PARQUET_REL)) {
         Ok(g) => {
-            println!("[api_server] Malla P1 res 12: {} celdas ({P1_GRID_PARQUET_REL})", g.len());
+            println!("[api_server] Malla de terreno res 12: {} celdas ({GRID_PARQUET_REL})", g.len());
             Some(Arc::new(g))
         }
         Err(e) => {
@@ -1768,7 +1768,7 @@ mod tests {
     }
 
     #[test]
-    fn lmst_reproduces_every_p1_milestone() {
+    fn lmst_reproduces_every_canonical_milestone() {
         let doc = events_doc();
         for e in doc["events"].as_array().unwrap() {
             assert_eq!(format_lmst(f(e, "t_min")), s(e, "lmst"), "T{:+}", f(e, "t_min"));
@@ -1776,7 +1776,7 @@ mod tests {
     }
 
     #[test]
-    fn sampling_reproduces_every_p1_milestone() {
+    fn sampling_reproduces_every_canonical_milestone() {
         let doc = events_doc();
         for e in doc["events"].as_array().unwrap() {
             let t = f(e, "t_min");

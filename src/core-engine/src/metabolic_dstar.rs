@@ -1,8 +1,8 @@
-//! Metabolic D* Lite Pathplanner, P1 reference metabolic cost function (the function keeps its
+//! Metabolic D* Lite Pathplanner, Reference metabolic cost function (the function keeps its
 //! historical name `pandolf_mars_metabolic_watts`, but it is no longer a Pandolf model),
 //! Walkback Limit Dual calculator, and Dynamic Goal Switching for R.E.D. ATLAS.
 //!
-//! Implements Sections 3.2-3.4 of `docs/03-system-architecture-ai/ENTREGABLE_3_ARQUITECTURA_E_IA.md`.
+//! Implements Sections 3.2-3.4 of `docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md`.
 
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
@@ -24,9 +24,9 @@ const WIND_DRAG_BETA: f64 = 0.05;
 const LOW_TIU_REGOLITH_THRESHOLD: f32 = LOW_TIU_TRAP_THRESHOLD;
 const CRITICAL_SLOPE_THRESHOLD_DEG: f64 = CRITICAL_SLOPE_DEG as f64;
 /// Upper bound for the slip fraction `s`. The model divides by `1 - s`, which diverges as
-/// `s -> 1`; slips above 0.95 are clamped to 0.95 instead of producing infinite power. P1's
+/// `s -> 1`; slips above 0.95 are clamped to 0.95 instead of producing infinite power. the pipeline's
 /// validator raises an error only for `s >= 1`, so the two differ only for `0.95 < s < 1`
-/// (e.g. s = 0.99: 4,163 W here vs 19,879 W in P1), far outside any scenario value (0.30).
+/// (e.g. s = 0.99: 4,163 W here vs 19,879 W in the pipeline), far outside any scenario value (0.30).
 const MAX_SLIP_FRACTION: f64 = 0.95;
 const RADIATION_SWITCH_RATIO: f64 = 0.35;
 const MIN_SVF: f64 = 0.05;
@@ -154,11 +154,11 @@ pub struct WalkbackDecision {
     pub wp3_path: Option<PathResult>,
 }
 
-/// THEMIS-derived terrain factor `\eta(I)` (P1 reference bands):
-/// 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150). At the exact boundaries P1's
+/// THEMIS-derived terrain factor `\eta(I)` (reference bands):
+/// 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150). At the exact boundaries the pipeline's
 /// `eta_from_tiu` takes the softer band: 400 -> 1.3, 250 -> 1.6, 150 -> 1.6.
 ///
-/// A cell without TIU (`CELL_NO_DATA`, most of P1's grid) uses `TIU_NO_DATA_ASSUMED` (mid band,
+/// A cell without TIU (`CELL_NO_DATA`, most of the real grid) uses `TIU_NO_DATA_ASSUMED` (mid band,
 /// eta 1.3) explicitly; before, NaN failed every comparison and fell into the softest band (2.1).
 pub fn soil_sinkage_eta(thermal_inertia_tiu: f32) -> f64 {
     let tiu = or_assumed(thermal_inertia_tiu, TIU_NO_DATA_ASSUMED);
@@ -173,14 +173,14 @@ pub fn soil_sinkage_eta(thermal_inertia_tiu: f32) -> f64 {
     }
 }
 
-/// Suited metabolic power on Mars (Watts), P1 reference model:
+/// Suited metabolic power on Mars (Watts), reference model:
 ///
 /// `M = 120 + eta * 0.285 * W * v + W * v * sin(theta) / (0.25 * (1 - s))`,
 /// with `W = TOTAL_EVA_MASS_KG * MARS_GRAVITY` and `s` the slip fraction.
 ///
 /// Flat firm ground (`> 400 TIU`, `0 deg`, `1.0 m/s`, `s = 0`) gives ~300 W (~0.90 L/min O2);
 /// the WP2 ramp (`22 deg`, `110 TIU`, `0.55 m/s`, `s = 0.30`) gives ~1073 W (~3.2 L/min O2).
-/// Downhill the model credits no climbing work (P1: the climbing term is zero for negative
+/// Downhill the model credits no climbing work (reference model: the climbing term is zero for negative
 /// grades; the eccentric cost of descending is not modelled), so costs stay non-negative.
 ///
 /// No data: a NaN slope, speed or slip returns NaN (explicit "no data"), never the level-ground
@@ -223,7 +223,7 @@ pub fn dust_visibility_factor(dust_tau: f32) -> f64 {
     1.0 / (1.0 + 0.15 * (tau - 0.5).max(0.0))
 }
 
-/// Pace rule shared with P1's metabolic model: the highest speed (m/s) that satisfies both the
+/// Pace rule shared with the pipeline's metabolic model: the highest speed (m/s) that satisfies both the
 /// speed cap of `pace` (times the dust visibility factor when the profile says so) and its
 /// metabolic power cap, given the edge grade (deg, signed), terrain TIU and slip fraction.
 /// The model is linear in speed, so the power-limited speed is `(cap - 120) / (dM/dv)`.
@@ -316,7 +316,7 @@ fn cell_gradient(c: &HexCellState64B) -> Option<(f64, f64)> {
 /// transitability, or `None` if the edge is unknown terrain.
 ///
 /// With a bearing and slope + aspect on both cells, the grade is the directional derivative of
-/// the DTM along the edge: the mean downhill gradient of the two cells (P1's slope is a Horn 3x3
+/// the DTM along the edge: the mean downhill gradient of the two cells (the pipeline slope is a Horn 3x3
 /// on the 20 m DTM, i.e. a 40 m base) projected on the bearing, and transitability uses the
 /// cell slope attribute. This removes the staircase of a 20 m DTM sampled on ~5 m cells, where
 /// neighbor `dz` is either 0 or a full pixel step. Without them (hand-made test graphs, cells
@@ -1168,15 +1168,15 @@ mod tests {
 
     #[test]
     fn test_soil_sinkage_eta_values() {
-        // P1 bands: 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150).
+        // Reference bands: 1.0 (> 400 TIU), 1.3 (250-400), 1.6 (150-250), 2.1 (< 150).
         assert!((soil_sinkage_eta(420.0) - 1.0).abs() < 1e-9);
         assert!((soil_sinkage_eta(400.0) - 1.3).abs() < 1e-9);
-        // Exact boundaries follow P1's `eta_from_tiu` (softer band): 250 -> 1.6, 150 -> 1.6.
+        // Exact boundaries follow the pipeline's `eta_from_tiu` (softer band): 250 -> 1.6, 150 -> 1.6.
         assert!((soil_sinkage_eta(250.0) - 1.6).abs() < 1e-9);
         assert!((soil_sinkage_eta(250.1) - 1.3).abs() < 1e-9);
         assert!((soil_sinkage_eta(150.0) - 1.6).abs() < 1e-9);
         assert!((soil_sinkage_eta(149.9) - 2.1).abs() < 1e-9);
-        // P1 validator: level ground at 1.0 m/s on exactly 250 TIU = 408.43 W.
+        // Pipeline validator: level ground at 1.0 m/s on exactly 250 TIU = 408.43 W.
         assert!((pandolf_mars_metabolic_watts(0.0, 250.0, 1.0, 0.0) - 408.433).abs() < 1e-3);
         assert!((soil_sinkage_eta(320.0) - 1.3).abs() < 1e-9);
         assert!((soil_sinkage_eta(200.0) - 1.6).abs() < 1e-9);
@@ -1248,7 +1248,7 @@ mod tests {
         let v = max_speed_under_caps(15.0, 365.0, 0.0, &PACE_EMERGENCY_ESCAPE, DUST_TAU_STORM);
         assert!(v < ESCAPE_SPEED_CAP_MPS);
         assert!((pandolf_mars_metabolic_watts(15.0, 365.0, v, 0.0) - ESCAPE_POWER_CAP_W).abs() < 1e-6);
-        // P1 post-peak pace on the WP2 ramp (22 deg, 110 TIU, s 0.30) regulated to 585 W: 0.268 m/s.
+        // Reference post-peak pace on the WP2 ramp (22 deg, 110 TIU, s 0.30) regulated to 585 W: 0.268 m/s.
         let v = max_speed_under_caps(22.0, 110.0, 0.30, &PACE_SUSTAINED_RETURN, 0.4);
         assert!((v - 0.268).abs() < 0.001, "{v}");
         assert!((pandolf_mars_metabolic_watts(22.0, 110.0, v, 0.30) - RETURN_POWER_CAP_W).abs() < 1e-6);
@@ -1259,7 +1259,7 @@ mod tests {
 
     #[test]
     fn test_pandolf_flat_basalt_vs_wp2_regolith_trap() {
-        // P1 reference values: flat firm ground at 1.0 m/s = 300 W (0.90 L/min).
+        // Reference values: flat firm ground at 1.0 m/s = 300 W (0.90 L/min).
         let flat_watts = pandolf_mars_metabolic_watts(0.0, 420.0, 1.0, 0.0);
         let flat_o2 = metabolic_o2_rate_l_min(flat_watts);
         assert!(
@@ -1271,7 +1271,7 @@ mod tests {
             "Flat basalt O2 rate should be ~0.90 L/min, got {flat_o2}"
         );
 
-        // P1 shared peak: WP2 22 deg, 110 TIU, 0.55 m/s, 30% slip = 1073 W = 3.2 L/min.
+        // Shared canonical peak: WP2 22 deg, 110 TIU, 0.55 m/s, 30% slip = 1073 W = 3.2 L/min.
         let wp2_watts = pandolf_mars_metabolic_watts(
             22.0,
             110.0,
@@ -1291,7 +1291,7 @@ mod tests {
         // Downhill earns no climbing credit: a descent costs the same as level walking.
         let descent = pandolf_mars_metabolic_watts(-25.0, 420.0, 1.0, 0.0);
         assert!((descent - flat_watts).abs() < 1e-9);
-        // P1 escape to WP3 at 1.25 m/s downhill: 593.2 W on the 110 TIU bank, 412.9 W after.
+        // Reference escape to WP3 at 1.25 m/s downhill: 593.2 W on the 110 TIU bank, 412.9 W after.
         assert!((pandolf_mars_metabolic_watts(-5.26, 110.0, 1.25, 0.0) - 593.2).abs() < 0.1);
         assert!((pandolf_mars_metabolic_watts(-5.26, 365.0, 1.25, 0.0) - 412.9).abs() < 0.1);
     }
@@ -1476,7 +1476,7 @@ mod tests {
         assert_eq!(path_nom.expect("base path").path_h3.last().copied(), Some(10));
 
         // T+105 min 4-hazard scenario:
-        // H1 dust tau=2.4 + wind 28 m/s, H2 SPE 8 mSv/h (P1 envelope peak), H3 110 TIU/22 deg,
+        // H1 dust tau=2.4 + wind 28 m/s, H2 SPE 8 mSv/h (design envelope peak), H3 110 TIU/22 deg,
         // H4 NLOS -125 dBm.
         let t105_hazards = ActiveHazards {
             h1_dust_storm: true,

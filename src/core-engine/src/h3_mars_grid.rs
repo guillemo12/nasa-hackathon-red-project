@@ -1,10 +1,10 @@
 //! H3 Mars 2000 Hierarchical Hexagonal Grid & Melas Chasma Synthetic Corridor.
 //!
-//! Implements Section 2 of `docs/03-system-architecture-ai/ENTREGABLE_3_ARQUITECTURA_E_IA.md`
+//! Implements Section 2 of `docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md`
 //! and `src/shared/README.md`.
 //!
 //! Features:
-//! - Real H3 indices (crate `h3o`, the same cells as the `h3` 4.x library used by P1's pipeline).
+//! - Real H3 indices (crate `h3o`, the same cells as the `h3` 4.x library used by the data pipeline).
 //!   H3 is a spherical grid; on Mars the topology is unchanged and every metric is rescaled to the
 //!   MOLA reference sphere (IAU_2015:49900, R = 3,396.19 km): lengths by `H3_MARS_LINEAR_SCALE`
 //!   (≈ 0.5331) and areas by `H3_MARS_AREA_SCALE` (≈ 0.2842). Geodesic distances are the
@@ -12,7 +12,7 @@
 //! - Public coordinates stay planetocentric latitude and **East longitude 0-360** (IAU/PDS, as in
 //!   `red_atlas_shared`); the conversion to H3's −180..180 longitude happens inside this module.
 //! - 6-neighbor topology (5 at pentagons), k-ring neighborhoods and Martian geodesic distances.
-//! - `H3MarsGrid` spatial index: P1 Parquet loader (`load_p1_parquet`) for the real terrain grid
+//! - `H3MarsGrid` spatial index: Terrain-grid Parquet loader (`load_grid_parquet`) for the real terrain grid
 //!   (`data/nasa-layers/hexgrid_route_res12_hexcell64b.parquet`) and the synthetic Melas Chasma
 //!   survival corridor (Base, WP1, WP2, WP3) used by the EVA-07 demo.
 //! - WebGPU/Three.js 3-sector Spyglass slice query (CRISM water, THEMIS trap, MOLA slope/SVF/RSSI).
@@ -50,7 +50,7 @@ pub const MELAS_CENTER_LON_DEG: f64 = SITE_REFERENCE_LON_DEG;
 /// Mars reference sphere radius in meters (3,396,190 m, MOLA / IAU_2015:49900).
 pub const MARS_RADIUS_M: f64 = MARS_H3_REFERENCE_RADIUS_KM * 1000.0;
 
-/// P1 scenario zone radii in m (`data/nasa-layers/SCHEMA_HEXGRID.md`, section 4).
+/// Scenario zone radii in m (`data/nasa-layers/SCHEMA_HEXGRID.md`, section 4).
 const BASE_WP1_TIU_ZONE_M: f64 = 100.0;
 const WP2_TIU_ZONE_M: f64 = 150.0;
 const WP3_ALCOVE_ZONE_M: f64 = 40.0;
@@ -73,7 +73,7 @@ pub struct MarsGridResolution {
 
 /// Returns the mean edge length and area of an H3 resolution on Mars: the `h3o` (Earth) means
 /// times `H3_MARS_LINEAR_SCALE` and `H3_MARS_AREA_SCALE`. Resolution 12 gives 5.77 m / 87.3 m²,
-/// resolution 9 gives 107.0 m / 29,932 m², matching P1's `SCHEMA_HEXGRID.md` §2.
+/// resolution 9 gives 107.0 m / 29,932 m², matching the pipeline's `SCHEMA_HEXGRID.md` §2.
 /// Resolutions above 15 do not exist in H3 and return `NaN` metrics.
 pub fn resolution_metrics(res: u8) -> MarsGridResolution {
     let (edge_len_m, area_m2) = match Resolution::try_from(res) {
@@ -196,7 +196,7 @@ pub fn haversine_dist_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 }
 
 /// Deterministic 32-bit horizon id for Canyon-TRN derived from the H3 index (FNV-1a over its
-/// little-endian bytes). P1 has no equivalent and ships 0; the engine fills it on load.
+/// little-endian bytes). The pipeline has no equivalent and ships 0; the engine fills it on load.
 pub fn horizon_hash_for_cell(h3: u64) -> u32 {
     let mut hash: u32 = 0x811C_9DC5;
     for byte in h3.to_le_bytes() {
@@ -235,7 +235,7 @@ fn grid_line(start: CellIndex, end: CellIndex) -> Vec<CellIndex> {
 /// - Right Sector (120°): `themis_trap_cells` (H3, thermal_inertia_tiu)
 /// - Left Sector (120°): `mola_slope_svf_cells` (H3, slope_deg, sky_view_factor, los_base_rssi_dbm)
 ///
-/// Values are copied as stored: `CELL_NO_DATA` (NaN) means P1 has no value for that cell.
+/// Values are copied as stored: `CELL_NO_DATA` (NaN) means the pipeline has no value for that cell.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpyglassTriSectorSlice {
     pub center_h3: u64,
@@ -245,10 +245,10 @@ pub struct SpyglassTriSectorSlice {
 }
 
 // ============================================================================
-// 4. P1 Parquet loader errors
+// 4. Terrain-grid Parquet loader errors
 // ============================================================================
 
-/// Error while loading P1's `HexCellState64B` Parquet table.
+/// Error while loading the `HexCellState64B` Parquet table.
 #[derive(Debug)]
 pub enum GridLoadError {
     Io(std::io::Error),
@@ -376,22 +376,22 @@ impl H3MarsGrid {
         self.cells.values()
     }
 
-    /// Loads P1's `HexCellState64B` table (`data/nasa-layers/hexgrid_route_res*_hexcell64b.parquet`).
+    /// Loads the `HexCellState64B` table (`data/nasa-layers/hexgrid_route_res*_hexcell64b.parquet`).
     ///
     /// - `h3_index` must be a real H3 cell and all rows must share one resolution.
     /// - Parquet `NULL` in the `f32` columns becomes `CELL_NO_DATA` (NaN), never 0.
-    /// - `hazard_bitmask` is kept as computed by P1 (P1 thresholds, NLOS from geometric LOS).
-    /// - A non-null value from P1 is kept as is; fields that are NULL / 0 in the table are filled
+    /// - `hazard_bitmask` is kept as computed by the pipeline (canonical thresholds, NLOS from geometric LOS).
+    /// - A non-null value from the pipeline is kept as is; fields that are NULL / 0 in the table are filled
     ///   by the engine's own models:
-    ///   `los_base_rssi_dbm` (P1 ships its knife-edge diffraction level, NULL only where the
+    ///   `los_base_rssi_dbm` (the pipeline ships its knife-edge diffraction level, NULL only where the
     ///   cell has no elevation) = `primary_link_rssi_dbm(distance to the Base, LOS = !NLOS flag)`,
     ///   a different, flat 40 dB model;
-    ///   `base_metabolic_cost` (always NULL in P1) = level-ground cost at 1.0 m/s with the cell
+    ///   `base_metabolic_cost` (always NULL in the pipeline output) = level-ground cost at 1.0 m/s with the cell
     ///   TIU (NaN TIU uses the documented `TIU_NO_DATA_ASSUMED`);
-    ///   `horizon_hash_id` (always 0 in P1) = `horizon_hash_for_cell`.
-    ///   `roughness_hi` is P1's value (NULL where slope is NULL).
+    ///   `horizon_hash_id` (always 0 in the pipeline output) = `horizon_hash_for_cell`.
+    ///   `roughness_hi` is the pipeline's value (NULL where slope is NULL).
     /// - `padding_crc` is resealed by `insert`.
-    pub fn load_p1_parquet(path: impl AsRef<Path>) -> Result<Self, GridLoadError> {
+    pub fn load_grid_parquet(path: impl AsRef<Path>) -> Result<Self, GridLoadError> {
         let file = std::fs::File::open(path.as_ref())?;
         let reader = SerializedFileReader::new(file)?;
         let n_rows = reader.metadata().file_metadata().num_rows().max(0) as usize;
@@ -429,15 +429,15 @@ impl H3MarsGrid {
                     "roughness_hi" => cell.roughness_hi = field_f32_or_no_data(n, field)?,
                     "isru_h2o_pct" => cell.isru_h2o_pct = field_f32_or_no_data(n, field)?,
                     "sky_view_factor" => cell.sky_view_factor = field_f32_or_no_data(n, field)?,
-                    // P1 knife-edge level; NULL only in cells without elevation (filled below).
+                    // Pipeline knife-edge level; NULL only in cells without elevation (filled below).
                     "los_base_rssi_dbm" => {
                         cell.los_base_rssi_dbm = field_f32_or_no_data(n, field)?
                     }
-                    // Today always NULL in P1 (depends on speed and slip); filled below if missing.
+                    // Today always NULL in the pipeline output (depends on speed and slip); filled below if missing.
                     "base_metabolic_cost" => {
                         cell.base_metabolic_cost = field_f32_or_no_data(n, field)?
                     }
-                    // Today always 0 in P1; filled below if 0.
+                    // Today always 0 in the pipeline output; filled below if 0.
                     "horizon_hash_id" => cell.horizon_hash_id = field_u32(n, field)?,
                     "hazard_bitmask" => {
                         let v = field_u32(n, field)?;
@@ -528,7 +528,7 @@ impl H3MarsGrid {
     /// Sub-grid with the cells whose centers lie within `half_width_m` (great circle, measured in
     /// a local tangent plane at `origin`) of any straight segment `origin -> destination`.
     /// Used to bound the D* Lite search at the T+105 decision; the corridor width is a planner
-    /// parameter and `tests/p1_hexgrid.rs` checks that it does not change the optimal routes.
+    /// parameter and `tests/terrain_grid.rs` checks that it does not change the optimal routes.
     pub fn corridor_around(&self, origin: u64, destinations: &[u64], half_width_m: f64) -> Self {
         let mut out = Self::new(self.res);
         let (lat0, lon0) = h3_to_lat_lon(origin);
@@ -632,7 +632,7 @@ impl H3MarsGrid {
         }
     }
 
-    /// Spyglass ("Lupa") query by metric radius with the three geometric 120° sectors of P1's
+    /// Spyglass ("Lupa") query by metric radius with the three geometric 120° sectors of the pipeline's
     /// `SCHEMA_HEXGRID.md` §8, by bearing from the center cell: North 300°-60° -> hydration
     /// (`crism_water_cells`), Right 60°-180° -> thermal inertia (`themis_trap_cells`),
     /// Left 180°-300° -> slope / SVF / radio (`mola_slope_svf_cells`). The center cell goes to
@@ -711,10 +711,10 @@ impl H3MarsGrid {
     /// - **WP3 (Cliff Shelter)**: Alcove under an overhang on a 20.1° talus, Sky View Factor 0.15
     ///   (scenario, <= 0.20; 0.76 on the DTM), 85% SPE radiation attenuation, NLOS.
     ///
-    /// Scenario zone radii follow P1 (`data/nasa-layers/SCHEMA_HEXGRID.md`): TIU discs of 100 m
+    /// Scenario zone radii follow the canonical data (`data/nasa-layers/SCHEMA_HEXGRID.md`): TIU discs of 100 m
     /// (Base, WP1), 150 m (WP2) and 40 m (WP3); water disc of 100 m (WP1); alcove disc of 40 m.
-    /// Cells outside every zone keep P3's synthetic background values. For real terrain use
-    /// `load_p1_parquet`.
+    /// Cells outside every zone keep the engine's synthetic background values. For real terrain use
+    /// `load_grid_parquet`.
     ///
     /// Every generated cell is sealed with `seal_crc()` to enable SEU bit-flip detection.
     pub fn generate_melas_chasma_corridor(res: u8) -> Self {
@@ -789,14 +789,14 @@ impl H3MarsGrid {
                 + w_wp3 * (wp3_wp.elev_m as f64))
                 / sum_w) as f32;
 
-            // 2. CRISM Structural Water ISRU (% by mass): P1 scenario disc of 100 m at WP1.
+            // 2. CRISM Structural Water ISRU (% by mass): scenario disc of 100 m at WP1.
             let isru_h2o_pct = if c == wp1_cell || d_wp1 < WP1_WATER_ZONE_M {
                 wp1_wp_site.h2o_wt_pct
             } else {
                 1.2
             };
 
-            // 3. Thermal Inertia Units (TIU): P1 scenario discs around the nodes.
+            // 3. Thermal Inertia Units (TIU): scenario discs around the nodes.
             let thermal_inertia_tiu = if c == wp2_cell || d_wp2 < WP2_TIU_ZONE_M {
                 wp2_site.thermal_inertia_tiu
             } else if c == base_cell || d_base < BASE_WP1_TIU_ZONE_M {
@@ -825,7 +825,7 @@ impl H3MarsGrid {
                 7.0
             };
 
-            // 5. Primary S-band level to the Base (dBm): P1 link budget; WP2 / WP3 zones have no
+            // 5. Primary S-band level to the Base (dBm): canonical link budget; WP2 / WP3 zones have no
             //    geometric line of sight (DTM margins -24.7 m and -28.2 m).
             let nlos_zone = (!wp2_site.radio_los_base && d_wp2 < 150.0)
                 || (!wp3_site.radio_los_base && d_wp3 < 80.0);
@@ -847,7 +847,7 @@ impl H3MarsGrid {
             let roughness_hi = if d_wp2 < 120.0 { 0.45 } else { 0.10 };
 
             // 9. Base Metabolic Cost
-            // P1 model at the nominal 1.0 m/s on level ground with the cell TIU, without slip
+            // Reference model at the nominal 1.0 m/s on level ground with the cell TIU, without slip
             // (the planner recomputes the directed cost per edge).
             let base_metabolic_cost =
                 pandolf_mars_metabolic_watts(0.0, thermal_inertia_tiu, 1.0, 0.0) as f32;
@@ -902,7 +902,7 @@ impl H3MarsGrid {
 mod tests {
     use super::*;
 
-    /// P1 `SCHEMA_HEXGRID.md` §7: node cells computed by the `h3` Python library.
+    /// `SCHEMA_HEXGRID.md` §7: node cells computed by the `h3` Python library.
     const P1_NODE_CELLS_RES12: [u64; 4] =
         [0x8c8f591152cb1ff, 0x8c8f5911c103dff, 0x8c8f5911eaabdff, 0x8c8f5911e823bff];
     const P1_NODE_CELLS_RES9: [u64; 4] =
@@ -910,7 +910,7 @@ mod tests {
 
     #[test]
     fn test_mars_resolution_metrics_scaling() {
-        // Mean metrics of h3o rescaled to Mars (P1 SCHEMA_HEXGRID.md §2: 5.77 m / 87.3 m² at
+        // Mean metrics of h3o rescaled to Mars (SCHEMA_HEXGRID.md §2: 5.77 m / 87.3 m² at
         // res 12, 107.03 m / 29,932 m² at res 9).
         let r12 = resolution_metrics(12);
         assert_eq!(r12.res, 12);

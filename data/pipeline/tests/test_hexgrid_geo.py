@@ -6,8 +6,8 @@ import math
 import h3
 import pytest
 
-from red_atlas_p1 import config
-from red_atlas_p1.hexgrid import geo
+from red_atlas_pipeline import config
+from red_atlas_pipeline.hexgrid import geo
 
 NODES = config.scenario_nodes()
 LEGS = config.scenario_legs()

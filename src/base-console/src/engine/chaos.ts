@@ -6,7 +6,7 @@
 //   1. la pasada la ha ejecutado el motor Rust y ha terminado todas las simulaciones;
 //   2. el cambio automático al refugio no empeora el retorno directo a la Base;
 //   3. el resultado con refugio es compatible (3 σ de error de muestreo) con la referencia
-//      exportada por P1 (`chaos_mode_results.json`).
+//      exportada por el motor (`chaos_mode_results.json`).
 import { CHAOS_REFERENCE } from '@/data/missionData';
 import type { ChaosRun, ChaosState } from '@/types/mission';
 
@@ -41,11 +41,11 @@ export function certify(run: ChaosRun): Certification {
   const shelterNotWorse = r.survived_with_wp3_shelter >= r.survived_base_only;
   const completed = r.trials === run.trials && r.trials > 0;
   const authorized = completed && shelterNotWorse && consistentWithReference;
-  let reason = 'Ruta autorizada: el cambio al refugio protege la misión y la pasada cuadra con la referencia de P1.';
+  let reason = 'Ruta autorizada: el cambio al refugio protege la misión y la pasada cuadra con la referencia exportada.';
   if (!completed) reason = 'La pasada no ha terminado todas las simulaciones.';
   else if (!shelterNotWorse) reason = 'El cambio al refugio da peor resultado que volver a la Base: hay que volver al trazado.';
   else if (!consistentWithReference)
-    reason = 'La pasada se aparta de la referencia de P1 más de 3 σ: hay que revisar el trazado o repetirla.';
+    reason = 'La pasada se aparta de la referencia exportada más de 3 σ: hay que revisar el trazado o repetirla.';
   return {
     authorized,
     completed,

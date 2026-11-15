@@ -1,6 +1,6 @@
 //! Regenerates the engine's versioned mission results:
 //!
-//! - `data/mission-scenarios/planner_walkback.json`: T+105 Walkback Limit Dual on P1's real
+//! - `data/mission-scenarios/planner_walkback.json`: T+105 Walkback Limit Dual on the real
 //!   res-12 terrain (routes, times, mean speed and power, O2, projected SPE dose, T_vital, open-sky
 //!   window, pace parameters, grid fingerprint).
 //! - `data/mission-scenarios/chaos_mode_results.json`: 10,000 seeded Chaos Mode trials.
@@ -19,15 +19,15 @@ use std::process::ExitCode;
 
 use red_atlas_core::mission::{
     compute_chaos_export, compute_t105_walkback, json_mismatch, load_grid, repo_path, to_json,
-    CHAOS_MODE_JSON_REL, DECISION_CORRIDOR_HALF_WIDTH_M, P1_GRID_PARQUET_REL,
+    CHAOS_MODE_JSON_REL, DECISION_CORRIDOR_HALF_WIDTH_M, GRID_PARQUET_REL,
     PLANNER_WALKBACK_JSON_REL,
 };
 
 fn run(check: bool) -> Result<bool, String> {
-    let grid = load_grid(&repo_path(P1_GRID_PARQUET_REL))?;
+    let grid = load_grid(&repo_path(GRID_PARQUET_REL))?;
     let walkback = compute_t105_walkback(
         &grid,
-        P1_GRID_PARQUET_REL,
+        GRID_PARQUET_REL,
         Some(DECISION_CORRIDOR_HALF_WIDTH_M),
     )?;
     let outputs = [

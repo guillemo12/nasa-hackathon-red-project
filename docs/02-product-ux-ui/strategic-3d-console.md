@@ -1,10 +1,13 @@
-# R.E.D. ATLAS — ESPECIFICACIÓN DE INGENIERÍA UX/UI (SECCIÓN 3)
+# R.E.D. ATLAS — Especificación UX/UI de la consola de Base
 ## Consola Estratégica 3D de Base de Hábitat (Melas Base Alpha)
 **Challenge:** Interplanetary Survival Guide: Martian Map (NASA Space Apps)  
 **Sistema:** Consola Táctica de Hábitat y Gemelo Digital 3D (Aris Thorne - SAGAT 3)  
 **Stack Tecnológico:** TypeScript + React + CesiumJS (3D Tiles / DEM) + Three.js (WebGL/WebGPU Custom Shaders) + TailwindCSS + Rust (WebAssembly / WASM)  
 **Datos y Comunicaciones:** Cloud-Optimized GeoTIFF (COG), GeoJSON, Apache Parquet / JSON, Malla Hexagonal `h3o`, Eclipse Zenoh (hacia nodo `rclrs` del traje)  
 **Normativa Aplicada:** NASA-STD-3001 (Human Integration Design) & ISO 9241-210
+
+
+> **Documento de diseño.** Describe la experiencia prevista; el stack citado arriba es el objetivo de arquitectura. La consola implementada y sus diferencias están en [`PRODUCTO_UX_UI.md`](PRODUCTO_UX_UI.md). Las cifras de misión siguen [`DATOS_CANONICOS.md`](../01-planetary-science-mission/DATOS_CANONICOS.md); los valores dentro de los wireframes son ilustrativos.
 
 ---
 
@@ -27,10 +30,10 @@
 | +---------------------------+ | |                                     /    \                                                 | | [D] ISÓCRONA WALKBACK DUAL   | |
 | | METEOROLOGÍA & ORBITAL    | | |                   +----------------(  WP3  )-----------------+                             | | +----------------------------+ |
 | | • Viento: 14.2 m/s NW     | | |                   |   Oquedad Basáltica Refugio SPE          |                             | | | Consumo Límite: 62% [NOM]  | |
-| | • Opacidad Tau: 0.42      | | |                   |   [Overburden >5.2m // Prot. 99.4%]      |                             | | | [=======>        ] 1.8h Mgn| |
+| | • Opacidad Tau: 0.42      | | |                   |   [Cornisa [E] // Protección 85 %]      |                             | | | [=======>        ] 1.8h Mgn| |
 | | • Próx. Pase MRO: 44 min  | | |                   +------------------------------------------+                             | | | Retorno PNR: 02:44 MET     | |
 | | • NLOS Canyon: BLOQUEADO  | | |                                        /                                                   | | +----------------------------+ |
-| +---------------------------+ | |                                       / (Vector Escape 680m)                               | | [E] SYNC ECLIPSE ZENOH     | |
+| +---------------------------+ | |                                       / (Vector Escape 595m)                               | | [E] SYNC ECLIPSE ZENOH     | |
 | | SELECTOR MODO LUPA        | | |                       +------------(  WP2  )-------------+                                 | | +----------------------------+ |
 | | ( ) Modo X-Ray 1 Capa     | | |                       | Escarpe Falla Peligrosa          |                                 | | | GeoJSON + Parquet / h3o    | |
 | | (*) Lupa Tri-Sector 120°  | | |                       | Talud 23.4° // Peligro Slip >20° |                                 | | | Checksum: 0x9F4A [ZENOH]   | |
@@ -107,7 +110,7 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 3. **Sector Izquierdo (Azimut 240° a 360°) — Sensor MOLA/HiRISE DTM + Sky View Factor (Topografía y Blindaje SPE):**
    * **Propósito:** Análisis micro-topográfico de escarpes y cálculo del *Sky View Factor* (SVF, fracción visible de la bóveda celeste) para protección radiológica pasiva.
    * **Representación Visual:** Las pendientes $> 20^\circ$ se marcan con sombreado de rayas de advertencia (*hazard stripes*). Las zonas con SVF $< 0.15$ (oquedades y covachas con $> 5\text{ m}$ de roca basáltica en el techo que ocluyen el 85% del cielo) se renderizan en **Verde Esmeralda de Refugio (`#00FFA3`)**.
-   * **Aplicación en WP3:** Confirma que la oquedad basáltica de la pared norte neutraliza el flujo de radiación SPE en un $99.4\%$.
+   * **Aplicación en WP3:** Confirma que la oquedad basáltica de la pared norte reduce la dosis SPE en torno a un 85 % (alcoba con cornisa, SVF 0,15; supuesto de escenario [E]).
 
 #### Micro-Interacciones de la Lupa Spyglass:
 * **Foco Variable:** Giro de la rueda del trackball/mouse expande el radio de la lente de $100\text{ px}$ a $400\text{ px}$ sobre el terreno.
@@ -122,7 +125,7 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 
 ```text
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
-| TRAYECTORIA (GEOJSON): BASE ALPHA -> WP1 (2.4 km) -> WP2 (1.8 km) -> WP3 (0.68 km) | TOTAL: 4.88 km | TIEMPO: 3h 14m | RETORNO CRÍTICO: 02h 44m           |
+| TRAYECTORIA (GEOJSON): BASE ALPHA -> WP1 (1,5 km) -> WP2 (1,2 km) -> WP3 (0,6 km) | PERÍMETRO: 4,9 km | LLEGADA A WP3: T+114 | VENTANA SPE: 15 min                 |
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
 | (A) PERFIL DE ELEVACIÓN Y TALUD [EJE Y: COTA -3.420m A -3.210m // EJE X: DISTANCIA 0 a 5.0 km]                                                           |
 | Elev.                                                                                                                                                     |
@@ -130,10 +133,10 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 |         |                                                            /\                                                                                   |
 | -3.300m |                                 (WP1) Depósito Sulfatos   /  \                (WP3) Oquedad Refugio (-3.340m)                                   |
 |         |                                       _..---''           /    \               +-----------------+                                               |
-| -3.400m |  [Base Alpha]                   _..-''                  /      \______________| >5m Basalto     |                                               |
+| -3.400m |  [Base Alpha]                   _..-''                  /      \______________| Cornisa [E]     |                                               |
 |         |  o----------------------------''                       /                      +-----------------+                                               |
 |         +--+----------------------------------+------------------+-------------------------------+----------------------------------------------------+   |
-|         0.0 km                                2.4 km             4.2 km                          4.88 km                                              Dist|
+|         0,0 km                                1,5 km             2,7 km                          3,3 km                                               Dist|
 | Pendiente:  1.2°                              4.8°               23.4° [NO-GO >20°]              3.1°                                                     |
 | Terreno:    Regolito Compacto                 Sulfato Masivo     Polvo Suelto <150 TIU           Lecho Basáltico                                          |
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
@@ -154,19 +157,19 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 |                                                                                                                                                           |
 | [ !!! INICIAR STRESS-TEST CHAOS MODE !!! ]  ==> ESTADO: CERTIFICACIÓN COMPLETADA (100/100 SEMILLAS EN RUST WASM)                                          |
 |                                                                                                                                                           |
-| • P(Supervivencia por Retorno a Base):  0.6 % [FALLO CATASTRÓFICO POR DOSIS SPE EXCESIVA EN CAMINO ASCENDENTE (64 MINUTOS A CIELO ABIERTO)]             |
-| • P(Supervivencia por Egress a Refugio WP3): 99.4 % [CERTIFICADO NASA STD-3001 // TIEMPO MARCHA FORZADA: 8 MINUTOS // DOSIS RESIDUAL < 0.08 mSv]         |
+| • Misión segura solo con Retorno a Base: 23,8 % [48 MIN Y 2,15 KM: DOSIS DE DECISIÓN 5,30 mSv > REGLA DE 2 mSv]             |
+| • Misión segura con cambio a Refugio WP3: 96,0 % [MARCHA 9,4 MIN // 595 m // DOSIS DE DECISIÓN 0,89 mSv]         |
 |                                                                                                                                                           |
 | DISTRIBUCIÓN DE PROBABILIDAD DE SUPERVIVENCIA EN REFUGIO WP3:                                                                                             |
 |                                                   +----+                                                                                                  |
 |                                                   |    |                                                                                                  |
 |                                                   |    |                                                                                                  |
 |                                              +----+    |                                                                                                  |
-|                                              |    |    |  +----+   [Media u = 99.4% // Sigma o = 0.28%]                                                   |
+|                                              |    |    |  +----+   [10.000 simulaciones // semilla 42]                                                   |
 |                                         +----+    |    |  |    |                                                                                          |
 |                                    +----+    |    |    |  |    |   RESULTADO: RUTA AUTORIZADA PARA DESPLIEGUE                                             |
 |        ----+----+----+----+----+----+----+----+----+----+----+----+                                                                                       |
-|       94%  95%  96%  97%  98%  99% 99.4% 100% Supervivencia                                                                                               |
+|       0%   20%  40%  60%  80% 96,0% 100% Misión segura                                                                                                 |
 +-----------------------------------------------------------------------------------------------------------------------------------------------------------+
 ```
 
@@ -177,36 +180,36 @@ La **Lupa Spyglass Tri-Sectorial** resuelve el mayor cuello de botella en cartog
 El botón **"Chaos Mode"** ejecuta a velocidad nativa en el navegador un motor en **Rust compilado a WebAssembly (WASM)** basado en Procesos de Poisson no homogéneos y Cadenas de Markov de 100 iteraciones concurrentes. Modela los tres riesgos fatales combinados de Melas Chasma:
 
 1. **Inyección de Tormenta de Polvo Catabática:** Caída de visibilidad a $< 3.8\text{ m}$ y aumento del coeficiente de fricción por regolito aerotransportado.
-2. **Evento de Partículas Solares (SPE Spike):** Dosis ionizante masiva a $1.420\text{ protones/cm}^2/\text{s}$ con techo letal de $100\text{ mSv}$ alcanzable en $26\text{ minutos}$ a cielo abierto.
+2. **Evento de Partículas Solares (SPE Spike):** Envolvente de diseño de \text{ mSv/h} cielo abierto: la regla de vuelo de \text{ mSv} EVA se agota en \text{ minutos}575
 3. **Pérdida de Enlace RF (NLOS Absoluto):** Caída a cero de enlaces satelitales por oclusión contra las paredes de 7 km del cañón.
 
 ```mermaid
 flowchart TD
-    Init[Operador Pulsa 'Chaos Mode'] --> Spawn[Generación de 100 Escenarios Estocásticos Monte Carlo]
+    Init[Operador Pulsa 'Chaos Mode'] --> Spawn[Generación de 10.000 Escenarios Monte Carlo (100 visibles)]
     
     subgraph INYECCION_PERTURBACIONES ["Inyección de Perturbaciones (Poisson / Markov)"]
-        P1[Viento Catabático > 35 m/s]
-        P2[Pico Radiación SPE > 1.420 p/cm²/s]
-        P3[Corte Total de Radio NLOS]
-        P4[Talud > 20° con Falla Mecánica Traje]
+        PERT1[Viento Catabático > 35 m/s]
+        PERT2[Pico SPE de 8 mSv/h a cielo abierto]
+        PERT3[Corte Total de Radio NLOS]
+        PERT4[Talud > 20° con Falla Mecánica Traje]
     end
     
-    Spawn --> P1
-    Spawn --> P2
-    Spawn --> P3
-    Spawn --> P4
+    Spawn --> PERT1
+    Spawn --> PERT2
+    Spawn --> PERT3
+    Spawn --> PERT4
     
-    P1 & P2 & P3 & P4 --> SimEngine[Motor Cinemático & Metabólico D* Lite]
+    PERT1 & PERT2 & PERT3 & PERT4 --> SimEngine[Motor Cinemático & Metabólico D* Lite]
     
     subgraph EVALUACION_VECTORES ["Evaluación Comparativa de Vectores de Egress"]
-        V_Base[Vector Retorno a Base: 4.2 km asc.<br/>Tiempo: 64 min<br/>Dosis Recibida: 240 mSv<br/><b>P(Sobrevivir) = 0.6% [LETAL]</b>]
-        V_WP3[Vector Egress a Refugio WP3: 680 m<br/>Tiempo: 8 min marcha forzada<br/>Blindaje Basalto: > 5 m<br/><b>P(Sobrevivir) = 99.4% [SEGURO]</b>]
+        V_Base["Vector Retorno a Base: 2,15 km<br/>Tiempo: 48 min<br/>Dosis de decisión: 5,30 mSv<br/><b>NO VIABLE: supera la regla de 2 mSv</b>"]
+        V_WP3["Vector a Refugio WP3: 595 m<br/>Tiempo: 9,4 min<br/>Blindaje 85 % (alcoba con cornisa)<br/><b>VIABLE: 0,89 mSv</b>"]
     end
     
     SimEngine --> V_Base
     SimEngine --> V_WP3
     
-    V_Base --> Compare{¿Ruta Cumple Requisitos NASA-STD-3001?}
+    V_Base --> Compare{"¿Cabe en la regla de 2 mSv por EVA?"}
     V_WP3 --> Compare
     
     Compare -- No hacia Base --> BlockBase[Bloqueo de Retorno Directo en Emergencia]
@@ -225,9 +228,9 @@ flowchart TD
 ```
 
 #### Respuesta de Interfaz tras pulsar "Chaos Mode":
-1. **Feedback Visual Inmediato:** El gemelo 3D proyecta una simulación cinemática acelerada en color ámbar durante 1.2 segundos mostrando 100 trazas dispersas de partículas de escape calculadas en **Rust WASM**.
-2. **Visualización de la Bifurcación:** El vector de retorno a Base Alpha se pinta instantáneamente en **Rojo Carmesí (`#FF1744`) con etiqueta parpadeante `ABORTED // LETHAL DOSE TIME: 26 MIN`**, demostrando empíricamente que intentar regresar al hábitat durante un SPE mataría a la astronauta por exposición a radiación ionizante antes de llegar a la esclusa.
-3. **Validación Triunfal de WP3:** El vector de desvío hacia la cavidad basáltica WP3 brilla en **Verde Bio-Seguro (`#00FFA3`)** con la certificación `SURVIVAL: 99.4% [PROTECTED] // SPE DOSE AT CAVITY < 0.08 mSv`.
+1. **Feedback Visual Inmediato:** El gemelo 3D proyecta una simulación cinemática acelerada en color ámbar durante 1.2 segundos mostrando 100 de las 10.000 trazas calculadas por el motor **Rust**.
+2. **Visualización de la Bifurcación:** El vector de retorno a Base Alpha se pinta instantáneamente en **Rojo Carmesí (`#FF1744`) con la etiqueta `NO VIABLE // 48 MIN > VENTANA DE 15 MIN`**: volver a la Base supone 5,30 mSv de dosis de decisión, por encima de la regla de 2 mSv por EVA. La radiación sola no es letal de forma aguda; el riesgo viene de la combinación de amenazas.
+3. **Validación Triunfal de WP3:** El vector de desvío hacia la cavidad basáltica WP3 brilla en **Verde Bio-Seguro (`#00FFA3`)** con la etiqueta `VIABLE // 9,4 MIN // 0,89 mSv` y el resultado del Chaos Mode: 96,0 % de misión segura con el refugio frente a 23,8 % solo con la Base.
 4. **Desbloqueo y Sincronización Eclipse Zenoh:** Se exporta el plan en **GeoJSON** + malla **`h3o`** en **Apache Parquet**, se genera el hash SHA-256 y el botón interactivo principal pasa de ámbar a **Cian Brillante (`#00F5D4`)**: `[ SYNC VÍA ECLIPSE ZENOH A NODO RCLRS DEL TRAJE ]`.
 
 ---
@@ -248,7 +251,7 @@ flowchart TD
     Spyglass --> SectorL["&lt;SectorMolaSVF /&gt; 240°-360°"]
 
     RightPanel --> SuitMonitor["&lt;SuitTelemetryCard /&gt;"]
-    RightPanel --> ChaosSim["&lt;ChaosModeSimulatorWasm /&gt;<br/>(Bridge Rust WASM: 100 Escenarios Poisson/Markov)"]
+    RightPanel --> ChaosSim["&lt;ChaosModeSimulatorWasm /&gt;<br/>(Motor Rust: 10.000 escenarios Poisson/Markov)"]
     RightPanel --> ZenohSync["&lt;ZenohSuitSync /&gt;<br/>(Publicación Eclipse Zenoh -> ROS 2 rclrs)"]
 
     BottomPanel --> DStarWasm["&lt;DStarMetabolicWasm /&gt;<br/>(Cálculo Walkback Limit Dual en Rust WASM)"]

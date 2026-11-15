@@ -1,10 +1,10 @@
 # 🛰️ `data/` — Catálogo de Datasets NASA y Escenarios de Misión
 
-Datos, esquemas y código del pipeline científico de la **Persona 1 (Ciencia)**, consumidos por el motor en Rust de la **Persona 3** y por la consola (Fase 4). La explicación científica está en [`docs/01-planetary-science-mission/ENTREGABLE_1_CIENCIA_Y_MISION.md`](../docs/01-planetary-science-mission/ENTREGABLE_1_CIENCIA_Y_MISION.md).
+Datos, esquemas y código del pipeline científico, consumidos por el motor en Rust y por la consola de Base. La explicación científica está en [`docs/01-planetary-science-mission/CIENCIA_Y_MISION.md`](../docs/01-planetary-science-mission/CIENCIA_Y_MISION.md).
 
 | Carpeta | Contenido |
 | :--- | :--- |
-| [`pipeline/`](pipeline/README.md) | Paquete Python `red_atlas_p1` (gestionado con `uv`) que lee los productos reales de la NASA y genera todo lo demás: módulos `terrain`, `scenario` y `hexgrid` |
+| [`pipeline/`](pipeline/README.md) | Paquete Python `red_atlas_pipeline` (gestionado con `uv`) que lee los productos reales de la NASA y genera todo lo demás: módulos `terrain`, `scenario` y `hexgrid` |
 | [`nasa-layers/`](nasa-layers/README.md) | Productos NASA resueltos y su cobertura medida, comprobación de realidad del sitio, contrato de los COG y malla H3 de la ruta en Parquet |
 | [`mission-scenarios/`](mission-scenarios/README.md) | Escenario «Triángulo de Supervivencia» de la EVA-07: nodos y tramos en GeoJSON, umbrales Verde/Ámbar/Rojo y cronología minuto a minuto |
 
@@ -16,7 +16,7 @@ Regenerar todo, desde `data/pipeline/`:
 
 ```bash
 uv sync
-uv run python -m red_atlas_p1.terrain
-uv run python -m red_atlas_p1.scenario
-uv run python -m red_atlas_p1.hexgrid
+uv run python -m red_atlas_pipeline.terrain
+uv run python -m red_atlas_pipeline.scenario
+uv run python -m red_atlas_pipeline.hexgrid
 ```

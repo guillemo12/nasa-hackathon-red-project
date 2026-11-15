@@ -4,10 +4,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from red_atlas_p1 import config
-from red_atlas_p1.hexgrid import aggregate, geo, synthetic
-from red_atlas_p1.hexgrid import layers as hl
-from red_atlas_p1.hexgrid.constants import PROV_DERIVED, PROV_NONE, PROV_SCENARIO
+from red_atlas_pipeline import config
+from red_atlas_pipeline.hexgrid import aggregate, geo, synthetic
+from red_atlas_pipeline.hexgrid import layers as hl
+from red_atlas_pipeline.hexgrid.constants import PROV_DERIVED, PROV_NONE, PROV_SCENARIO
 
 N = 40
 

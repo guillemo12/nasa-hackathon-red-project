@@ -1,6 +1,6 @@
 //! Multi-Hazard Stochastic Engine for R.E.D. ATLAS (Melas Chasma).
 //!
-//! Implements Section 3.1 of `ENTREGABLE_3_ARQUITECTURA_E_IA.md`:
+//! Implements Section 3.1 of `ARQUITECTURA_E_IA.md`:
 //! - Deterministic zero-dependency [`XorShift64`] PRNG for reproducible Chaos Mode runs
 //!   on both native ARM64/RISC-V EVA suits and WebAssembly (`WASM`) Habitat Console.
 //! - Non-Homogeneous Spatial-Temporal Poisson onset rates ($\lambda_1..\lambda_4$)
@@ -418,7 +418,7 @@ pub const CHAOS_DT_MIN: f64 = 5.0;
 pub const CHAOS_SOLAR_ACTIVITY: f64 = 2.2;
 /// Initial primary O2 of a Chaos Mode trial: the full usable tank at departure, L.
 pub const CHAOS_INITIAL_O2_L: f64 = SUIT_O2_PRIMARY_USABLE_L;
-/// Primary O2 level that forces the switch to the shelter: P1 red band (< 30 % of the tank), L.
+/// Primary O2 level that forces the switch to the shelter: canonical red band (< 30 % of the tank), L.
 pub const CHAOS_O2_SWITCH_L: f64 = O2_PRIMARY_RED_L;
 
 fn classify(reached: bool, o2_left: bool, dose_ok: bool) -> usize {

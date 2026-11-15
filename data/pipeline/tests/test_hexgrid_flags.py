@@ -6,8 +6,8 @@ import re
 import numpy as np
 import pytest
 
-from red_atlas_p1.hexgrid import constants as C
-from red_atlas_p1.hexgrid.flags import hazard_bitmask
+from red_atlas_pipeline.hexgrid import constants as C
+from red_atlas_pipeline.hexgrid.flags import hazard_bitmask
 
 NAN = np.nan
 

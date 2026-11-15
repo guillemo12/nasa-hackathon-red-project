@@ -245,7 +245,7 @@
         "node_id": "WP3",
         "provenance": "escenario",
         "provenance_code": 3,
-        "extent_note": "Extensión supuesta por esta capa (E); el entregable solo fija el valor en el nodo.",
+        "extent_note": "Extensión supuesta por esta capa (E); el escenario solo fija el valor en el nodo.",
         "sky_view_factor": 0.15,
         "radius_m": 40.0
       }
@@ -461,7 +461,7 @@
         "node_id": "WP2",
         "provenance": "escenario",
         "provenance_code": 3,
-        "extent_note": "Extensión supuesta por esta capa (E); el entregable solo fija el valor en el nodo.",
+        "extent_note": "Extensión supuesta por esta capa (E); el escenario solo fija el valor en el nodo.",
         "thermal_inertia_tiu": 110,
         "radius_m": 150.0
       }
@@ -677,7 +677,7 @@
         "node_id": "BASE",
         "provenance": "escenario",
         "provenance_code": 3,
-        "extent_note": "Extensión supuesta por esta capa (E); el entregable solo fija el valor en el nodo.",
+        "extent_note": "Extensión supuesta por esta capa (E); el escenario solo fija el valor en el nodo.",
         "thermal_inertia_tiu": 320,
         "radius_m": 100.0
       }
@@ -893,7 +893,7 @@
         "node_id": "WP1",
         "provenance": "escenario",
         "provenance_code": 3,
-        "extent_note": "Extensión supuesta por esta capa (E); el entregable solo fija el valor en el nodo.",
+        "extent_note": "Extensión supuesta por esta capa (E); el escenario solo fija el valor en el nodo.",
         "thermal_inertia_tiu": 410,
         "radius_m": 100.0
       }
@@ -1109,7 +1109,7 @@
         "node_id": "WP3",
         "provenance": "escenario",
         "provenance_code": 3,
-        "extent_note": "Extensión supuesta por esta capa (E); el entregable solo fija el valor en el nodo.",
+        "extent_note": "Extensión supuesta por esta capa (E); el escenario solo fija el valor en el nodo.",
         "thermal_inertia_tiu": 620,
         "radius_m": 40.0
       }

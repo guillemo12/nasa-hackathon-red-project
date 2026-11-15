@@ -1,4 +1,4 @@
-# 🛰️ `data/pipeline/` — Pipeline científico de datos NASA (Persona 1)
+# 🛰️ `data/pipeline/` — Pipeline científico de datos NASA
 
 Convierte productos reales de la NASA (PDS / catálogo STAC de USGS Astrogeology) en las capas
 que consume el motor en Rust: **Cloud-Optimized GeoTIFF (COG)**, **GeoJSON** y **Apache Parquet**.
@@ -11,21 +11,21 @@ uv run pytest
 
 | Módulo | Qué hace |
 | :--- | :--- |
-| `red_atlas_p1.config` | Rutas, CRS de Marte, AOIs, convenciones de longitud y constantes compartidas |
-| `red_atlas_p1.terrain` | Descubrimiento STAC, recorte por ventana, COG, pendiente, *Sky View Factor* y línea de visión |
-| `red_atlas_p1.scenario` | Validador del escenario EVA-07: geometría, metabolismo, dosis, enlace de radio |
-| `red_atlas_p1.hexgrid` | Agregación a malla H3, tabla Parquet por celda y consultas DuckDB |
+| `red_atlas_pipeline.config` | Rutas, CRS de Marte, AOIs, convenciones de longitud y constantes compartidas |
+| `red_atlas_pipeline.terrain` | Descubrimiento STAC, recorte por ventana, COG, pendiente, *Sky View Factor* y línea de visión |
+| `red_atlas_pipeline.scenario` | Validador del escenario EVA-07: geometría, metabolismo, dosis, enlace de radio |
+| `red_atlas_pipeline.hexgrid` | Agregación a malla H3, tabla Parquet por celda y consultas DuckDB |
 
-## Terreno real (`red_atlas_p1.terrain`)
+## Terreno real (`red_atlas_pipeline.terrain`)
 
 ```bash
-uv run python -m red_atlas_p1.terrain            # regenera todo desde cero (~3 min, necesita red)
-uv run python -m red_atlas_p1.terrain --reuse    # reutiliza el manifiesto y los recortes de build/cog
+uv run python -m red_atlas_pipeline.terrain            # regenera todo desde cero (~3 min, necesita red)
+uv run python -m red_atlas_pipeline.terrain --reuse    # reutiliza el manifiesto y los recortes de build/cog
 uv run rio cogeo validate build/cog/dem_ctx_20m_route.tif
 uv run pytest -m "not network"                   # solo los tests sintéticos
-uv run python -m red_atlas_p1.terrain.site_search   # búsqueda rígida del emplazamiento (~35 min)
-uv run python -m red_atlas_p1.terrain.relocate      # aplica la colocación elegida al GeoJSON y regenera
-uv run python -m red_atlas_p1.terrain.ortho_texture # textura CTX 6 m co-registrada para el gemelo 3D (necesita red la 1.ª vez)
+uv run python -m red_atlas_pipeline.terrain.site_search   # búsqueda rígida del emplazamiento (~35 min)
+uv run python -m red_atlas_pipeline.terrain.relocate      # aplica la colocación elegida al GeoJSON y regenera
+uv run python -m red_atlas_pipeline.terrain.ortho_texture # textura CTX 6 m co-registrada para el gemelo 3D (necesita red la 1.ª vez)
 ```
 
 Lee por ventana (rangos HTTP, nunca el fichero entero) los productos reales que cubren el sitio y escribe:
@@ -34,7 +34,7 @@ Lee por ventana (rangos HTTP, nunca el fichero entero) los productos reales que 
 | :--- | :--- |
 | `build/cog/*.tif` | 13 COG: DEM (CTX 20 m, HRSC+MOLA 200 m, MOLA 463 m; HiRISE 1 m solo si cubre la ruta), ortoimágenes (CTX 6 m, HiRISE 1 m), THEMIS IR día/noche, pendiente y orientación, horizonte por acimut, SVF, línea de vista de radio y capa de escenario |
 | `../nasa-layers/sources_manifest.json` | Productos reales, URL, licencia y cobertura **medida** de cada AOI; también lo que no existe o no se puede leer por ventana |
-| `../nasa-layers/site_reality_check.json` y `SITE_REALITY_CHECK.md` | El escenario frente al terreno real, con las correcciones propuestas al entregable |
+| `../nasa-layers/site_reality_check.json` y `SITE_REALITY_CHECK.md` | El escenario frente al terreno real, con las correcciones propuestas al escenario |
 | `../nasa-layers/terrain_outputs.json` | Contrato para la malla H3: ficheros, bandas, unidades, nodata, CRS, resolución, AOI y procedencia |
 | `../nasa-layers/site_search.json` | Embudo de la búsqueda del emplazamiento y evaluación de la colocación elegida en cada par CTX |
 | `../nasa-layers/site_reality_check_original_site.json` | Comprobación del sitio original (9,8°S, 283,6°E), que justifica el traslado |

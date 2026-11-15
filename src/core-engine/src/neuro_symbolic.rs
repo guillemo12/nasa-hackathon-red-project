@@ -1,6 +1,6 @@
 //! # Neuro-Symbolic Offline Copilot (`neuro_symbolic.rs`)
 //!
-//! Implements Section 4 of `docs/03-system-architecture-ai/ENTREGABLE_3_ARQUITECTURA_E_IA.md`:
+//! Implements Section 4 of `docs/03-system-architecture-ai/ARQUITECTURA_E_IA.md`:
 //! - **Triple Modular Redundancy (TMR 2-out-of-3)**: mitigates Single Event Upsets
 //!   (SEU bit-flips) induced by solar particle events (SPE) and Martian galactic cosmic rays.
 //! - **Deterministic Safety Guardrail FSM (100 Hz)**: hard mathematical state machine
@@ -151,7 +151,7 @@ impl GuardrailFsm {
     ///    3. Dust Storm / Wind (tau > 2.0, wind > 20 m/s)
     ///    4. NLOS Radio Shadow (RSSI < -100 dBm)
     ///
-    /// Red/amber thresholds come from P1's `data/mission-scenarios/eva_thresholds.json`
+    /// Red/amber thresholds come from the pipeline's `data/mission-scenarios/eva_thresholds.json`
     /// via `red_atlas_shared`.
     /// Suppressing redundant popups into a single tactical directive with validated voice slots.
     pub fn evaluate(
@@ -172,7 +172,7 @@ impl GuardrailFsm {
             || hazards.dust_tau > DUST_TAU_RED
             || hazards.wind_speed_ms > WIND_RED_M_S;
 
-        // Red bands of P1 `eva_thresholds.json`: dose rate > 1.0 mSv/h, primary O2 < 30 % of the
+        // Red bands of `eva_thresholds.json`: dose rate > 1.0 mSv/h, primary O2 < 30 % of the
         // usable tank (167.9 L of 559.8 L), O2 rate > 1.75 L/min, slope > 20 deg, TIU < 150,
         // RSSI < -100 dBm. Boundary values themselves are amber, as in the JSON.
         let h2_rad_o2 = hazards.h2_spe_radiation
@@ -190,7 +190,7 @@ impl GuardrailFsm {
         let active_hazard_count =
             (h1_dust as u8) + (h2_rad_o2 as u8) + (h3_terrain as u8) + (h4_nlos as u8);
 
-        // P1 TIU bands: green > 400, amber 150-400 (`TIU_AMBER_THRESHOLD`), red < 150.
+        // Canonical TIU bands: green > 400, amber 150-400 (`TIU_AMBER_THRESHOLD`), red < 150.
         let caution_present = cell_slope_deg >= SLOPE_AMBER_DEG
             || cell_tiu <= TIU_AMBER_THRESHOLD
             || hazards.dust_tau >= DUST_TAU_AMBER
@@ -654,7 +654,7 @@ mod tests {
 
         // Conditions at T+105 min near WP2:
         // 1. Dust storm tau=2.4, wind=28 m/s
-        // 2. SPE radiation flux=8 mSv/h (P1 envelope peak)
+        // 2. SPE radiation flux=8 mSv/h (design envelope peak)
         // 3. Regolith slope=22 deg, TIU=110
         // 4. NLOS radio shadow, RSSI = -125 dBm
         let hazards = ActiveHazards {
@@ -679,7 +679,7 @@ mod tests {
             heart_rate_bpm: 135,
         };
 
-        // Base is 47.6 min away, while WP3 Shelter is 9.4 min away (D* Lite on P1 terrain, L3 bearing 344)
+        // Base is 47.6 min away, while WP3 Shelter is 9.4 min away (D* Lite on the real terrain, L3 bearing 344)
         let walkback = WalkbackDualStatus {
             t_vital_min: 75.0,
             // Fixture: figures of the T+105 planner run (data/mission-scenarios/planner_walkback.json).
@@ -865,7 +865,7 @@ mod tests {
         let telemetry_nominal = PlssTelemetry::default();
         let walkback_nominal = WalkbackDualStatus::default();
 
-        // Nominal evaluation (WP1 ground: 410 TIU is green, P1 amber starts at <= 400 TIU)
+        // Nominal evaluation (WP1 ground: 410 TIU is green, canonical amber starts at <= 400 TIU)
         let frame_nominal = fsm.evaluate(
             5.0,
             red_atlas_shared::SURVIVAL_TRIANGLE_SITE[1].thermal_inertia_tiu,

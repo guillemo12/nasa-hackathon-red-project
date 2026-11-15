@@ -1,6 +1,12 @@
-# 🥽 `src/eva-tactical-hud/` — Interfaz Táctica EVA (Casco AR + Tablet de Muñeca)
+# 🥽 `src/eva-tactical-hud/` — HUD táctico del traje (diseño)
 
-Módulo correspondiente al **Nodo 2 (Wearable Edge Node 100% Offline)** diseñado por la **Persona 2 (UX/UI)**:
-* **HUD de Realidad Aumentada (Casco):** Proyección del sendero luminoso 3D sobre el suelo marciano, brújula de *Waypoints* y **Barra Superior *"Walkback Limit Dual"*** (Límite de Retorno a Base vs. Escape a Refugio WP3).
-* **Protocolo de Triaje *"Fusión de Alerta Única"*:** Cambio cromático del sendero en el suelo (cian $\to$ ámbar/rojo pulsante) + salida de voz manos libres sin saturar el campo visual ante multiemergencias.
-* **Vista de Tablet de Muñeca:** Mapa topográfico 2D/3D táctico adaptado a guantes presurizados.
+Módulo previsto para el nodo del traje: HUD de realidad aumentada en el casco y tablet de muñeca. **Todavía no tiene código propio.**
+
+La lógica que tendría el HUD ya funciona en la consola de Base, en la vista **Telemetría EVA** ([`src/base-console/src/components/EvaHudView.tsx`](../base-console/src/components/EvaHudView.tsx)):
+
+- Barra **Walkback Limit Dual**: margen de retorno a la Base frente al refugio WP3.
+- **Triaje de alerta única**: una sola orden con rumbo, distancia y tiempo, y una frase de voz de menos de 8 s.
+- Sendero con código de color: cian en marcha, ámbar en taludes y rojo en la evacuación.
+- Puntos marcados por la astronauta (peligro, refugio, ISRU).
+
+El diseño de las pantallas está en [`docs/02-product-ux-ui/helmet-vision.md`](../../docs/02-product-ux-ui/helmet-vision.md) y en los wireframes de [`docs/wireframes/`](../../docs/wireframes/).

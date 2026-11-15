@@ -63,7 +63,7 @@ export function terrainElevation(t: TerrainGrid, lat: number, lonE: number): num
 }
 
 /**
- * Sombreado del relieve real (DTM CTX 20 m agregado a la malla de P1) como imagen, para usarlo
+ * Sombreado del relieve real (DTM CTX 20 m agregado a la malla H3) como imagen, para usarlo
  * de fondo georreferenciado en el mapa del HUD. Devuelve una URL `data:`.
  */
 export function hillshadeDataUrl(t: TerrainGrid): string {
