@@ -25,6 +25,7 @@ uv run rio cogeo validate build/cog/dem_ctx_20m_route.tif
 uv run pytest -m "not network"                   # solo los tests sintéticos
 uv run python -m red_atlas_p1.terrain.site_search   # búsqueda rígida del emplazamiento (~35 min)
 uv run python -m red_atlas_p1.terrain.relocate      # aplica la colocación elegida al GeoJSON y regenera
+uv run python -m red_atlas_p1.terrain.ortho_texture # textura CTX 6 m co-registrada para el gemelo 3D (necesita red la 1.ª vez)
 ```
 
 Lee por ventana (rangos HTTP, nunca el fichero entero) los productos reales que cubren el sitio y escribe:
@@ -38,6 +39,7 @@ Lee por ventana (rangos HTTP, nunca el fichero entero) los productos reales que 
 | `../nasa-layers/site_search.json` | Embudo de la búsqueda del emplazamiento y evaluación de la colocación elegida en cada par CTX |
 | `../nasa-layers/site_reality_check_original_site.json` | Comprobación del sitio original (9,8°S, 283,6°E), que justifica el traslado |
 | `../nasa-layers/scenario_overlay.geojson` | Valores de diseño junto a los medidos, con procedencia por entidad |
+| `../nasa-layers/ortho_ctx_6m_route.png` y `.json` (`terrain.ortho_texture`) | Textura del gemelo 3D: mosaico CTX de 6 m (Robbins et al., USGS) estirado a 8 bits y co-registrado con el DTM de trabajo. El desfase se mide por correlación de fase contra la ortoimagen del propio par estéreo (≈ +68 m E, +55 m N, igual en los cuatro cuadrantes) y se corrige moviendo los límites, sin remuestrear. HiRISE se descarta por deformado (sin control) y Mars Trek solo ofrece aquí el CTX global sin control. |
 
 Convenciones: todas las mallas son geográficas `IAU_2015:49900` con longitud Este 0–360 (usar
 `config.lon180` antes de H3 o CesiumJS); las distancias y pendientes se calculan en metros reales

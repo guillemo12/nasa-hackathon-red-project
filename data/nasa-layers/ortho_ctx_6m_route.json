@@ -1,0 +1,120 @@
+{
+  "schema_version": "1.0",
+  "generated_utc": "2026-11-15T17:11:16Z",
+  "generator": "uv run python -m red_atlas_p1.terrain.ortho_texture",
+  "image": "ortho_ctx_6m_route.png",
+  "format": "PNG gris + alfa, 8 bits; fila 0 = borde norte; columnas hacia el este",
+  "width": 594,
+  "height": 693,
+  "bounds": {
+    "lat_min": -9.949159349793026,
+    "lat_max": -9.879011374792983,
+    "lon_e_min": 283.3611177354232,
+    "lon_e_max": 283.4212445711375
+  },
+  "lon_convention": "Este positiva 0-360; latitud planetocéntrica (IAU_2015:49900)",
+  "pixel_deg": 0.0001012236291486913,
+  "resolution_m": 6.0,
+  "mission": "Mars Reconnaissance Orbiter",
+  "instrument": "Context Camera (CTX)",
+  "product": "Mosaico ecuatorial controlado CTX 6 m, cuadrángulo MC-18 Coprates (USGS)",
+  "source_id": "MC18_6mpp.16bit",
+  "source_url": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/Mars/Mars_MRO_CTX_Equi_Mosaics_Robbins/6mpp/MC18_6mpp.16bit.tif",
+  "citation": "Robbins, S. J. et al. (2023), Fully controlled 6 meters per pixel equatorial mosaic of Mars from MRO CTX data, Earth and Space Science; distribución USGS Astrogeology.",
+  "license": "Dominio público (USGS)",
+  "credit": "NASA/JPL/MSSS; mosaico USGS Astrogeology (Robbins et al., 2023)",
+  "band": "Banda ancha roja de CTX (≈ 500–800 nm): la imagen es en grises; no lleva color añadido.",
+  "stretch": {
+    "quantity": "DN·VALUE_SCALE + VALUE_OFFSET (escala radiométrica del fichero de origen)",
+    "black": 34.81434358114399,
+    "white": 51.47786580301121,
+    "percentiles": [
+      0.5,
+      99.5
+    ]
+  },
+  "coregistration": {
+    "method": "Traslación rígida medida por correlación de fase (paso alto, malla común de 5 m, afinado parabólico) contra la ortoimagen del par estéreo del DTM de trabajo; se aplica moviendo los límites, sin remuestrear.",
+    "reference": "build/cog/ortho_ctx_pair_20m_route.tif",
+    "reference_product": "P18_007878_1703_XN_09S076W__P20_008735_1702_XI_09S076W",
+    "shift_east_m": 68.4,
+    "shift_north_m": 54.6,
+    "peak_sigma": 34.4,
+    "quadrants": [
+      {
+        "east_m": 67.9,
+        "north_m": 54.3,
+        "peak_sigma": 17.2
+      },
+      {
+        "east_m": 70.7,
+        "north_m": 55.0,
+        "peak_sigma": 17.2
+      },
+      {
+        "east_m": 65.3,
+        "north_m": 50.4,
+        "peak_sigma": 18.3
+      },
+      {
+        "east_m": 69.9,
+        "north_m": 51.4,
+        "peak_sigma": 16.3
+      }
+    ],
+    "quadrant_spread_m": 5.2,
+    "residual_m": 0.5,
+    "uncertainty_m": "≈ un píxel de la malla común (5 m) más la dispersión entre cuadrantes"
+  },
+  "alternatives_rejected": [
+    {
+      "source": "Ortoimagen del par estéreo del DTM (USGS, ASP)",
+      "resolution_m": 20.0,
+      "reason": "Encaja por construcción con el relieve, pero a 20 m; se usa como referencia de co-registro."
+    },
+    {
+      "source": "HiRISE PSP_008735_1700_RED (RDR sin control)",
+      "resolution_m": 1.0,
+      "reason": "Sin control (±100 m) y deformado: la traslación medida cambia entre cuadrantes más que el límite de 15 m, así que una traslación no lo alinea.",
+      "measured": {
+        "id": "PSP_008735_1700_RED",
+        "east_m": 189.7,
+        "north_m": 86.2,
+        "quadrants": [
+          {
+            "east_m": 170.8,
+            "north_m": 84.9,
+            "peak_sigma": 14.6
+          },
+          {
+            "east_m": 166.6,
+            "north_m": 83.9,
+            "peak_sigma": 12.4
+          },
+          {
+            "east_m": 248.1,
+            "north_m": 89.8,
+            "peak_sigma": 14.7
+          },
+          {
+            "east_m": 213.9,
+            "north_m": 86.5,
+            "peak_sigma": 11.2
+          }
+        ],
+        "quadrant_spread_m": 58.6
+      }
+    },
+    {
+      "source": "Mars Trek: MRO CTX Mosaic Global Uncontrolled (Caltech beta01)",
+      "resolution_m": 5.0,
+      "reason": "Sin control, JPEG con pérdida a 8 bits; no mejora al mosaico controlado de 6 m."
+    },
+    {
+      "source": "Mars Trek: Viking MDIM 2.1 / MOLA sombreado",
+      "resolution_m": 232.0,
+      "reason": "Globales: un píxel es mayor que un tramo de la ruta."
+    }
+  ],
+  "provenance": "medido"
+}

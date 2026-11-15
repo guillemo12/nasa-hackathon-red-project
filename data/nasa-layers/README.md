@@ -13,6 +13,7 @@ Salidas versionadas del pipeline de la **Persona 1** ([`data/pipeline/`](../pipe
 | `scenario_overlay.geojson` | Valores de diseño junto a los medidos, con procedencia por entidad | `terrain` |
 | `hexgrid_route_res12.parquet` y `hexgrid_route_res9.parquet` | Malla H3 de la ruta (141.313 y 462 celdas): cota, pendiente, orientación, SVF, horizonte, línea de vista, THEMIS DN y valores de escenario, con procedencia y resolución de la fuente por atributo | `hexgrid` |
 | `hexgrid_route_res12_hexcell64b.parquet` y `hexgrid_route_res9_hexcell64b.parquet` | Las mismas celdas con exactamente los campos de `HexCellState64B` del núcleo Rust (nulos de Parquet donde no hay dato) | `hexgrid` |
+| `ortho_ctx_6m_route.png` y `ortho_ctx_6m_route.json` | Imagen orbital del gemelo 3D: mosaico CTX de 6 m (USGS) en grises de 8 bits, co-registrado con el DTM de trabajo (traslación medida y residuo en el JSON), límites en longitud Este 0–360, procedencia y fuentes descartadas | `terrain.ortho_texture` |
 | `SCHEMA_HEXGRID.md` | Esquema de las tablas H3, banderas de peligro, incompatibilidades con el contrato de P3 y tiempos de DuckDB | `hexgrid` |
 | `hexgrid_duckdb_benchmark.json` | Tiempos medidos de las consultas DuckDB de demostración | `hexgrid` |
 
